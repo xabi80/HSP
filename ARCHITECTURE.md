@@ -272,11 +272,12 @@ Repo structure, pydantic deck schema, HDF5 writer stub, CI with pytest. No physi
 ### Milestone 1 — Single-body frequency-domain sanity (week 2)
 Implement `HydroDatabase` dataclass, reader dispatch interface, and an internal synthetic-YAML reader to drive tests. Rigid-body mass matrix assembly. Cummins LHS matrix assembly (M + A∞, C). Verify natural-period formula `T_i = 2π√((M+A∞)_ii / C_ii)` on a synthetic OC4 DeepCwind–shaped fixture reproduces published reference periods. No time stepping yet.
 
-### Milestone 1.5 — OrcaWave reader (scheduled when licensed API access or YAML companion export is available)
-Implement `floatsim/hydro/readers/orcawave.py`. Two supported paths:
-1. Preferred: parse OrcaWave YAML companion export (human-readable text).
-2. Fallback: `OrcFxAPI`-based reader behind a lazy import. Requires a full FlexNet/HASP license — demo-mode OrcFxAPI refuses API access and cannot be used.
-Live validation against `UMaineSemi.owr` (OC4 DeepCwind benchmark) lands here.
+### Milestone 1.5 — OrcaFlex VesselType YAML reader (primary path)
+Implement `floatsim/hydro/readers/orcaflex_vessel_yaml.py`. This is the human-readable text export produced by OrcaFlex when an OrcaWave `.owr` is imported and saved as YAML — it carries the full set of computed coefficients FloatSim needs: `FrequencyDependentAddedMassAndDamping` (A(ω), B(ω), and the `Infinity` row for A∞), `HydrostaticStiffness` (C), `DisplacementRAOs` and `LoadRAOs`, plus body mass/inertia. Fields honour the file's `UnitsSystem`, `WavesReferredToBy`, `RAOPhaseConvention`, and `RAOPhaseUnitsConvention` declarations; the reader validates these and converts to FloatSim's SI + rad/s + complex-RAO-with-`exp(-i·omega·t)` convention.
+
+Direct `.owr` binary parsing via `OrcFxAPI` is deferred — demo-mode OrcFxAPI refuses API access and cannot be used. A future `floatsim/hydro/readers/orcawave_owr.py` can land behind a lazy import when a full FlexNet/HASP license is available.
+
+Validation case: `PlatformOrcaflexSmall.yml` (OC4 DeepCwind–shaped semi-submersible demo), reproducing heave and pitch natural periods in the physical ranges established in Milestone 1.
 
 ### Milestone 2 — Single-body time domain (weeks 3–4)
 Retardation kernel, convolution buffer, generalized-α integrator. Validate: heave free decay matches analytical period/damping.
