@@ -69,6 +69,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
+pythonpath = ["."]  # lets tests import from `tests.support.*`
 addopts = ["-ra", "--strict-markers", "--strict-config"]
 markers = [
     "slow: long-running validation tests (run in nightly CI, not every PR)",
