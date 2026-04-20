@@ -13,8 +13,10 @@ Shape conventions (single body, Phase 1):
     B              (6, 6, n_w)      float64, radiation damping (symmetric at each omega)
     A_inf          (6, 6)           float64, infinite-frequency added mass (symmetric)
     C              (6, 6)           float64, hydrostatic restoring (symmetric)
-    RAO            (6, n_w, n_h)    complex128, first-order wave excitation force per unit wave amplitude
-    reference_point (3,)            float64, point in inertial frame about which BEM coefficients are given
+    RAO            (6, n_w, n_h)    complex128, first-order wave excitation force
+                                    per unit wave amplitude
+    reference_point (3,)            float64, point in inertial frame about which
+                                    BEM coefficients are given
 
 DOF order throughout is ``(surge, sway, heave, roll, pitch, yaw)`` — see
 ARCHITECTURE.md §3.3. Multi-body extension (block-diagonal with off-diagonal
@@ -24,7 +26,7 @@ coupling when the BEM case was multi-body) is deferred to Milestone 4.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Final
+from typing import Any, Final
 
 import numpy as np
 from numpy.typing import NDArray
@@ -40,7 +42,7 @@ def _require_symmetric(m: NDArray[np.floating], label: str) -> None:
         raise ValueError(f"{label} must be symmetric (within rtol={_SYMMETRY_RTOL:.0e})")
 
 
-def _require_all_finite(arr: NDArray, label: str) -> None:
+def _require_all_finite(arr: NDArray[Any], label: str) -> None:
     if not np.all(np.isfinite(arr)):
         raise ValueError(f"{label} must be all-finite (no NaN or inf)")
 
@@ -95,9 +97,7 @@ class HydroDatabase:
         if self.C.shape != (6, 6):
             raise ValueError(f"C must have shape (6, 6); got {self.C.shape}")
         if self.RAO.shape != (6, n_w, n_h):
-            raise ValueError(
-                f"RAO must have shape (6, {n_w}, {n_h}); got {self.RAO.shape}"
-            )
+            raise ValueError(f"RAO must have shape (6, {n_w}, {n_h}); got {self.RAO.shape}")
         if self.reference_point.shape != (3,):
             raise ValueError(
                 f"reference_point must have shape (3,); got {self.reference_point.shape}"

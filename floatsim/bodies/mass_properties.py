@@ -72,9 +72,7 @@ def rigid_body_mass_matrix(
 
     I_P = np.asarray(inertia_at_reference, dtype=np.float64)
     if I_P.shape != (3, 3):
-        raise ValueError(
-            f"inertia_at_reference must have shape (3, 3); got {I_P.shape}"
-        )
+        raise ValueError(f"inertia_at_reference must have shape (3, 3); got {I_P.shape}")
     if not np.allclose(I_P, I_P.T, rtol=_SYMMETRY_RTOL, atol=1e-10):
         raise ValueError("inertia_at_reference must be symmetric")
     if not np.all(np.isfinite(I_P)):
@@ -85,9 +83,7 @@ def rigid_body_mass_matrix(
     else:
         r = np.asarray(cog_offset_body, dtype=np.float64)
         if r.shape != (3,):
-            raise ValueError(
-                f"cog_offset_body must have shape (3,); got {r.shape}"
-            )
+            raise ValueError(f"cog_offset_body must have shape (3,); got {r.shape}")
         if not np.all(np.isfinite(r)):
             raise ValueError("cog_offset_body must be all-finite")
 

@@ -125,15 +125,11 @@ def test_wrong_cog_offset_shape_rejected() -> None:
 def _physical_input(draw: st.DrawFn) -> tuple[float, np.ndarray, np.ndarray]:
     m = draw(st.floats(min_value=1.0, max_value=1e8, allow_nan=False))
     # Diagonal inertia with dominant diagonal to guarantee PD.
-    Ixx, Iyy, Izz = (
-        draw(st.floats(min_value=1.0, max_value=1e10)) for _ in range(3)
-    )
+    Ixx, Iyy, Izz = (draw(st.floats(min_value=1.0, max_value=1e10)) for _ in range(3))
     I = _diag_inertia(Ixx, Iyy, Izz)
     # Keep CoG offset modest so |I_ref| still dominates m*|r|^2 and M stays PD.
     bound = float(np.sqrt(min(Ixx, Iyy, Izz) / m)) * 0.3
-    r = np.array(
-        [draw(st.floats(min_value=-bound, max_value=bound)) for _ in range(3)]
-    )
+    r = np.array([draw(st.floats(min_value=-bound, max_value=bound)) for _ in range(3)])
     return m, I, r
 
 

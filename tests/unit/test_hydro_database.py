@@ -14,7 +14,6 @@ from hypothesis import strategies as st
 
 from floatsim.hydro.database import DOF_ORDER, HydroDatabase
 
-
 # ---------- fixture helpers ----------
 
 
