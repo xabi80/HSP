@@ -1,0 +1,82 @@
+# Annotated sample deck — mirrors ARCHITECTURE.md §5.
+# Two floating bodies (semisub + barge) with a shore catenary and an inter-body
+# catenary. Used as a schema fixture in Milestone 0; no physics runs on it yet.
+
+simulation:
+  duration: 600.0                 # s
+  dt: 0.05                        # s
+  integrator: generalized_alpha   # "generalized_alpha" (primary) or "rk4" (debug)
+  spectral_radius_inf: 0.8        # numerical damping for generalized-alpha
+  retardation_memory: 60.0        # s (§9.1 convolution truncation)
+  ramp_duration: 20.0             # s (§9.3 mandatory excitation ramp)
+  skip_static_equilibrium: false  # §9.4 — true is debug-only
+
+environment:
+  water_depth: 200.0              # m
+  water_density: 1025.0           # kg/m³
+  gravity: 9.80665                # m/s²
+
+waves:
+  type: regular                   # Phase 1: only "regular"
+  height: 6.0                     # m (wave height H, not amplitude)
+  period: 10.0                    # s
+  heading: 0.0                    # deg; 0° = waves travel in +X (§3.1)
+
+bodies:
+  - name: semisub
+    reference_point: [0.0, 0.0, -15.0]
+    mass: 2.0e7
+    inertia:                      # about reference_point, body frame
+      Ixx: 3.0e10
+      Iyy: 3.0e10
+      Izz: 5.0e10
+    hydro_database:
+      format: orcawave
+      path: ./hydro/semisub.yml
+      body_index: 0
+    drag_elements:
+      - type: morison_member
+        node_a: [20.0, 0.0, -10.0]
+        node_b: [20.0, 0.0, -20.0]
+        diameter: 8.0
+        Cd: 0.8
+        Ca: 1.0
+    initial_conditions:
+      position: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]   # [surge, sway, heave, roll, pitch, yaw]
+      velocity: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+  - name: barge
+    reference_point: [100.0, 0.0, -5.0]
+    mass: 5.0e6
+    inertia:
+      Ixx: 1.0e9
+      Iyy: 4.0e9
+      Izz: 4.0e9
+    hydro_database:
+      format: wamit
+      path: ./hydro/barge
+      body_index: 0
+
+connections:
+  - type: linear_spring
+    body_a: semisub
+    body_b: earth                 # "earth" sentinel = grounded anchor
+    anchor_a_body: [30.0, 0.0, 0.0]
+    anchor_b_global: [150.0, 0.0, -200.0]
+    stiffness: 1.0e6
+    rest_length: 180.0
+
+  - type: catenary
+    body_a: semisub
+    body_b: barge
+    attach_a_body: [30.0, 0.0, 0.0]
+    attach_b_body: [-40.0, 0.0, 0.0]
+    line:
+      length: 120.0
+      weight_per_length: 800.0    # N/m in water
+      EA: 5.0e8
+
+output:
+  file: results.h5
+  channels: [position, velocity, mooring_tensions, wave_elevation]
+  sample_rate: 10.0               # Hz
