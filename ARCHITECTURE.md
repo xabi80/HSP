@@ -270,7 +270,13 @@ output:
 Repo structure, pydantic deck schema, HDF5 writer stub, CI with pytest. No physics yet.
 
 ### Milestone 1 — Single-body frequency-domain sanity (week 2)
-Implement `HydroDatabase` + OrcaWave reader. Assemble Cummins matrices. Verify restoring and added mass match database. No time stepping yet.
+Implement `HydroDatabase` dataclass, reader dispatch interface, and an internal synthetic-YAML reader to drive tests. Rigid-body mass matrix assembly. Cummins LHS matrix assembly (M + A∞, C). Verify natural-period formula `T_i = 2π√((M+A∞)_ii / C_ii)` on a synthetic OC4 DeepCwind–shaped fixture reproduces published reference periods. No time stepping yet.
+
+### Milestone 1.5 — OrcaWave reader (scheduled when licensed API access or YAML companion export is available)
+Implement `floatsim/hydro/readers/orcawave.py`. Two supported paths:
+1. Preferred: parse OrcaWave YAML companion export (human-readable text).
+2. Fallback: `OrcFxAPI`-based reader behind a lazy import. Requires a full FlexNet/HASP license — demo-mode OrcFxAPI refuses API access and cannot be used.
+Live validation against `UMaineSemi.owr` (OC4 DeepCwind benchmark) lands here.
 
 ### Milestone 2 — Single-body time domain (weeks 3–4)
 Retardation kernel, convolution buffer, generalized-α integrator. Validate: heave free decay matches analytical period/damping.
