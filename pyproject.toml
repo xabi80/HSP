@@ -50,8 +50,8 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
 # I_P, A_inf; single-letter I for inertia tensor; × in docstring prose) in the
 # physics subpackages and all test modules. The names mirror those in
 # ARCHITECTURE.md §2–§4 and would be harder to read if coerced to snake_case.
-"floatsim/bodies/**" = ["N806", "RUF002"]
-"floatsim/hydro/**" = ["N806", "RUF002"]
+"floatsim/bodies/**" = ["N803", "N806", "RUF002"]
+"floatsim/hydro/**" = ["N803", "N806", "RUF002"]
 "tests/**" = ["N802", "N803", "N806", "E741"]
 
 # ----- Type checking -----
