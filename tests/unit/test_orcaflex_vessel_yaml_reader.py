@@ -21,11 +21,7 @@ from floatsim.hydro.database import HydroDatabase
 from floatsim.hydro.readers.orcaflex_vessel_yaml import read_orcaflex_vessel_yaml
 
 FIXTURE_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "fixtures"
-    / "bem"
-    / "orcaflex"
-    / "platform_small.yml"
+    Path(__file__).resolve().parents[1] / "fixtures" / "bem" / "orcaflex" / "platform_small.yml"
 )
 
 # Tonnes → kg and kN → N share the same factor in OrcaFlex's "SI" system.
@@ -191,9 +187,7 @@ def _write_modified_fixture(tmp_path: Path, replacements: list[tuple[str, str]])
 
 
 def test_rejects_non_si_units_system(tmp_path: Path) -> None:
-    modified = _write_modified_fixture(
-        tmp_path, [("UnitsSystem: SI", "UnitsSystem: User")]
-    )
+    modified = _write_modified_fixture(tmp_path, [("UnitsSystem: SI", "UnitsSystem: User")])
     with pytest.raises(ValueError, match="UnitsSystem"):
         read_orcaflex_vessel_yaml(modified)
 
