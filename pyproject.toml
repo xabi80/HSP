@@ -52,6 +52,7 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
 # ARCHITECTURE.md §2–§4 and would be harder to read if coerced to snake_case.
 "floatsim/bodies/**" = ["N803", "N806", "RUF002"]
 "floatsim/hydro/**" = ["N803", "N806", "RUF002"]
+"floatsim/solver/**" = ["N803", "N806", "RUF002"]
 "tests/**" = ["N802", "N803", "N806", "E741"]
 
 # ----- Type checking -----
