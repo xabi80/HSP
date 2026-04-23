@@ -57,9 +57,13 @@ class RetardationKernel:
     Attributes
     ----------
     K
-        ``(6, 6, N_t)`` float64 array. ``K[:, :, n]`` is the 6x6 kernel
-        matrix at lag ``t[n] = n * dt``. Symmetric in the first two axes
-        when ``B(omega)`` is symmetric at every frequency.
+        ``(n_dof, n_dof, N_t)`` float64 array, with ``n_dof = 6N`` for
+        ``N >= 1`` bodies. ``K[:, :, n]`` is the kernel matrix at lag
+        ``t[n] = n * dt``. Symmetric in the first two axes when
+        ``B(omega)`` is symmetric at every frequency. Single-body kernels
+        computed by :func:`compute_retardation_kernel` have ``n_dof = 6``;
+        multi-body globals are assembled externally (see
+        :func:`floatsim.solver.state.assemble_global_kernel`).
     t
         ``(N_t,)`` float64 array of lag times in seconds. Strictly
         increasing, uniformly spaced, starts at 0.
@@ -73,8 +77,11 @@ class RetardationKernel:
     dt: float
 
     def __post_init__(self) -> None:
-        if self.K.ndim != 3 or self.K.shape[0] != 6 or self.K.shape[1] != 6:
-            raise ValueError(f"K must have shape (6, 6, N_t); got {self.K.shape}")
+        if self.K.ndim != 3 or self.K.shape[0] != self.K.shape[1]:
+            raise ValueError(f"K must have shape (n_dof, n_dof, N_t); got {self.K.shape}")
+        n_dof = int(self.K.shape[0])
+        if n_dof < 6 or n_dof % 6 != 0:
+            raise ValueError(f"K's DOF dimension must be 6N for some N >= 1; got {n_dof}")
         if self.t.ndim != 1 or self.t.size != self.K.shape[2]:
             raise ValueError(
                 f"t must be 1-D with length matching K's last axis ({self.K.shape[2]}); "
@@ -87,6 +94,11 @@ class RetardationKernel:
     def n_lags(self) -> int:
         """Number of lag samples (``N_t``)."""
         return int(self.K.shape[2])
+
+    @property
+    def n_dof(self) -> int:
+        """Total number of degrees of freedom (``6 * N`` for ``N`` bodies)."""
+        return int(self.K.shape[0])
 
 
 # ---------------------------------------------------------------------------
@@ -235,13 +247,14 @@ class RadiationConvolution:
     """
 
     def __init__(self, kernel: RetardationKernel) -> None:
-        if kernel.K.ndim != 3 or kernel.K.shape[:2] != (6, 6):
-            raise ValueError(f"K must have shape (6, 6, N_t); got {kernel.K.shape}")
+        if kernel.K.ndim != 3 or kernel.K.shape[0] != kernel.K.shape[1]:
+            raise ValueError(f"K must have shape (n_dof, n_dof, N_t); got {kernel.K.shape}")
         self._K: NDArray[np.float64] = np.ascontiguousarray(kernel.K, dtype=np.float64)
         self._dt: float = float(kernel.dt)
         self._n_lags: int = int(kernel.K.shape[2])
+        self._n_dof: int = int(kernel.K.shape[0])
         # Slot 0 is lag 0 (newest); slot k is lag k.
-        self._buffer: NDArray[np.float64] = np.zeros((self._n_lags, 6), dtype=np.float64)
+        self._buffer: NDArray[np.float64] = np.zeros((self._n_lags, self._n_dof), dtype=np.float64)
 
     @property
     def n_lags(self) -> int:
@@ -250,6 +263,10 @@ class RadiationConvolution:
     @property
     def dt(self) -> float:
         return self._dt
+
+    @property
+    def n_dof(self) -> int:
+        return self._n_dof
 
     def reset(self) -> None:
         """Drop all history — equivalent to a freshly-constructed buffer."""
@@ -261,13 +278,15 @@ class RadiationConvolution:
         Parameters
         ----------
         xi_dot
-            Length-6 velocity vector ``(xi_dot_0, ..., xi_dot_5)`` in the
-            standard DOF order. Units must match what ``K`` expects (m/s
-            for translational DOFs, rad/s for rotational).
+            Length-``n_dof`` velocity vector in the standard DOF order
+            per body (``(surge, sway, heave, roll, pitch, yaw)``) and
+            concatenated across bodies in the multi-body case. Units
+            must match what ``K`` expects (m/s for translational DOFs,
+            rad/s for rotational).
         """
         v = np.asarray(xi_dot, dtype=np.float64)
-        if v.shape != (6,):
-            raise ValueError(f"xi_dot must have shape (6,); got {v.shape}")
+        if v.shape != (self._n_dof,):
+            raise ValueError(f"xi_dot must have shape ({self._n_dof},); got {v.shape}")
         # Shift buffer so slot k becomes lag k+1; drop the oldest.
         # np.roll allocates a new array — for N_K ~ hundreds this is cheap
         # enough; switch to an index-based scheme if profiling demands it.
@@ -279,7 +298,7 @@ class RadiationConvolution:
 
         Returns
         -------
-        ndarray of shape (6,), float64
+        ndarray of shape ``(n_dof,)``, float64
             Radiation force/moment vector ``mu`` in N / N*m per DOF.
         """
         # mu_i = sum_k sum_j K[i, j, k] * buffer[k, j] * dt

@@ -1,4 +1,4 @@
-"""Generalized-alpha integrator for the single-body Cummins equation.
+"""Generalized-alpha integrator for the linear Cummins equation.
 
 ARCHITECTURE.md §4 names this module (``floatsim/solver/newmark.py``)
 and §8 Milestone 2 requires it to advance the linear Cummins ODE
@@ -9,6 +9,13 @@ and §8 Milestone 2 requires it to advance the linear Cummins ODE
 
 with the trailing convolution supplied by
 :class:`floatsim.hydro.retardation.RadiationConvolution`.
+
+DOF count
+---------
+The integrator is agnostic to the number of bodies: ``n_dof = 6`` for a
+single body (M2 path) or ``n_dof = 6N`` for ``N``-body runs
+(ARCHITECTURE.md §2.2, M4). The size is read off the supplied
+:class:`CumminsLHS` and retardation kernel, which must agree.
 
 Integration scheme
 ------------------
@@ -87,12 +94,13 @@ class IntegrationResult:
         ``(N+1,)`` float64. Uniform time grid ``0, dt, 2*dt, ..., N*dt``
         where ``N = round(duration / dt)``.
     xi
-        ``(N+1, 6)`` float64. Generalized position history in body-frame
-        DOF order ``(surge, sway, heave, roll, pitch, yaw)``.
+        ``(N+1, n_dof)`` float64. Generalized position history. Per body
+        the DOF order is ``(surge, sway, heave, roll, pitch, yaw)``;
+        multi-body globals concatenate bodies in order.
     xi_dot
-        ``(N+1, 6)`` float64. Generalized velocity history.
+        ``(N+1, n_dof)`` float64. Generalized velocity history.
     xi_ddot
-        ``(N+1, 6)`` float64. Generalized acceleration history.
+        ``(N+1, n_dof)`` float64. Generalized acceleration history.
     """
 
     t: NDArray[np.float64]
@@ -101,8 +109,14 @@ class IntegrationResult:
     xi_ddot: NDArray[np.float64]
 
 
-def _zero_force(_t: float) -> NDArray[np.float64]:
-    return np.zeros(6, dtype=np.float64)
+def _zero_force(n_dof: int) -> Callable[[float], NDArray[np.float64]]:
+    """Factory for the default ``F(t) = 0`` force callable at ``n_dof`` DOFs."""
+    zeros = np.zeros(n_dof, dtype=np.float64)
+
+    def _f(_t: float) -> NDArray[np.float64]:
+        return zeros
+
+    return _f
 
 
 def _generalized_alpha_coefficients(rho_inf: float) -> tuple[float, float, float, float]:
@@ -137,7 +151,8 @@ def integrate_cummins(
         Its ``dt`` defines the integrator step; ``dt`` below must match
         or be left ``None``.
     xi0, xi_dot0
-        Length-6 initial generalized position and velocity.
+        Length-``n_dof`` initial generalized position and velocity, with
+        ``n_dof`` read from ``lhs`` (``6`` single-body, ``6N`` multi-body).
     duration
         Total simulation duration in seconds. Must be positive.
     dt
@@ -145,8 +160,8 @@ def integrate_cummins(
         equal ``kernel.dt`` within floating-point tolerance (the
         convolution buffer is sampled at the kernel's grid).
     external_force
-        Optional callable ``t -> F(t)`` returning a length-6 force/moment
-        vector in N / N*m. Defaults to zero (free response).
+        Optional callable ``t -> F(t)`` returning a length-``n_dof``
+        force/moment vector in N / N*m. Defaults to zero (free response).
     rho_inf
         Spectral radius at infinite step size in ``[0, 1]``; tunes the
         integrator's high-frequency numerical damping. ``1`` is the
@@ -157,13 +172,16 @@ def integrate_cummins(
     -------
     IntegrationResult
         Time grid and per-DOF position, velocity, and acceleration
-        histories, each of shape ``(N+1, 6)`` with ``N = round(duration / dt)``.
+        histories, each of shape ``(N+1, n_dof)`` with
+        ``N = round(duration / dt)``.
 
     Raises
     ------
     ValueError
-        If ``duration`` is non-positive, ``rho_inf`` is outside ``[0, 1]``,
-        or ``dt`` (if explicitly provided) does not match ``kernel.dt``.
+        If ``duration`` is non-positive, ``rho_inf`` is outside
+        ``[0, 1]``, the DOF counts of ``lhs`` and ``kernel`` disagree,
+        the state vectors have the wrong shape, or ``dt`` (if explicitly
+        provided) does not match ``kernel.dt``.
 
     Notes
     -----
@@ -176,6 +194,11 @@ def integrate_cummins(
         raise ValueError(f"duration must be positive; got {duration}")
     if rho_inf < 0.0 or rho_inf > 1.0:
         raise ValueError(f"rho_inf must be in [0, 1]; got {rho_inf}")
+    if lhs.n_dof != kernel.n_dof:
+        raise ValueError(
+            f"lhs has {lhs.n_dof} DOFs but kernel has {kernel.n_dof}; "
+            "global LHS and retardation kernel must share the same DOF count."
+        )
     if dt is None:
         dt = kernel.dt
     elif not np.isclose(dt, kernel.dt, rtol=_DT_MATCH_RTOL, atol=0.0):
@@ -184,14 +207,15 @@ def integrate_cummins(
             "resample the kernel to the integrator step before calling."
         )
 
+    n_dof = lhs.n_dof
     xi_0 = np.asarray(xi0, dtype=np.float64).copy()
     xi_dot_0 = np.asarray(xi_dot0, dtype=np.float64).copy()
-    if xi_0.shape != (6,) or xi_dot_0.shape != (6,):
+    if xi_0.shape != (n_dof,) or xi_dot_0.shape != (n_dof,):
         raise ValueError(
-            f"xi0 and xi_dot0 must have shape (6,); got {xi_0.shape}, {xi_dot_0.shape}"
+            f"xi0 and xi_dot0 must have shape ({n_dof},); got " f"{xi_0.shape}, {xi_dot_0.shape}"
         )
 
-    force = external_force if external_force is not None else _zero_force
+    force = external_force if external_force is not None else _zero_force(n_dof)
 
     alpha_m, alpha_f, gamma, beta = _generalized_alpha_coefficients(rho_inf)
     h = float(dt)
@@ -203,15 +227,15 @@ def integrate_cummins(
     n_samples = n_steps + 1
     t = h * np.arange(n_samples, dtype=np.float64)
 
-    xi_hist = np.empty((n_samples, 6), dtype=np.float64)
-    xi_dot_hist = np.empty((n_samples, 6), dtype=np.float64)
-    xi_ddot_hist = np.empty((n_samples, 6), dtype=np.float64)
+    xi_hist = np.empty((n_samples, n_dof), dtype=np.float64)
+    xi_dot_hist = np.empty((n_samples, n_dof), dtype=np.float64)
+    xi_ddot_hist = np.empty((n_samples, n_dof), dtype=np.float64)
 
     # Initial acceleration from the instantaneous EOM at t = 0 with mu(0) = 0
     # (continuous-form startup, ARCHITECTURE.md §9.3).
     F0 = np.asarray(force(0.0), dtype=np.float64)
-    if F0.shape != (6,):
-        raise ValueError(f"external_force(t) must return shape (6,); got {F0.shape}")
+    if F0.shape != (n_dof,):
+        raise ValueError(f"external_force(t) must return shape ({n_dof},); got {F0.shape}")
     xi_ddot_0 = np.linalg.solve(M_eff, F0 - C @ xi_0)
 
     xi_hist[0] = xi_0
@@ -224,7 +248,7 @@ def integrate_cummins(
     # mu at t_0: continuous value is 0; the buffer-evaluated artifact
     # K_0 * xi_dot_0 * dt is O(dt) and skipped here to match the §9.3
     # startup convention exactly at the first RHS.
-    mu_n = np.zeros(6, dtype=np.float64)
+    mu_n = np.zeros(n_dof, dtype=np.float64)
 
     xi_n = xi_0
     xi_dot_n = xi_dot_0

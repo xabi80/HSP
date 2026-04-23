@@ -14,6 +14,14 @@ and the convolution buffer arrive in Milestone 2.
 
 DOF ordering matches :mod:`floatsim.hydro.database`: ``(surge, sway,
 heave, roll, pitch, yaw)`` — see ARCHITECTURE.md §3.3.
+
+Multi-body
+----------
+The same dataclass carries the N-body global LHS (§2.2). In that case
+``M_plus_Ainf`` and ``C`` are ``6N x 6N`` block matrices — each 6x6
+block is the per-body 6-DOF quantity, with off-block-diagonal entries
+populated when the BEM run captured hydrodynamic interaction. For
+independent bodies see :func:`floatsim.solver.state.assemble_global_lhs`.
 """
 
 from __future__ import annotations
@@ -42,22 +50,46 @@ class CumminsLHS:
     Attributes
     ----------
     M_plus_Ainf
-        6x6 symmetric positive-definite generalized inertia ``M + A_inf``
-        in kg / kg*m / kg*m^2 per block.
+        Symmetric generalized inertia ``M + A_inf`` of shape
+        ``(n_dof, n_dof)`` with ``n_dof = 6N`` for ``N >= 1`` bodies.
+        Single-body (``n_dof = 6``) is the common case; larger sizes
+        carry a multi-body system per ARCHITECTURE.md §2.2. Units are
+        kg / kg*m / kg*m^2 per block.
     C
-        6x6 symmetric hydrostatic restoring matrix in N/m / N / N*m per block.
+        Symmetric hydrostatic restoring matrix of the same shape, with
+        units N/m / N / N*m per block.
     """
 
     M_plus_Ainf: NDArray[np.float64]
     C: NDArray[np.float64]
 
     def __post_init__(self) -> None:
-        if self.M_plus_Ainf.shape != (6, 6):
-            raise ValueError(f"M_plus_Ainf must have shape (6, 6); got {self.M_plus_Ainf.shape}")
-        if self.C.shape != (6, 6):
-            raise ValueError(f"C must have shape (6, 6); got {self.C.shape}")
+        _validate_global_matrix(self.M_plus_Ainf, "M_plus_Ainf")
+        _validate_global_matrix(self.C, "C")
+        if self.M_plus_Ainf.shape != self.C.shape:
+            raise ValueError(
+                f"M_plus_Ainf shape {self.M_plus_Ainf.shape} must match " f"C shape {self.C.shape}"
+            )
         _require_symmetric(self.M_plus_Ainf, "M_plus_Ainf")
         _require_symmetric(self.C, "C")
+
+    @property
+    def n_dof(self) -> int:
+        """Total number of degrees of freedom (``6 * N`` for ``N`` bodies)."""
+        return int(self.M_plus_Ainf.shape[0])
+
+    @property
+    def n_bodies(self) -> int:
+        """Number of bodies ``N = n_dof / 6``."""
+        return self.n_dof // 6
+
+
+def _validate_global_matrix(m: NDArray[np.floating], label: str) -> None:
+    if m.ndim != 2 or m.shape[0] != m.shape[1]:
+        raise ValueError(f"{label} must be square 2-D; got shape {m.shape}")
+    n = int(m.shape[0])
+    if n < 6 or n % 6 != 0:
+        raise ValueError(f"{label} must have size 6N for some N >= 1; got {n} x {n}")
 
 
 def assemble_cummins_lhs(
@@ -111,19 +143,20 @@ def natural_periods_uncoupled(lhs: CumminsLHS) -> NDArray[np.float64]:
     Parameters
     ----------
     lhs
-        Assembled Cummins LHS.
+        Assembled Cummins LHS, single-body (6 DOF) or global (6N DOF).
 
     Returns
     -------
-    ndarray of shape (6,), float64
-        Natural periods in seconds, per DOF, in the ``(surge, sway, heave,
-        roll, pitch, yaw)`` order. NaN where ``C_ii <= 0`` or where
-        ``(M+A_inf)_ii <= 0`` (the latter should never happen for physical
-        inputs, but we guard against it to avoid silent bad output).
+    ndarray of shape ``(n_dof,)``, float64
+        Natural periods in seconds, per DOF. In the multi-body case
+        body ``k`` occupies slots ``[6k, 6k+6)``. NaN where ``C_ii <= 0``
+        or where ``(M+A_inf)_ii <= 0`` (the latter should never happen
+        for physical inputs, but we guard against it to avoid silent
+        bad output).
     """
     m_diag = np.diag(lhs.M_plus_Ainf).astype(np.float64)
     c_diag = np.diag(lhs.C).astype(np.float64)
-    periods = np.full(6, np.nan, dtype=np.float64)
+    periods = np.full(lhs.n_dof, np.nan, dtype=np.float64)
     valid = (c_diag > 0.0) & (m_diag > 0.0)
     periods[valid] = 2.0 * np.pi * np.sqrt(m_diag[valid] / c_diag[valid])
     return periods
