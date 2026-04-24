@@ -52,8 +52,9 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
 # ARCHITECTURE.md §2–§4 and would be harder to read if coerced to snake_case.
 "floatsim/bodies/**" = ["N803", "N806", "RUF002"]
 "floatsim/hydro/**" = ["N803", "N806", "RUF002"]
+"floatsim/mooring/**" = ["N802", "N803", "N806", "RUF002"]
 "floatsim/solver/**" = ["N803", "N806", "RUF002"]
-"tests/**" = ["N802", "N803", "N806", "E741"]
+"tests/**" = ["N802", "N803", "N806", "E741", "SIM300"]
 
 # ----- Type checking -----
 
@@ -68,7 +69,7 @@ no_implicit_optional = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["h5py", "yaml"]
+module = ["h5py", "yaml", "scipy", "scipy.optimize"]
 ignore_missing_imports = true
 
 # ----- Tests -----
