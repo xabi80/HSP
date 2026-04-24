@@ -176,7 +176,31 @@ class Catenary(_Base):
     line: CatenaryLine
 
 
-Connection = Annotated[LinearSpring | Catenary, Field(discriminator="type")]
+class RigidLink(_Base):
+    """Heave-only penalty rigid link between two bodies.
+
+    Per ``docs/milestone-4-plan.md`` Q1, the stiffness is specified as a
+    dimensionless factor ``10^3 ... 10^4`` (default ``10^4``) multiplied
+    at solve-setup time by ``max(diag(C_global))`` to obtain N/m. The
+    ceiling at ``10^5`` guards against a prohibitive explicit-integrator
+    stability floor (``dt < 2 / sqrt(2 k / mu_eff)`` — see
+    ``floatsim.bodies.connector.check_connector_stability``).
+
+    M4 PR3 only implements the heave-only constraint
+    (``floatsim.bodies.connector.heave_rigid_link``); a general
+    N-DOF rigid link is deferred to Phase 2.
+    """
+
+    type: Literal["rigid_link"]
+    body_a: Annotated[str, Field(min_length=1)]
+    body_b: Annotated[str, Field(min_length=1)]
+    penalty_stiffness_factor: Annotated[float, Field(ge=1.0e3, le=1.0e5, allow_inf_nan=False)] = (
+        1.0e4
+    )
+    penalty_damping_factor: NonNegativeFloat = 0.0
+
+
+Connection = Annotated[LinearSpring | Catenary | RigidLink, Field(discriminator="type")]
 
 
 # --------------------------------------------------------------------------

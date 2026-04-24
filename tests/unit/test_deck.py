@@ -31,7 +31,10 @@ def test_sample_deck_parses() -> None:
     assert len(deck.bodies) == 2
     assert deck.bodies[0].name == "semisub"
     assert deck.bodies[1].name == "barge"
-    assert len(deck.connections) == 2
+    # Sample covers all three connection types: linear_spring, catenary, rigid_link.
+    assert len(deck.connections) == 3
+    connection_types = {c.type for c in deck.connections}
+    assert connection_types == {"linear_spring", "catenary", "rigid_link"}
 
 
 def test_sample_deck_yaml_roundtrip_is_stable() -> None:
@@ -165,6 +168,103 @@ def test_unknown_bem_format_rejected() -> None:
 def test_unknown_connection_type_rejected() -> None:
     raw = _minimal_deck_dict()
     raw["connections"].append({"type": "magnet", "body_a": "semisub", "body_b": "barge"})
+    with pytest.raises(ValidationError):
+        Deck.model_validate(raw)
+
+
+# ---------- M4 PR5 — connection-specific validation ----------
+
+
+def _catenary_connection(raw: dict) -> dict:
+    for c in raw["connections"]:
+        if c["type"] == "catenary":
+            return c
+    raise AssertionError("sample deck lost its catenary connection")
+
+
+def _linear_spring_connection(raw: dict) -> dict:
+    for c in raw["connections"]:
+        if c["type"] == "linear_spring":
+            return c
+    raise AssertionError("sample deck lost its linear_spring connection")
+
+
+def _rigid_link_connection(raw: dict) -> dict:
+    for c in raw["connections"]:
+        if c["type"] == "rigid_link":
+            return c
+    raise AssertionError("sample deck lost its rigid_link connection")
+
+
+def test_catenary_missing_EA_rejected() -> None:
+    """Per Q4 negative test: a catenary without ``line.EA`` must fail validation."""
+    raw = _minimal_deck_dict()
+    del _catenary_connection(raw)["line"]["EA"]
+    with pytest.raises(ValidationError, match="EA"):
+        Deck.model_validate(raw)
+
+
+def test_catenary_missing_line_block_rejected() -> None:
+    raw = _minimal_deck_dict()
+    del _catenary_connection(raw)["line"]
+    with pytest.raises(ValidationError):
+        Deck.model_validate(raw)
+
+
+def test_linear_spring_wrong_type_stiffness_rejected() -> None:
+    """Per Q4 negative test: a string in ``stiffness`` (instead of float) must fail."""
+    raw = _minimal_deck_dict()
+    _linear_spring_connection(raw)["stiffness"] = "one million"
+    with pytest.raises(ValidationError):
+        Deck.model_validate(raw)
+
+
+def test_linear_spring_non_positive_stiffness_rejected() -> None:
+    raw = _minimal_deck_dict()
+    _linear_spring_connection(raw)["stiffness"] = 0.0
+    with pytest.raises(ValidationError):
+        Deck.model_validate(raw)
+
+
+def test_catenary_line_length_must_be_positive() -> None:
+    raw = _minimal_deck_dict()
+    _catenary_connection(raw)["line"]["length"] = -1.0
+    with pytest.raises(ValidationError):
+        Deck.model_validate(raw)
+
+
+def test_rigid_link_stiffness_factor_below_floor_rejected() -> None:
+    """Q1 penalty-factor floor is 10^3."""
+    raw = _minimal_deck_dict()
+    _rigid_link_connection(raw)["penalty_stiffness_factor"] = 500.0
+    with pytest.raises(ValidationError):
+        Deck.model_validate(raw)
+
+
+def test_rigid_link_stiffness_factor_above_ceiling_rejected() -> None:
+    """Q1 penalty-factor ceiling is 10^5 (above which dt stability is prohibitive)."""
+    raw = _minimal_deck_dict()
+    _rigid_link_connection(raw)["penalty_stiffness_factor"] = 1.0e6
+    with pytest.raises(ValidationError):
+        Deck.model_validate(raw)
+
+
+def test_rigid_link_defaults_applied_when_omitted() -> None:
+    raw = _minimal_deck_dict()
+    link = _rigid_link_connection(raw)
+    link.pop("penalty_stiffness_factor", None)
+    link.pop("penalty_damping_factor", None)
+    deck = Deck.model_validate(raw)
+    # Find the rigid_link in the validated deck.
+    rigid = next(c for c in deck.connections if c.type == "rigid_link")
+    assert rigid.penalty_stiffness_factor == pytest.approx(1.0e4)
+    assert rigid.penalty_damping_factor == pytest.approx(0.0)
+
+
+def test_unknown_field_on_connection_rejected() -> None:
+    """``extra='forbid'`` applies through the discriminated union too."""
+    raw = _minimal_deck_dict()
+    _catenary_connection(raw)["mystery_flag"] = True
     with pytest.raises(ValidationError):
         Deck.model_validate(raw)
 

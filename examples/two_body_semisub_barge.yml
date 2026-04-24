@@ -76,6 +76,12 @@ connections:
       weight_per_length: 800.0    # N/m in water
       EA: 5.0e8
 
+  - type: rigid_link                # heave-only penalty link (PR3)
+    body_a: semisub
+    body_b: barge
+    penalty_stiffness_factor: 1.0e4 # × max(diag(C_global)) at solve setup
+    penalty_damping_factor: 0.0
+
 output:
   file: results.h5
   channels: [position, velocity, mooring_tensions, wave_elevation]
