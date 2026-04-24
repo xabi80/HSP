@@ -52,6 +52,19 @@ radiation-damping term — negligible for the free-decay timescales that
 M2 targets, and consistent with the explicit-convolution treatment used
 in OrcaFlex, Fossen (2011), and most marine time-domain codes.
 
+State-dependent force (connectors, mooring)
+-------------------------------------------
+Forces that depend on generalized position or velocity — 6-DOF linear
+spring-damper connectors (M4), analytical catenary tension (M4), drag
+elements (M5) — are passed in via ``state_force``. That callable is
+evaluated at the **previous step's state** ``(t_n, xi_n, xi_dot_n)``,
+same explicit treatment as ``mu_n``. The O(h) lag is acceptable for the
+free-decay/periodic-response regimes FloatSim targets and matches the
+treatment used in OrcaFlex and Fossen's formulation. For very stiff
+penalty springs this imposes the usual explicit-stability floor
+``dt < 2 / omega_max`` — connectors expose a diagnostic helper to check
+this before the run (see :func:`floatsim.bodies.connector.check_connector_stability`).
+
 The "startup" boundary condition from ARCHITECTURE.md §9.3 (``xi_dot(tau)
 = 0`` for ``tau < 0``) gives ``mu(0) = 0``, so the first step uses ``mu_n
 = 0`` for its RHS. The buffer is then loaded with ``xi_dot_0`` at lag 0
@@ -137,6 +150,9 @@ def integrate_cummins(
     duration: float,
     dt: float | None = None,
     external_force: Callable[[float], NDArray[np.float64]] | None = None,
+    state_force: (
+        Callable[[float, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]] | None
+    ) = None,
     rho_inf: float = 0.9,
 ) -> IntegrationResult:
     """Integrate the linear Cummins ODE with generalized-alpha.
@@ -162,6 +178,18 @@ def integrate_cummins(
     external_force
         Optional callable ``t -> F(t)`` returning a length-``n_dof``
         force/moment vector in N / N*m. Defaults to zero (free response).
+        Used for time-only forcing such as wave excitation.
+    state_force
+        Optional callable ``(t, xi, xi_dot) -> F`` returning a length-
+        ``n_dof`` force vector that depends on the instantaneous generalized
+        state. Evaluated at the **previous step's state** (explicit, lagged
+        one step — consistent with the treatment of ``mu_n``). Use for
+        connectors, mooring lines, drag, or any other state-dependent load.
+        Defaults to zero. If supplied, summed with ``external_force`` on the
+        RHS. The O(h) lag imposes an explicit-stability floor
+        ``dt < 2 / omega_max`` for very stiff elements — callers should use
+        :func:`floatsim.bodies.connector.check_connector_stability` (or an
+        analogous helper) to validate ``dt`` before calling.
     rho_inf
         Spectral radius at infinite step size in ``[0, 1]``; tunes the
         integrator's high-frequency numerical damping. ``1`` is the
@@ -217,6 +245,18 @@ def integrate_cummins(
 
     force = external_force if external_force is not None else _zero_force(n_dof)
 
+    def _eval_state_force(
+        t_eval: float, xi_eval: NDArray[np.float64], xi_dot_eval: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
+        if state_force is None:
+            return np.zeros(n_dof, dtype=np.float64)
+        F_sd = np.asarray(state_force(t_eval, xi_eval, xi_dot_eval), dtype=np.float64)
+        if F_sd.shape != (n_dof,):
+            raise ValueError(
+                f"state_force(t, xi, xi_dot) must return shape ({n_dof},); got {F_sd.shape}"
+            )
+        return F_sd
+
     alpha_m, alpha_f, gamma, beta = _generalized_alpha_coefficients(rho_inf)
     h = float(dt)
     M_eff = lhs.M_plus_Ainf
@@ -233,9 +273,11 @@ def integrate_cummins(
 
     # Initial acceleration from the instantaneous EOM at t = 0 with mu(0) = 0
     # (continuous-form startup, ARCHITECTURE.md §9.3).
-    F0 = np.asarray(force(0.0), dtype=np.float64)
-    if F0.shape != (n_dof,):
-        raise ValueError(f"external_force(t) must return shape ({n_dof},); got {F0.shape}")
+    F0_time = np.asarray(force(0.0), dtype=np.float64)
+    if F0_time.shape != (n_dof,):
+        raise ValueError(f"external_force(t) must return shape ({n_dof},); got {F0_time.shape}")
+    F0_sd = _eval_state_force(0.0, xi_0, xi_dot_0)
+    F0 = F0_time + F0_sd
     xi_ddot_0 = np.linalg.solve(M_eff, F0 - C @ xi_0)
 
     xi_hist[0] = xi_0
@@ -257,7 +299,16 @@ def integrate_cummins(
 
     for n in range(n_steps):
         t_np1 = t[n + 1]
-        F_np1 = np.asarray(force(t_np1), dtype=np.float64)
+        F_np1_time = np.asarray(force(t_np1), dtype=np.float64)
+        if F_np1_time.shape != (n_dof,):
+            raise ValueError(
+                f"external_force(t) must return shape ({n_dof},); got {F_np1_time.shape}"
+            )
+        # State-dependent force evaluated at step-n state — explicit, lagged
+        # one step, same treatment as mu_n. This keeps the step-n+1 RHS
+        # linear in xi_{n+1}.
+        F_np1_sd = _eval_state_force(t[n], xi_n, xi_dot_n)
+        F_np1 = F_np1_time + F_np1_sd
 
         # Predictor terms that depend only on step-n state.
         xi_pred = xi_n + h * xi_dot_n + (h**2) * (0.5 - beta) * xi_ddot_n
