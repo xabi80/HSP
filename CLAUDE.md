@@ -122,7 +122,7 @@ For every milestone in `ARCHITECTURE.md` §8, follow this sequence:
 
 ## 9. What Claude Code Should NOT Do
 
-- **Do not add dependencies** without asking. Every dep is weight. Current baseline: `numpy`, `scipy`, `pydantic`, `h5py`, `pyyaml`, `pytest`, `hypothesis`. Add only with a one-line justification and Xabier's approval.
+- **Do not add dependencies** without asking. Every dep is weight. Current baseline: `numpy`, `scipy`, `pydantic`, `h5py`, `pyyaml`, `xarray`, `netCDF4`, `pytest`, `hypothesis`. Add only with a one-line justification and Xabier's approval. (`xarray` + `netCDF4` added in M5 to read Capytaine output natively — see `docs/milestone-5-plan.md` Q3.)
 - **Do not write UI or visualization** in Phase 1 beyond basic `matplotlib` plots in validation scripts. No GUI, no web dashboards, no interactive tooling.
 - **Do not parallelize** in Phase 1. NumPy vectorization is enough. Save `numba`/`multiprocessing`/`joblib` for Phase 4.
 - **Do not refactor across milestones.** If Module A needs a cleanup pass, do it in a dedicated `refactor-<module>` PR, not mixed with new physics.
