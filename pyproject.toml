@@ -16,6 +16,10 @@ dependencies = [
     "pydantic>=2.6",
     "h5py>=3.10",
     "pyyaml>=6.0",
+    # M5: Capytaine writes results as xarray-backed NetCDF; the Capytaine reader
+    # ingests them via xarray.open_dataset for clean labeled-dim indexing.
+    "xarray>=2024.1",
+    "netCDF4>=1.6",
 ]
 
 [project.optional-dependencies]
