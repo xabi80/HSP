@@ -373,13 +373,6 @@ def test_dispatch_unknown_format_raises() -> None:
         load_hydro_database(_STEM, format="floatation")  # type: ignore[arg-type]
 
 
-def test_dispatch_capytaine_raises_not_implemented(tmp_path: Path) -> None:
-    fake = tmp_path / "fake.nc"
-    fake.write_bytes(b"")  # contents irrelevant — the dispatcher rejects first
-    with pytest.raises(NotImplementedError, match="PR2"):
-        load_hydro_database(fake, format="capytaine")
-
-
 def test_dispatch_orcaflex_format_routes_to_yaml_reader() -> None:
     # Re-uses the existing OrcaFlex M1.5 fixture as a smoke test that the
     # dispatch wires the right reader.

@@ -59,6 +59,9 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
 "floatsim/mooring/**" = ["N802", "N803", "N806", "RUF002"]
 "floatsim/solver/**" = ["N803", "N806", "RUF002"]
 "tests/**" = ["N802", "N803", "N806", "E741", "SIM300"]
+# Helper scripts mirror the same scientific naming as the package proper
+# (matrices A/B/C/M, set-theoretic ∪ in docstrings).
+"scripts/**" = ["N802", "N803", "N806", "RUF002"]
 
 # ----- Type checking -----
 
