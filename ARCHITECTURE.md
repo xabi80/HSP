@@ -252,15 +252,17 @@ output:
 
 ## 7. Validation Plan (Phase 1)
 
-| Case | What it tests | Reference |
-|------|---------------|-----------|
-| Free decay (heave, single body) | Restoring, radiation damping, Cummins convolution | Exponential decay + natural period from √(M+A∞)/C |
-| Free decay (pitch) | Cross-coupling in C and A | Same, with coupled DOFs |
-| Regular wave, fixed body | Excitation force magnitude | Direct RAO × wave amplitude |
-| Regular wave, free body (single) | Full Cummins loop | RAO-based steady-state amplitude |
-| Two bodies, rigid connector | Multi-body assembly, constraint handling | Combined-mass equivalent body |
-| Two bodies, mooring line | Catenary restoring | Static catenary analytic |
-| OrcaFlex cross-check | Full system | Output from licensed OrcaFlex for same deck |
+| Case | What it tests | Reference | Status |
+|------|---------------|-----------|--------|
+| Free decay (heave, single body) | Restoring, radiation damping, Cummins convolution | Exponential decay + natural period from √(M+A∞)/C | ✅ M2 |
+| Free decay (pitch) | Cross-coupling in C and A | Same, with coupled DOFs | ✅ M2 |
+| Regular wave, fixed body | Excitation force magnitude | Direct RAO × wave amplitude | ✅ M3 |
+| Regular wave, free body (single) | Full Cummins loop | RAO-based steady-state amplitude | ✅ M3 |
+| Two bodies, rigid connector | Multi-body assembly, constraint handling | Combined-mass equivalent body | ✅ M4 |
+| Two bodies, mooring line | Catenary restoring | Static catenary analytic | ✅ M4 |
+| Drag free decay (Morison) | Quadratic-damping envelope | Hyperbolic recursion `ξ_n = ξ_0 / (1 + n·ξ_0·δ)` (Faltinsen Ch. 4) | ✅ M5 PR5 |
+| Three-reader BEM cross-check | OrcaWave / WAMIT / Capytaine on a fully-submerged sphere | Lamb 1932 §92 `A_ii = (2/3)·π·ρ·R³` to `rtol=1e-2` | 🟡 M5 PR3 — **deferred**: skeleton landed (`tests/validation/test_bem_reader_cross_check.py`) with per-fixture skip; activates when `tests/fixtures/bem/{orcaflex,wamit,capytaine}/sphere_submerged.*` ship. Tracking branch: `milestone-5-pr3-sphere-fixtures`. |
+| OrcaFlex cross-check | Full system | Output from licensed OrcaFlex for same deck | ⏭ M6 |
 
 ---
 
