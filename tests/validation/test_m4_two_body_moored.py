@@ -368,6 +368,6 @@ def test_rigid_link_passes_explicit_stability_gate() -> None:
     messages = check_connector_stability(
         lhs=lhs_global, connectors=connectors, dt=_DT, safety_factor=0.8
     )
-    assert messages == [], (
-        f"explicit-stability gate flagged the rigid link at dt={_DT:.3e}: {messages}"
-    )
+    assert (
+        messages == []
+    ), f"explicit-stability gate flagged the rigid link at dt={_DT:.3e}: {messages}"
