@@ -16,6 +16,10 @@ dependencies = [
     "pydantic>=2.6",
     "h5py>=3.10",
     "pyyaml>=6.0",
+    # M5: Capytaine writes results as xarray-backed NetCDF; the Capytaine reader
+    # ingests them via xarray.open_dataset for clean labeled-dim indexing.
+    "xarray>=2024.1",
+    "netCDF4>=1.6",
 ]
 
 [project.optional-dependencies]
@@ -52,9 +56,14 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
 # ARCHITECTURE.md §2–§4 and would be harder to read if coerced to snake_case.
 "floatsim/bodies/**" = ["N803", "N806", "RUF002"]
 "floatsim/hydro/**" = ["N803", "N806", "RUF002"]
+"floatsim/io/**" = ["RUF002"]
 "floatsim/mooring/**" = ["N802", "N803", "N806", "RUF002"]
 "floatsim/solver/**" = ["N803", "N806", "RUF002"]
+"floatsim/waves/**" = ["N803", "N806", "RUF002"]
 "tests/**" = ["N802", "N803", "N806", "E741", "SIM300"]
+# Helper scripts mirror the same scientific naming as the package proper
+# (matrices A/B/C/M, set-theoretic ∪ in docstrings).
+"scripts/**" = ["N802", "N803", "N806", "RUF002"]
 
 # ----- Type checking -----
 

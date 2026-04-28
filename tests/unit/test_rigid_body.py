@@ -30,6 +30,7 @@ from floatsim.bodies.rigid_body import (
     integrate_quaternion,
     normalize_quaternion,
     quaternion_from_axis_angle,
+    quaternion_from_euler_zyx,
     quaternion_identity,
     quaternion_multiply,
     rigid_body_accelerations,
@@ -87,6 +88,53 @@ def test_rotation_matrix_is_orthogonal_for_arbitrary_q() -> None:
         R = rotation_matrix(q)
         np.testing.assert_allclose(R @ R.T, np.eye(3), atol=1e-14)
         assert abs(float(np.linalg.det(R)) - 1.0) < 1e-14
+
+
+# ---------------------------------------------------------------------------
+# quaternion_from_euler_zyx (M5 PR4: ZYX-intrinsic = yaw-pitch-roll)
+# ---------------------------------------------------------------------------
+
+
+def test_euler_zyx_zero_angles_is_identity() -> None:
+    q = quaternion_from_euler_zyx(0.0, 0.0, 0.0)
+    np.testing.assert_allclose(q, quaternion_identity(), atol=1e-15)
+
+
+def test_euler_zyx_yaw_only_matches_axis_angle_about_z() -> None:
+    angle = 0.6
+    q = quaternion_from_euler_zyx(0.0, 0.0, angle)
+    q_ref = quaternion_from_axis_angle(np.array([0.0, 0.0, 1.0]), angle)
+    np.testing.assert_allclose(q, q_ref, atol=1e-14)
+
+
+def test_euler_zyx_pitch_only_matches_axis_angle_about_y() -> None:
+    angle = -0.4
+    q = quaternion_from_euler_zyx(0.0, angle, 0.0)
+    q_ref = quaternion_from_axis_angle(np.array([0.0, 1.0, 0.0]), angle)
+    np.testing.assert_allclose(q, q_ref, atol=1e-14)
+
+
+def test_euler_zyx_roll_only_matches_axis_angle_about_x() -> None:
+    angle = 0.25
+    q = quaternion_from_euler_zyx(angle, 0.0, 0.0)
+    q_ref = quaternion_from_axis_angle(np.array([1.0, 0.0, 0.0]), angle)
+    np.testing.assert_allclose(q, q_ref, atol=1e-14)
+
+
+def test_euler_zyx_composition_matches_Rz_Ry_Rx() -> None:
+    """ZYX-intrinsic: R = Rz(yaw) @ Ry(pitch) @ Rx(roll)."""
+    roll, pitch, yaw = 0.3, -0.2, 0.5
+    q = quaternion_from_euler_zyx(roll, pitch, yaw)
+    R_q = rotation_matrix(q)
+    R_x = rotation_matrix(quaternion_from_axis_angle(np.array([1.0, 0.0, 0.0]), roll))
+    R_y = rotation_matrix(quaternion_from_axis_angle(np.array([0.0, 1.0, 0.0]), pitch))
+    R_z = rotation_matrix(quaternion_from_axis_angle(np.array([0.0, 0.0, 1.0]), yaw))
+    np.testing.assert_allclose(R_q, R_z @ R_y @ R_x, atol=1e-14)
+
+
+def test_euler_zyx_returns_unit_norm() -> None:
+    q = quaternion_from_euler_zyx(0.7, -0.4, 1.1)
+    assert abs(float(np.linalg.norm(q)) - 1.0) < 1e-14
 
 
 # ---------------------------------------------------------------------------

@@ -104,7 +104,18 @@ class HydroDatabaseRef(_Base):
 
 
 class MorisonMember(_Base):
-    """Slender-cylinder drag element between two body-frame nodes."""
+    """Slender-cylinder drag (and optional inertia) element between two body-frame nodes.
+
+    By default (``include_inertia=False``) the element contributes only
+    the quadratic-drag term ``½·ρ·D·Cd·|u_n|·u_n`` per unit length;
+    ``Ca`` is then unused. Setting ``include_inertia=True`` adds the
+    Froude-Krylov + added-mass term ``ρ·A_x·(1+Ca)·a_fluid_n − ρ·A_x·Ca·a_body_n``.
+
+    For bodies whose ``hydro_database`` is non-empty (a BEM run),
+    ``include_inertia=True`` double-counts inertia and the deck loader
+    emits a startup warning naming the offending member. See M5 PR4
+    plan Q1 for the rationale.
+    """
 
     type: Literal["morison_member"]
     node_a: Vec3
@@ -112,6 +123,7 @@ class MorisonMember(_Base):
     diameter: PositiveFloat
     Cd: NonNegativeFloat
     Ca: NonNegativeFloat = 0.0
+    include_inertia: bool = False
 
 
 DragElement = Annotated[MorisonMember, Field(discriminator="type")]
