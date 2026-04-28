@@ -31,21 +31,31 @@ with a deterministic resolution. Frequency grid and water density are
 fixed below so re-running produces a byte-similar (but not necessarily
 bit-identical -- BEM solvers carry tiny FPU-noise differences) file.
 
-Geometry / case
----------------
-Fully submerged sphere of radius ``R = 1 m`` centred at depth
-``z = -5 R`` below the still water level. Apache 2.0 free-surface
-conditions (no current, no forward speed). Frequency grid spans
-``omega in [0.2, 2.0] rad/s`` plus ``omega = +inf`` for ``A_inf``.
-Two wave headings (0 deg, 90 deg).
+Geometry / case (locked spec for the M5 three-reader cross-check)
+-----------------------------------------------------------------
+Fully submerged sphere of radius ``R = 5 m`` centred at depth
+``z = -25 m`` (5R below MWL — deep submergence, free-surface effects
+negligible). Linearised free-surface conditions (no current, no
+forward speed). Frequency grid: 30 log-spaced finite samples in
+``omega in [0.1, 3.0] rad/s`` plus ``omega = 0`` and ``omega = +inf``
+endpoints (the latter feeds ``A_inf``). Two wave headings
+``(0 deg, 90 deg)``.
+
+This spec is locked across all three readers (OrcaWave, WAMIT,
+Capytaine) so the validation gate
+``tests/validation/test_bem_reader_cross_check.py`` can compare them
+on the same physical case. Any changes here must be mirrored in the
+matching OrcaWave / WAMIT cases, or the cross-check will trip.
 
 Analytical reference (Lamb 1932, §92):
-``A_ii = (2/3) * pi * rho * R**3``
+``A_ii = (2/3) * pi * rho * R**3 ~= 268083 kg`` for rho = 1025 kg/m^3
 ``B_ii(omega) -> 0`` (deep submergence)
 ``C = 0`` (neutral buoyancy, no waterplane)
 
-The script verifies each of these to a coarse tolerance before saving;
-a panel-density warning is emitted if scatter is large.
+The validation gate uses ``rtol = 1e-2`` for ``A_ii`` agreement, with
+matching atol scales for ``B_ii`` and ``C``. The script verifies each
+of these to a coarse tolerance before saving; a panel-density warning
+is emitted if scatter is large.
 
 Usage::
 
@@ -71,13 +81,17 @@ except ImportError as exc:  # pragma: no cover - script-time import guard
 
 
 # ---------------------------------------------------------------------------
-# Case parameters -- tweak these and bump the docstring "When to re-run".
+# Case parameters (locked spec, see module docstring) -- bump the docstring
+# "When to re-run" if these change.
 # ---------------------------------------------------------------------------
 _RHO: float = 1025.0
 _G: float = 9.80665
-_RADIUS_M: float = 1.0
-_DEPTH_M: float = 5.0  # depth of sphere center below MWL (=> 5R below MWL)
-_OMEGA_FINITE: tuple[float, ...] = (0.3, 0.7, 1.4)
+_RADIUS_M: float = 5.0
+_DEPTH_M: float = 25.0  # depth of sphere center below MWL (=> 5R below MWL)
+# 30 log-spaced finite frequencies in [0.1, 3.0] rad/s, matching the locked
+# cross-check grid. omega = 0 is a separate problem; omega = +inf carries
+# A_inf. Capytaine accepts both as endpoint values.
+_OMEGA_FINITE: tuple[float, ...] = tuple(np.logspace(np.log10(0.1), np.log10(3.0), 30).tolist())
 _HEADINGS_DEG: tuple[float, ...] = (0.0, 90.0)
 _PANEL_RESOLUTION: tuple[int, int] = (16, 16)  # (n_theta, n_phi); coarse but cheap
 
@@ -99,7 +113,10 @@ def _build_sphere_body() -> cpt.FloatingBody:
 
 def _build_problems(body: cpt.FloatingBody) -> list:
     problems: list = []
-    omegas = [*_OMEGA_FINITE, float("inf")]
+    # Locked grid: omega = 0, 30 finite log-spaced values, omega = +inf.
+    # Diffraction problems are run only on the finite values (no
+    # well-defined wave at the endpoints).
+    omegas = [0.0, *_OMEGA_FINITE, float("inf")]
     for omega in omegas:
         for dof in body.dofs:
             problems.append(
@@ -111,7 +128,7 @@ def _build_problems(body: cpt.FloatingBody) -> list:
                     g=_G,
                 )
             )
-        if not np.isinf(omega):
+        if not np.isinf(omega) and omega > 0.0:
             for beta_deg in _HEADINGS_DEG:
                 problems.append(
                     cpt.DiffractionProblem(
@@ -131,11 +148,11 @@ def _verify_against_analytical(ds) -> None:
     A_finite = ds.added_mass.sel(omega=_OMEGA_FINITE[0]).values
     a_diag = np.diag(np.asarray(A_finite, dtype=float))
     rel = np.abs(a_diag[:3] - A_analytical) / A_analytical
-    if np.any(rel > 5.0e-2):
+    if np.any(rel > 1.0e-2):
         print(
             "WARNING: sphere added mass deviates from (2/3) pi rho R^3 by "
-            f"more than 5% (panel density {_PANEL_RESOLUTION}). "
-            f"diag(A)[:3]={a_diag[:3]}, analytical={A_analytical}. "
+            f"more than the cross-check rtol=1e-2 (panel density {_PANEL_RESOLUTION}). "
+            f"diag(A)[:3]={a_diag[:3]}, analytical={A_analytical:.0f}. "
             "Increase panel resolution and re-run."
         )
 
