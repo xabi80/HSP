@@ -158,6 +158,51 @@ def rotation_matrix(q: NDArray[np.floating]) -> NDArray[np.float64]:
     )
 
 
+def quaternion_from_euler_zyx(
+    roll_rad: float, pitch_rad: float, yaw_rad: float
+) -> NDArray[np.float64]:
+    """Build a unit quaternion from ZYX-intrinsic (yaw-pitch-roll) Euler angles.
+
+    The convention is the deck-I/O convention from ARCHITECTURE.md §3:
+    apply yaw about ``Z`` first, then pitch about the new ``Y``, then roll
+    about the new ``X``. Equivalently, the resulting body-to-inertial
+    rotation is ``R = Rz(yaw) @ Ry(pitch) @ Rx(roll)``.
+
+    Parameters
+    ----------
+    roll_rad, pitch_rad, yaw_rad
+        Euler angles in radians.
+
+    Returns
+    -------
+    NDArray[np.float64]
+        Scalar-first unit quaternion ``[q0, q1, q2, q3]``.
+
+    Notes
+    -----
+    Used by :mod:`floatsim.hydro.morison` to convert the integrator's
+    generalized position ``xi[3:6] = (roll, pitch, yaw)`` (small-angle
+    linearized about identity) into a quaternion for the body-to-inertial
+    transform of Morison-element node coordinates. For ``|roll, pitch,
+    yaw| << 1`` the result reduces to ``[1, roll/2, pitch/2, yaw/2]``,
+    matching the small-angle expansion that
+    :func:`floatsim.bodies.connector.make_connector_state_force` already
+    relies on implicitly.
+    """
+    cr, sr = float(np.cos(0.5 * roll_rad)), float(np.sin(0.5 * roll_rad))
+    cp, sp = float(np.cos(0.5 * pitch_rad)), float(np.sin(0.5 * pitch_rad))
+    cy, sy = float(np.cos(0.5 * yaw_rad)), float(np.sin(0.5 * yaw_rad))
+    return np.array(
+        [
+            cr * cp * cy + sr * sp * sy,
+            sr * cp * cy - cr * sp * sy,
+            cr * sp * cy + sr * cp * sy,
+            cr * cp * sy - sr * sp * cy,
+        ],
+        dtype=np.float64,
+    )
+
+
 def integrate_quaternion(
     q: NDArray[np.floating], omega_body: NDArray[np.floating], dt: float
 ) -> NDArray[np.float64]:
