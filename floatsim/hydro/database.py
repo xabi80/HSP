@@ -26,12 +26,40 @@ coupling when the BEM case was multi-body) is deferred to Milestone 4.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Final
+from typing import Any, Final, Literal, get_args
 
 import numpy as np
 from numpy.typing import NDArray
 
 DOF_ORDER: Final[tuple[str, ...]] = ("surge", "sway", "heave", "roll", "pitch", "yaw")
+
+CSourceLiteral = Literal["buoyancy_only", "full"]
+"""Provenance flag for the hydrostatic restoring matrix ``C``.
+
+- ``"buoyancy_only"`` -- ``C`` carries only the **buoyancy / waterplane**
+  contribution (rho*g*I_wp + rho*g*V*z_B and the corresponding
+  cross-couplings). The gravity restoring term ``-m*g*z_G`` is absent
+  and must be added by the assembly step
+  (:func:`floatsim.hydro.hydrostatics.gravity_restoring_contribution`,
+  invoked via ``assemble_cummins_lhs``'s
+  ``mass`` / ``cog_offset_from_bem_origin`` / ``gravity`` kwargs).
+  The two raw-BEM readers (WAMIT, Capytaine) produce this form.
+- ``"full"`` -- ``C`` already contains both buoyancy and gravity. Used
+  by the OrcaFlex VesselType reader (OrcaFlex bundles mass into the
+  VesselType and exports a full linearised stiffness) and by
+  hand-authored synthetic test fixtures where the test author has
+  pre-baked the desired total restoring. Passing
+  ``mass`` / ``cog_offset_from_bem_origin`` / ``gravity`` to
+  ``assemble_cummins_lhs`` alongside this source is a double-count
+  (warned at assembly time).
+
+The flag is **mandatory**: every reader must declare what its ``C``
+contains. There is no default -- silence is not an option for this
+field. See ``docs/post-mortems/hydrostatic-gravity-bug.md`` for the
+class-of-bug that motivated making this explicit.
+"""
+
+_C_SOURCE_VALUES: Final[tuple[str, ...]] = get_args(CSourceLiteral)
 
 _SYMMETRY_RTOL: Final[float] = 1.0e-6
 _SYMMETRY_ATOL: Final[float] = 1.0e-10
@@ -53,6 +81,15 @@ class HydroDatabase:
 
     All arrays are stored as-passed — callers should treat them as read-only.
     Copy on ingestion if you need to mutate.
+
+    The ``C_source`` field is **mandatory** (no default). It declares
+    whether ``C`` is buoyancy-only (the BEM-reader convention) or full
+    (buoyancy + gravity, used by hand-authored test fixtures); see the
+    :data:`CSourceLiteral` docstring for the rule. Callers must consult
+    this flag before consuming ``C`` directly — most callers should
+    instead route through :func:`floatsim.hydro.radiation.assemble_cummins_lhs`,
+    which adds the gravity term when ``C_source == "buoyancy_only"`` and
+    the body's mass/CoG/gravity are supplied.
     """
 
     omega: NDArray[np.floating]
@@ -63,6 +100,7 @@ class HydroDatabase:
     C: NDArray[np.floating]
     RAO: NDArray[np.complexfloating]
     reference_point: NDArray[np.floating]
+    C_source: CSourceLiteral
     metadata: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -124,6 +162,13 @@ class HydroDatabase:
         for k in range(n_w):
             _require_symmetric(self.A[..., k], f"A[:, :, {k}]")
             _require_symmetric(self.B[..., k], f"B[:, :, {k}]")
+
+        # --- C_source flag ---
+        if self.C_source not in _C_SOURCE_VALUES:
+            raise ValueError(
+                f"C_source must be one of {_C_SOURCE_VALUES}; got {self.C_source!r}. "
+                f"See HydroDatabase docstring for the convention."
+            )
 
     # --- convenience accessors -------------------------------------------------
 

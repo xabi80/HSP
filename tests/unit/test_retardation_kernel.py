@@ -110,6 +110,7 @@ def test_kernel_is_symmetric_at_each_lag() -> None:
         C=hdb.C,
         RAO=hdb.RAO,
         reference_point=hdb.reference_point,
+        C_source=hdb.C_source,
         metadata=dict(hdb.metadata),
     )
     k = compute_retardation_kernel(hdb_full, t_max=3.0, dt=0.1)

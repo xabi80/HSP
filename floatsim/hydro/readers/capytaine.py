@@ -191,6 +191,10 @@ def read_capytaine(
         C=C,
         RAO=RAO,
         reference_point=ref,
+        # Capytaine's hydrostatic_stiffness is buoyancy/waterplane only;
+        # gravity m*g*z_G is added downstream by assemble_cummins_lhs.
+        # See HydroDatabase docstring and floatsim/hydro/hydrostatics.py.
+        C_source="buoyancy_only",
         metadata=_collect_metadata(ds, p),
     )
 

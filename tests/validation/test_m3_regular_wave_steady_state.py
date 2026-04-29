@@ -119,6 +119,7 @@ def _build_hdb(
         C=C,
         RAO=RAO,
         reference_point=np.zeros(3, dtype=np.float64),
+        C_source="full",
     )
 
 
@@ -316,6 +317,7 @@ def test_m3_heading_90_selects_second_heading_slice() -> None:
         C=np.diag(_C_PER_DOF).astype(np.float64),
         RAO=RAO,
         reference_point=np.zeros(3, dtype=np.float64),
+        C_source="full",
     )
     wave = RegularWave(amplitude=1.0, omega=1.0, heading_deg=90.0)
 

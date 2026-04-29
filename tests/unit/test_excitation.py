@@ -36,6 +36,7 @@ def _build_hdb(
         C=diagonal_6x6([1.0] * 6),
         RAO=rao.astype(np.complex128),
         reference_point=np.zeros(3, dtype=np.float64),
+        C_source="full",
     )
 
 

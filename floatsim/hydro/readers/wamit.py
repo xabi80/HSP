@@ -156,6 +156,10 @@ def read_wamit(
         C=C,
         RAO=F_exc,
         reference_point=ref,
+        # WAMIT .hst stores buoyancy/waterplane only; gravity m*g*z_G must
+        # be added downstream via assemble_cummins_lhs (see HydroDatabase
+        # docstring and floatsim/hydro/hydrostatics.py).
+        C_source="buoyancy_only",
         metadata=metadata,
     )
 

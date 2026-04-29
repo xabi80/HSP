@@ -156,6 +156,17 @@ def read_orcaflex_vessel_yaml(
         C=C,
         RAO=RAO,
         reference_point=reference_point,
+        # OrcaFlex's VesselType bundles the body's mass distribution
+        # into the same record as the BEM output, so its
+        # HydrostaticStiffness block is the FULL linearised restoring
+        # (buoyancy + waterplane + gravity m*g*z_G already combined).
+        # Empirically verified against `platform_small.yml`: the OC4
+        # fixture reports pitch C_55 ~ 9.97e8 N*m/rad, close to the
+        # Robertson 2014 Table 3-3 full value 1.078e9; the
+        # buoyancy-only contribution would be -7e8 (negative) for OC4.
+        # See test_orcaflex_roundtrip_oc4 + the gravity-bug post-mortem.
+        # The raw-BEM readers (WAMIT, Capytaine) declare "buoyancy_only".
+        C_source="full",
         metadata=metadata,
     )
 

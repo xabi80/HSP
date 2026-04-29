@@ -12,7 +12,7 @@ from collections.abc import Sequence
 import numpy as np
 from numpy.typing import NDArray
 
-from floatsim.hydro.database import HydroDatabase
+from floatsim.hydro.database import CSourceLiteral, HydroDatabase
 
 
 def diagonal_6x6(diagonal: Sequence[float]) -> NDArray[np.float64]:
@@ -31,12 +31,20 @@ def make_diagonal_hdb(
     omega: Sequence[float] | None = None,
     heading_deg: Sequence[float] | None = None,
     reference_point: Sequence[float] = (0.0, 0.0, 0.0),
+    C_source: CSourceLiteral = "full",
     metadata: dict[str, str] | None = None,
 ) -> HydroDatabase:
     """Build a HydroDatabase whose 6x6 blocks are diagonal.
 
     Convenient for frequency-domain sanity tests where only the diagonal
     entries affect natural periods. RAO defaults to zeros.
+
+    ``C_source`` defaults to ``"full"`` because synthetic test fixtures
+    typically pre-bake the desired total restoring (the test author has
+    already done any analytical buoyancy + gravity decomposition mentally
+    when picking ``C_diag``). Tests that specifically want to exercise
+    the buoyancy-only path through ``assemble_cummins_lhs`` should pass
+    ``C_source="buoyancy_only"`` explicitly.
     """
     if omega is None:
         omega = [0.1, 0.5, 1.0, 2.0, 3.0]
@@ -67,5 +75,6 @@ def make_diagonal_hdb(
         C=diagonal_6x6(C_diag),
         RAO=np.zeros((6, n_w, n_h), dtype=np.complex128),
         reference_point=np.asarray(reference_point, dtype=np.float64),
+        C_source=C_source,
         metadata=metadata or {"source": "tests.support.synthetic_bem"},
     )

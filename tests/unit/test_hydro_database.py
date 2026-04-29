@@ -47,6 +47,7 @@ def _valid_kwargs(n_w: int = 5, n_h: int = 2) -> dict:
         "C": C,
         "RAO": RAO,
         "reference_point": np.zeros(3),
+        "C_source": "full",
         "metadata": {"source": "test"},
     }
 
