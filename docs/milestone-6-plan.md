@@ -1,21 +1,34 @@
-# Milestone 6 Plan — OrcaFlex Cross-Check
+# Milestone 6 Plan — OpenFAST / HydroDyn Cross-Check
 
-Working document. Status: **draft, awaiting Xabier review.** Delete or archive after M6 merges.
+Working document. Status: **draft v2 (post-OrcaFlex-license-loss pivot), awaiting Xabier review.** Delete or archive after M6 merges.
 
-Scope per ARCHITECTURE.md §8: take a representative deck, run it in both
-FloatSim and OrcaFlex, document discrepancies. This is the closing
-validation of Phase 1 — every other milestone validated against
-analytical references; M6 validates against the industry-standard
-licensed tool. Tolerance per CLAUDE.md §5: `rtol=5e-2` is acceptable;
-investigate anything worse.
+Scope per ARCHITECTURE.md §8: take a representative deck, run it in
+both FloatSim and a reference time-domain tool, document discrepancies.
 
-Validation gates per §7: full-system OrcaFlex agreement on the
-canonical HSFP (Hi-Stability Floating Platform) deck — `model3small_nomor.*`
-per CLAUDE.md §12 — across free decay, regular-wave response, static
-equilibrium, drag, and mooring scenarios.
+**Reference tool: OpenFAST v3.x** (latest stable, open source, free).
+Specifically the **HydroDyn** submodule plus **MAP++** (or MoorDyn)
+for mooring. OrcaFlex/OrcaWave are no longer available; OpenFAST is
+the open-source industry baseline used by NREL, DOE, and the
+research community for floating-platform cross-checks.
 
-Branch: `milestone-6-orcaflex-cross-check` (created off `main` at the
-M5 partial-close merge `8f5225d`).
+**Reference deck: OC4 DeepCwind** semi-submersible from the OpenFAST
+r-test repo. The same `marin_semi.{1,3,hst,4}` WAMIT files we
+already trimmed into `tests/fixtures/bem/wamit/` for M5 PR1. The
+BEM hydrodynamics are therefore byte-identical between FloatSim and
+OpenFAST — any discrepancy lives downstream of the BEM input, in
+the time-domain assembly or numerical integration.
+
+Tolerance per CLAUDE.md §5: `rtol=5e-2` is acceptable for tool
+cross-checks; investigate anything worse. Tighter where the physics
+allows (statics, free decay) — see Q4.
+
+Validation gate per ARCHITECTURE.md §7: full-system OpenFAST
+agreement on the OC4 DeepCwind semi-submersible across statics,
+free decay, regular-wave RAO, moored statics, and drag-on decay.
+
+Branch: `milestone-6-openfast-cross-check` (renamed from the v1
+draft `milestone-6-orcaflex-cross-check` after the OrcaFlex license
+loss). Created off `main` at the M5 partial-close merge `8f5225d`.
 
 ---
 
@@ -23,242 +36,356 @@ M5 partial-close merge `8f5225d`).
 
 ### Q1 — Reference deck
 
-**Proposal: lock `model3small_nomor` as the canonical M6 case.**
+**Proposal: lock OC4 DeepCwind from OpenFAST r-test as the
+canonical M6 case.**
 
-- Path: `C:\Users\xlama\OneDrive\Documents\buoy\Orca\orcawave\model3small_nomor.{owr,sim,dat}`
-  (and `_mooring`, `_nofin` siblings). Single body, no-mooring variant
-  is the primary (clean free-floating dynamics); the `_mooring`
-  variant exercises catenary cross-check.
-- Geometry: HSFP — Spar-Fin Platform per `HSFP_OrcaWave_Setup_Guide_RevB.docx`.
-  Single body, axisymmetric-ish, fits FloatSim's Phase 1 single-body scope.
-- Why not OC4 DeepCwind? We already have the OC4 `platform_small.yml`
-  fixture from M2, but it carries the OrcaFlex VesselType already
-  exported — using it for M6 would partially circle back on its own
-  reference. `model3small_nomor` is independent BEM data and is the
-  case CLAUDE.md §12 explicitly nominates for M6.
-- Why not `model3small.owr` (full case)? The full case includes
-  whatever OrcaFlex extras Xabier had on top — mooring tweaks,
-  damping coefficients, etc. The `_nomor` variant is the cleanest
-  starting point; siblings get added per scenario.
+- Path in upstream:
+  `5MW_OC4Semi_Linear/` in
+  [OpenFAST/r-test](https://github.com/OpenFAST/r-test/tree/main/glue-codes/openfast/5MW_OC4Semi_Linear).
+- Hydrodynamics: OpenFAST's `5MW_Baseline/HydroData/marin_semi.{1,3,hst,4}`
+  — already in our repo at
+  `tests/fixtures/bem/wamit/marin_semi_trimmed.{1,3,hst,4}` (the
+  trimmed subset). For M6 we commit the **full** `marin_semi.*`
+  alongside (under `tests/fixtures/openfast/oc4_deepcwind/`) so
+  OpenFAST sees a complete BEM grid; the trimmed copy stays in
+  `tests/fixtures/bem/wamit/` for M5's parser unit tests.
+- Geometry reference: Robertson et al., *Definition of the
+  Semisubmersible Floating System for Phase II of OC4*, NREL
+  TP-5000-60601 (2014). Already cited in
+  `docs/wamit-fixture-attribution.md`.
+- Why OC4 DeepCwind?
+  - Multi-tool validated (HydroDyn, AQWA, ProteusDS, WEC-Sim) — a
+    discrepancy points at the parser, not the reference.
+  - Already half-committed (BEM data in M5).
+  - OpenFAST r-test ships scenario decks for free decay, regular
+    waves, irregular waves — most of our scenarios drop in.
+  - Apache 2.0 — safe to commit alongside attribution.
+- Why not the "linear" variant specifically? `5MW_OC4Semi_Linear`
+  uses **linear hydrostatic restoring** — exactly FloatSim's Phase 1
+  fidelity level. Other variants (`5MW_OC4Semi_WSt_WavesWN` etc.)
+  add nonlinear restoring or wind-turbine coupling — out of scope.
 
 **Open questions for Xabier:**
-- Is `model3small_nomor` indeed the right primary case, or has it
-  been superseded by another variant in your workflow?
-- Do the `_nomor`, `_nomor_mooring`, `_nomor_nofin` siblings share
-  identical hydrodynamics (only mooring/fin geometry changes between
-  them)? If yes, one BEM database supports all scenarios.
+- Is `5MW_OC4Semi_Linear` indeed the right variant, or is there an
+  even-more-stripped-down hydrodynamics-only variant in the OpenFAST
+  test suite worth considering?
+- Are we OK keeping the wind turbine **disabled** (CompElast,
+  CompAero, CompInflow, CompServo all = 0) for the cross-check?
+  This isolates HydroDyn but means the comparison is platform-only,
+  not coupled FOWT.
 
 ### Q2 — Cross-check scenario menu
 
-**Proposal: five canonical scenarios.** Each scenario is one
-PR/test file:
+**Proposal: five scenarios in increasing-complexity order
+(reordered per Xabier's guidance):**
 
-| Scenario | Physics validated | Variant |
-| -------- | ----------------- | ------- |
-| **S1 — Free decay (heave + pitch)** | Cummins free response, period and damping | `_nomor` |
-| **S2 — Regular-wave RAO sweep** | Excitation, radiation across frequency band | `_nomor` |
-| **S3 — Static equilibrium** | Restoring + gravity/buoyancy balance | `_nomor` |
-| **S4 — Drag-on free decay** | Morison drag + integrator | `_nomor_nofin` (drag-dominated heave plate removed) vs `_nomor` (with plate) |
-| **S5 — Moored static equilibrium** | Catenary + 6-DOF spring connectors | `_nomor_mooring` |
+| # | Scenario | Physics validated | Variant |
+| - | -------- | ----------------- | ------- |
+| **S1** | Static equilibrium | Restoring + gravity/buoyancy balance | OC4Semi, no waves, no wind, no mooring |
+| **S2** | Free decay (heave + pitch) | Cummins free response, period and damping | Same as S1, with small IC |
+| **S3** | Regular-wave RAO sweep | Excitation + radiation across freq band | OC4Semi with regular wave, no mooring, no wind |
+| **S4** | Moored static equilibrium | Catenary mooring + 6-DOF assembly | OC4Semi with 3 catenary lines (DeepCwind config), no waves, no wind |
+| **S5** | Drag-on free decay | Morison drag + integrator | Same as S2 with HydroDyn's `Morison Members` block populated |
 
 S1–S3 are mandatory (validate the M2/M3 hydrodynamic core).
-S4 is contingent on a clean drag-isolation comparison existing
-between two HSFP variants. S5 is contingent on the catenary
-geometries in `_nomor_mooring` matching the Irvine analytical form
-FloatSim implements (M4 PR4).
+S4 cross-checks M4 PR4 catenary against MAP++/MoorDyn statics.
+S5 cross-checks M5 PR4 Morison drag.
 
-**Out of scope (would need new physics):**
-- Multi-body cross-check — HSFP is single-body; covered by M4 unit tests.
-- Irregular seas — Phase 2 per ARCHITECTURE.md §1.2.
-- Second-order drift forces — Phase 2.
+**Out of scope (Phase 2):**
+- Irregular seas (JONSWAP, PM): Phase 2.
+- Coupled FOWT (turbine + platform): Phase 3.
+- Second-order drift: Phase 2.
+- Dynamic mooring: Phase 2 — Q7 below.
 
-### Q3 — Producing OrcaFlex time-history fixtures
+### Q3 — Fixture generation
 
-**Proposal: pre-extracted CSVs committed to the repo.**
+**Proposal: commit OpenFAST inputs + extracted CSV time histories +
+companion JSON metadata, with a regeneration script.**
 
-- Xabier runs each scenario in OrcaFlex once.
-- Time histories exported to CSV via OrcaFlex GUI's
-  *Time History → Export* (or via OrcFxAPI script — Xabier's full
-  license accepts this; CLAUDE.md §10's "demo refuses API access"
-  applies only to the BEM `.owr` reading path, not to running
-  simulations).
-- One CSV per scenario, committed at
-  `tests/fixtures/orcaflex/{scenario_name}.csv`.
-- Header row carries column names; first column is time in seconds;
-  remaining columns are 6-DOF body state (per OrcaFlex naming) plus
-  any per-line tension columns for S5.
-- File sizes: ~50 KB per scenario at 0.1 s sampling × 600 s × 7 cols.
-  Five scenarios → ~250 KB total. Comfortable in-repo.
+```
+tests/fixtures/openfast/oc4_deepcwind/
+├── inputs/
+│   ├── OC4Semi.fst              # driver
+│   ├── OC4Semi_HydroDyn.dat
+│   ├── OC4Semi_ElastoDyn.dat
+│   ├── OC4Semi_MAP.dat          # mooring (S4)
+│   └── HydroData/
+│       └── marin_semi.{1,3,hst,4}
+├── outputs/
+│   ├── s1_static_eq.csv
+│   ├── s1_static_eq.json        # metadata: version, dt, duration, ...
+│   ├── s2_free_decay.csv
+│   ├── s2_free_decay.json
+│   ├── s3_rao_T08.csv           # regular-wave runs, one per period
+│   ├── s3_rao_T08.json
+│   ├── s3_rao_T10.csv
+│   ├── ...
+│   ├── s4_moored_eq.csv
+│   ├── s4_moored_eq.json
+│   ├── s5_drag_decay.csv
+│   └── s5_drag_decay.json
+└── README.md
+```
 
-**Why not run OrcaFlex live in CI?**
-- License requirement makes CI runners impossible.
-- Test reproducibility: pinning a fixture removes any chance of
-  OrcaFlex version drift silently changing the reference.
-- Speed: live OrcaFlex would dominate test runtime.
+- **Inputs are committed verbatim** from OpenFAST r-test (Apache 2.0,
+  attribution in README).
+- **Outputs are pre-extracted and committed** so CI does not need
+  OpenFAST installed. CSV format: `time, surge, sway, heave, roll,
+  pitch, yaw, ...` per scenario, units SI throughout.
+- **JSON metadata** per CSV records: `openfast_version`, `dt`,
+  `duration`, `seed_if_random`, `compile_flags`, regeneration
+  command. Mirror M5's "JSON sidecar" pattern used for the WAMIT
+  fixtures.
+- **Regeneration**: `scripts/extract_openfast_fixtures.py` runs
+  OpenFAST locally for each scenario and writes the CSV + JSON
+  pair. Documented requirement: OpenFAST executable on the user's
+  PATH (the script does not vendor or compile OpenFAST).
+- **Total fixture footprint**: estimated ~500 KB committed —
+  inputs + 5 CSVs (~50 KB each at 0.1 s × 600 s × 8 cols) + tiny
+  JSON files. Comfortable in repo.
 
-**OrcFxAPI dependency:** none in FloatSim. The export step is on
-Xabier's side only. The CSV format is plain ASCII and consumed via
-`numpy.loadtxt` plus a thin column-mapping helper.
+**Why pre-extract rather than run OpenFAST in CI?**
+- Reproducibility: pin the OpenFAST version that produced the
+  reference, freeze the comparison.
+- CI speed: a single OC4 free decay run is ~30 s of wall time;
+  five scenarios × CI matrix would dominate runtime.
+- Repo portability: contributors don't need OpenFAST to run the
+  fast-gate tests.
+- Anyone with OpenFAST installed can regenerate via the script —
+  no license, no proprietary dependency, no GUI clicks.
 
-### Q4 — Comparison metrics
+### Q4 — Comparison metrics and tolerances
 
-**Proposal: per-scenario closed-form metrics, with phase-aligned
-time-history overlay plots as supplementary diagnostics.**
+**Proposal: per-scenario closed-form metrics plus overlay-plot
+diagnostics. Tolerances unchanged from v1 of this plan:**
 
 | Scenario | Primary metric | Tolerance |
 | -------- | -------------- | --------- |
-| S1 free decay | (a) heave/pitch period from upward zero crossings; (b) log-decrement damping ratio over first 5 cycles | period: `rtol=2e-2`; damping: `rtol=5e-2` |
-| S2 RAO sweep | per-frequency steady-state amplitude (mean of last 3 cycles); phase against wave elevation | amplitude: `rtol=5e-2`; phase: `atol=5°` |
-| S3 static eq. | 6-DOF displaced position from origin | `atol = 1e-3 m` (translations), `atol = 1e-2°` (rotations) |
-| S4 drag decay | first 5 peak amplitudes against OrcaFlex peaks | `rtol=5e-2` per peak |
-| S5 moored eq. | platform horizontal offset; per-line top tension | offset: `rtol=5e-2`; tension: `rtol=5e-2` |
+| S1 static eq. | 6-DOF displaced position | `atol = 1e-3 m` (translations), `atol = 1e-2°` (rotations) |
+| S2 free decay | (a) heave/pitch period from upward zero crossings; (b) log-decrement damping ratio over first 5 cycles | period: `rtol = 2e-2`; damping: `rtol = 5e-2` |
+| S3 RAO sweep | per-frequency steady-state amplitude (mean of last 3 cycles); phase against wave elevation | amplitude: `rtol = 5e-2`; phase: `atol = 5°` |
+| S4 moored eq. | platform horizontal offset; per-line top tension | offset: `rtol = 5e-2`; tension: `rtol = 5e-2` |
+| S5 drag decay | first 5 peak amplitudes against OpenFAST peaks | `rtol = 5e-2` per peak |
 
-Tighter tolerances on S1/S3 (`rtol=2e-2`, `atol=1e-3 m`) reflect
-that no drag, no mooring, no waves means the integrator alone owns
-the residual — and our M2 free-decay validates that integrator at
-`rtol=3e-2` already, so this should be tighter, not looser, than
-the analytical-reference gates.
+Tighter on S1/S2 (`rtol = 2e-2`, `atol = 1e-3 m`) — no drag, no
+mooring, no waves means the integrator alone owns the residual,
+and our M2 free-decay validates that integrator at `rtol = 3e-2`
+against analytical references already.
 
 ### Q5 — Discrepancy report
 
-**Proposal: `docs/orcaflex-cross-check-report.md` + figure regeneration script.**
+**Proposal (unchanged from v1): `docs/openfast-cross-check-report.md`
++ figure regeneration script.**
 
 - Markdown report with one section per scenario:
-  - Setup (deck variant, IC, duration, dt)
-  - Comparison table (FloatSim vs OrcaFlex, abs err, rel err, pass/fail)
-  - Time-history overlay plot (PNG, regenerated)
-  - "Resolved discrepancies" subsection if a mismatch was traced and
-    explained (e.g., different drag-coefficient defaults, different
-    mooring-pretension reference)
-  - "Open discrepancies" subsection if any remain unresolved at PR
-    time (must be `rtol < 5e-2` to be acceptable per CLAUDE.md §5)
-- Figures regenerated by `scripts/plot_orcaflex_crosscheck.py`,
-  output under `docs/figures/orcaflex_crosscheck/`. Plots are
-  committed (small PNGs, ~50 KB each); the script is the
-  single-source regeneration.
-- Report is a one-time deliverable per milestone, not a continuously
-  updated artifact. Re-running it requires re-running OrcaFlex (Xabier's
-  side) and is not in CI.
+  - Setup (deck variant, IC, duration, dt, OpenFAST version)
+  - Comparison table (FloatSim vs OpenFAST, abs err, rel err,
+    pass/fail)
+  - Time-history overlay plot (PNG)
+  - Resolved / open discrepancies subsections
+- Plots regenerated by `scripts/plot_openfast_crosscheck.py` into
+  `docs/figures/openfast_crosscheck/`. Plots are committed
+  (small PNGs, ~50 KB each); script is the single regeneration source.
+- Report is one-time per milestone, not continuously updated.
 
 ### Q6 — Workflow integration / CI
 
-**Proposal: all M6 tests marked `@pytest.mark.slow`.**
+**Proposal (unchanged from v1): all M6 tests marked
+`@pytest.mark.slow`.**
 
-- Per CLAUDE.md §5, `slow` tests run nightly in CI, not on every PR.
-- M6 tests load CSV fixtures (cheap) but FloatSim runs full
-  time-domain simulations — typically 600 s simulated time at
-  `dt = 0.05 s` = 12000 steps per scenario. With Cummins convolution
-  this is ~30 s wall-clock per scenario locally; over five scenarios,
-  ~3 min. Too slow for the fast PR gate (`pytest -q` should stay
-  under 5 min total, currently ~2 min).
-- The `slow` marker is the standard escape hatch — same one used by
-  M2's OC4 free-decay test.
+- Per CLAUDE.md §5, `slow` runs nightly only.
+- M6 tests are CSV-loader-cheap but FloatSim runs 600 s simulated
+  time × Cummins convolution — ~30 s wall-clock per scenario,
+  ~3 min for the full M6 set. Too slow for the per-PR fast gate
+  (`pytest -q` should stay under 5 min total; currently ~2 min).
 
 ### Q7 — Drag and mooring physics differences
 
-**Proposal: cross-check on configurations where the modeling
-choices align, document where they diverge.**
+**Proposal: cross-check at the configurations where modeling
+choices align, document divergences:**
 
-- **Drag (S4):** OrcaFlex uses Morison-like elements with the same
-  `Cd`, `Ca`, projected-area formulas. If Xabier's HSFP deck
-  applies drag only via Morison elements (not a body-level damping
-  matrix), the cross-check is fair. If OrcaFlex adds linear viscous
-  damping to the body matrix in addition, FloatSim must mirror that
-  (or the deck must be edited for the cross-check).
-- **Mooring (S5):** OrcaFlex uses lumped-mass dynamic lines by
-  default; FloatSim uses analytical Irvine elastic catenary (M4 PR4).
-  These agree at static equilibrium (closed-form catenary is the
-  static limit of a dynamic line) but diverge under transients.
-  Cross-check is therefore static-only for S5; transient mooring
-  agreement is a Phase 2 deliverable.
-- Document divergences in `docs/orcaflex-cross-check-report.md`
-  per scenario.
+- **Drag (S5):** OpenFAST's HydroDyn implements Morison elements
+  via a `Members` table with `MemberID, MJointID1, MJointID2, MDiv,
+  MPropSetID1, MPropSetID2, ...`. Each member has axial and
+  transverse `Cd` and `Ca` coefficients. FloatSim's
+  `floatsim.hydro.morison.MorisonElement` carries `diameter, Cd,
+  Ca, include_inertia` and applies member-normal projection.
+  - **Same physics: drag coefficient applied to relative-velocity
+    member-normal projection.** Cross-check is fair if the deck
+    matches `Cd, D, L` exactly and `include_inertia` is set
+    consistently with HydroDyn's `MCa` value.
+  - **Caveat**: HydroDyn supports per-member axial drag (`MCdAx`)
+    in addition to transverse. FloatSim does not (member-normal
+    only by design). Decks that exercise axial drag must be
+    flagged or the axial term zeroed in the OpenFAST input.
+- **Mooring (S4):**
+  - OpenFAST options: **MAP++** (quasi-static analytical catenary,
+    similar to FloatSim's M4 PR4) or **MoorDyn** (lumped-mass
+    dynamic line).
+  - **For S4 (statics) we use MAP++** — direct analytical-catenary
+    cross-check against FloatSim's Irvine implementation. Should
+    agree to numerical noise; `rtol = 1e-2` may be achievable, but
+    we hold the budget at `5e-2` per CLAUDE.md.
+  - Dynamic mooring (MoorDyn vs FloatSim's analytical) is **out of
+    scope** — different physics. Phase 2.
 
-### Q8 — Reference-point and sign convention sanity check
+### Q8 — Reference-point and sign-convention sanity check
 
-**Proposal: a one-time pre-flight check committed as Q8 documentation,
-not a test.** Before running any scenario:
+**Proposal: a one-time pre-flight check committed as
+`docs/openfast-cross-check-conventions.md` before any scenario PR
+lands.** Now HydroDyn-specific (was OrcaFlex-specific in v1).
 
-1. Compute the OrcaFlex VesselType reference point from the `.owr`
-   header / VesselType YAML export. Compare to FloatSim's body
-   `reference_point` after deck assembly.
-2. Verify OrcaFlex wave heading 0° = +X (matches ARCHITECTURE.md §3).
-3. Verify OrcaFlex Euler order ZYX intrinsic (yaw-pitch-roll) matches
-   FloatSim's deck I/O convention.
-4. Verify time origin: OrcaFlex `Stage 0` = `t = 0`, ramp-up runs
-   into negative time domain by convention; FloatSim ramps from
-   `t = 0` forward. Either align ramp endpoints or skip the ramp
-   region in comparison.
+References:
+- *OpenFAST documentation* —
+  https://openfast.readthedocs.io/en/main/source/user/hydrodyn/index.html
+- *HydroDyn Theory Document* — Jonkman, Robertson, Hayman, NREL
+  technical report TP-5000-XXXX (referenced in the OpenFAST docs).
 
-Document each check in `docs/orcaflex-cross-check-conventions.md`
-before scenario PRs land. Three pages, no code.
+Pre-flight check items (verify against the OpenFAST manual, document
+findings before PR2 lands):
+
+1. **Reference point**: OpenFAST's `PtfmRefzt` is the platform
+   reference height (z-coordinate of the reference for inertia
+   and motion outputs). For OC4Semi this is typically
+   `PtfmRefzt = 0.0 m` (at SWL) — must match FloatSim's body
+   `reference_point[2] = 0.0`. Confirm in the `.fst` driver file.
+2. **Wave heading**: HydroDyn `WaveDir` is degrees, with `0°` =
+   +X propagation. Same as FloatSim. Verify in `HydroDyn.dat`.
+3. **Euler order for output**: HydroDyn's platform rotations are
+   reported as `PtfmRoll, PtfmPitch, PtfmYaw` in degrees. The
+   underlying convention is **ZYX intrinsic** (yaw-pitch-roll) —
+   matches FloatSim's deck I/O. Must verify in HydroDyn theory
+   doc; OpenFAST's ServoDyn module historically uses a different
+   convention for blade pitches but HydroDyn platform output is
+   ZYX intrinsic per the FAST modularization document.
+4. **Time origin**: OpenFAST starts at `t = 0` (no implicit ramp);
+   if HydroDyn's `WaveModH = 5` (irregular ramp-up) is set, the
+   ramp is in negative time. For M6 we use regular waves only
+   (S3) which start cleanly at `t = 0`; align FloatSim's
+   `ramp_duration = 0` for cross-check runs only (Phase 1 default
+   is 20 s; per-scenario override is the existing path).
+5. **Hydrostatic stiffness**: HydroDyn's `PtfmCMatrix` carries the
+   **buoyancy/waterplane** contribution only. Same convention as
+   the M5 WAMIT and Capytaine readers. Gravity (`m·g·z_G` on
+   roll/pitch) is added by OpenFAST's ElastoDyn from the platform
+   mass and CoG. FloatSim's `Body` assembly adds gravity from the
+   deck's `mass` and `centre_of_gravity`. Must verify the two
+   gravity contributions match per scenario.
+6. **Wave elevation reference**: HydroDyn `WaveOriginZ = 0.0` is the
+   default — wave elevation referenced to SWL. Matches FloatSim.
+7. **Output sample rate**: HydroDyn `OutFileFmt = 1` (text output)
+   at `DT_Out = 0.05 s` (matches our typical FloatSim dt). If
+   OpenFAST runs at finer dt internally, the output is decimated
+   — fine, we just align.
+8. **Coordinate sign**: OpenFAST's surge/sway/heave are the
+   inertial-frame translations of the platform reference point.
+   Same as FloatSim's `xi[0:3]`. No sign flip.
+
+Items 3 and 5 are the highest-risk — confirm against the manual
+before any PR2 assertion fires. Document evidence (page numbers,
+URLs) in `docs/openfast-cross-check-conventions.md`.
+
+### Q9 — OrcaWave reader status
+
+**Per Xabier's directive: keep `floatsim/hydro/readers/orcawave.py`
+but mark it unvalidated.**
+
+- The reader was a stub from M5 PR1 / earlier; without OrcaWave we
+  cannot generate end-to-end test fixtures for it.
+- Action items for PR1:
+  - Add a module-level docstring to `floatsim/hydro/readers/orcawave.py`
+    stating: "(1) status: unvalidated end-to-end as of M6; (2) no
+    working test fixture available; (3) M5's OrcaFlex VesselType
+    YAML reader (`orcaflex_vessel_yaml.py`) is the verified path
+    for OrcaWave-derived BEM data; (4) this module remains for
+    future re-introduction if Xabier reacquires an OrcaWave
+    license, or if a community OrcaWave fixture lands."
+  - Add a matching note to CLAUDE.md §7 (BEM Database Readers).
+  - Drop `model3small_nomor` references from CLAUDE.md §12; replace
+    with the OC4 DeepCwind reference.
+- The reader is not deleted — that decision is reversible if
+  OrcaWave returns to the project.
 
 ---
 
 ## PR sequence
 
-### PR1 — Fixture import + CSV reader
+Reordered per Xabier's directive (statics → decay → RAO → moored
+statics → drag decay). Numbered by deliverable order, not test
+complexity.
 
-- Commit `model3small_nomor.{owr→.yml VesselType export}` as
-  `tests/fixtures/bem/orcaflex/hsfp_nomor.yml` (the BEM hydrodynamics
-  shared by S1–S4).
-- Commit one CSV time-history per scenario at
-  `tests/fixtures/orcaflex/{s1_free_decay, s2_rao_sweep, s3_static_eq,
-  s4_drag_decay, s5_moored}.csv`. Empty placeholders if Xabier's
-  exports are pending; the per-fixture skip pattern (mirroring the
-  M5 PR3 skeleton) lets each scenario activate as its CSV lands.
-- `tests/support/orcaflex_csv.py` — small loader returning a
-  named-tuple of `(t, surge, sway, heave, roll, pitch, yaw, ...)`
-  arrays. ~100 lines.
-- `docs/orcaflex-cross-check-conventions.md` — Q8 sanity-check log.
-- ~250 lines.
+### PR1 — Fixture import + CSV reader + conventions doc
 
-### PR2 — S1 free decay (heave + pitch)
+- Commit OpenFAST input files at `tests/fixtures/openfast/oc4_deepcwind/inputs/`
+  (full `marin_semi.*` BEM, `OC4Semi.fst`, submodule `.dat` files).
+- Commit `tests/fixtures/openfast/oc4_deepcwind/README.md` with
+  upstream attribution and reproduction recipe.
+- `scripts/extract_openfast_fixtures.py` — runs OpenFAST locally,
+  writes per-scenario CSV + JSON pairs to `outputs/`.
+- `tests/support/openfast_csv.py` — small loader: `(t, xi, ...) =
+  load_openfast_history(path)`. Mirrors any future `orcaflex_csv.py`.
+- `docs/openfast-cross-check-conventions.md` — Q8 pre-flight log
+  with manual-page citations.
+- **CLAUDE.md updates** (per Q9): drop `model3small_nomor` from §12;
+  replace with OC4 DeepCwind. Add §7 note on the unvalidated
+  `orcawave.py` reader.
+- **`floatsim/hydro/readers/orcawave.py`**: add module docstring
+  per Q9.
+- ~300 lines (mostly fixture-import + loader scaffolding; the
+  conventions doc is the bulk of the prose).
 
-- `tests/validation/test_m6_orcaflex_free_decay.py`
-- Run FloatSim free decay from the same IC OrcaFlex used; extract
-  peaks and period; compare to the CSV reference.
-- Pre-flight: confirm both share the same `(M + A∞)`, `C` matrices.
-- ~250 lines.
+### PR2 — S1 static equilibrium
 
-### PR3 — S2 regular-wave RAO sweep
-
-- `tests/validation/test_m6_orcaflex_regular_wave.py`
-- Run FloatSim at each of OrcaFlex's swept periods; compare
-  steady-state amplitudes and phases per DOF.
-- Period grid: 5–20 s in 5 steps (matches OrcaFlex's typical RAO
-  sweep). Single heading 0°.
-- ~250 lines.
-
-### PR4 — S3 static equilibrium
-
-- `tests/validation/test_m6_orcaflex_static_eq.py`
-- Run FloatSim's `static_equilibrium_solver` on the HSFP deck;
-  compare displaced position to OrcaFlex's reported equilibrium.
+- `tests/validation/test_m6_openfast_static_eq.py`
+- Run FloatSim's `static_equilibrium_solver` on the OC4 deck;
+  compare displaced position to OpenFAST's reported equilibrium
+  (extracted as the steady-state of a no-wave run).
+- Tolerance: `atol = 1e-3 m` translations, `atol = 1e-2°` rotations.
 - ~150 lines.
 
-### PR5 — S4 drag-on free decay
+### PR3 — S2 free decay (heave + pitch)
 
-- `tests/validation/test_m6_orcaflex_drag_decay.py`
-- Same IC as S1, but with Morison elements active. Compare peak
-  amplitudes (drag-dominated decay) to OrcaFlex's response.
-- Cross-checks the M5 PR4 Morison wiring against an industry tool.
-- ~200 lines.
+- `tests/validation/test_m6_openfast_free_decay.py`
+- Run FloatSim free decay from the same IC OpenFAST used; extract
+  peaks and period; compare to the CSV reference.
+- Heave decay first (simpler), then pitch decay (cross-coupling with
+  surge expected — expand assertion budget if disagreement
+  is in the cross-coupling channel, not heave/pitch directly).
+- ~250 lines.
 
-### PR6 — S5 moored static equilibrium
+### PR4 — S3 regular-wave RAO sweep
 
-- `tests/validation/test_m6_orcaflex_moored_eq.py`
-- Catenary mooring lines from `_nomor_mooring` deck, FloatSim's
-  Irvine analytical catenary; compare offset and per-line tensions.
-- Static-only per Q7 — dynamic mooring response is Phase 2.
-- ~200 lines.
+- `tests/validation/test_m6_openfast_regular_wave.py`
+- Run FloatSim at each of OpenFAST's swept periods; compare
+  steady-state amplitudes and phases per DOF.
+- Period grid: 8, 10, 12, 14, 16, 18 s (covers OC4 heave natural
+  ~17 s, pitch natural ~26 s in roll/pitch coupling). Single
+  heading 0°.
+- One CSV per period in the fixture set.
+- ~300 lines.
+
+### PR5 — S4 moored static equilibrium
+
+- `tests/validation/test_m6_openfast_moored_eq.py`
+- 3 catenary lines per the DeepCwind mooring spec. FloatSim's
+  Irvine analytical catenary (M4 PR4) vs OpenFAST's MAP++ (also
+  analytical). Should agree to better than `5e-2`; report what we
+  actually achieve.
+- ~250 lines.
+
+### PR6 — S5 drag-on free decay
+
+- `tests/validation/test_m6_openfast_drag_decay.py`
+- HydroDyn's `Members` block populated; same Morison elements in
+  FloatSim deck. Cross-checks the M5 PR4 wiring.
+- ~250 lines.
 
 ### PR7 — Cross-check report + plots
 
-- `docs/orcaflex-cross-check-report.md` — full results table, one
-  section per scenario, with overlay plot links.
-- `scripts/plot_orcaflex_crosscheck.py` — regenerates PNGs into
-  `docs/figures/orcaflex_crosscheck/`.
+- `docs/openfast-cross-check-report.md` — full results table, one
+  section per scenario.
+- `scripts/plot_openfast_crosscheck.py` regenerates
+  `docs/figures/openfast_crosscheck/*.png`.
 - Closes M6.
 - ~300 lines.
 
@@ -266,66 +393,75 @@ before scenario PRs land. Three pages, no code.
 
 ## Ordering rationale
 
-PR1 first — readers and CSV loader scaffolding are independent of
-scenarios, and PRs 2–6 all need the loader. PR1 also commits the
-conventions doc (Q8), which is a hard prerequisite — running a
-scenario without verified frames is wasted work.
+PR1 lands the scaffolding + the locked Q9 housekeeping (CLAUDE.md
+edits, orcawave.py docstring) — independent of any scenario.
 
-PR2 (free decay) before PR3 (RAOs) — if the free response is wrong,
-the RAO comparison will be confusing. Free decay isolates the
-restoring + radiation; RAOs add excitation on top.
+PR2 (statics) is the simplest physics check — no integrator
+dynamics, just the equilibrium solver. If statics disagree, every
+later PR is suspect, so this is the gate.
 
-PR4 (statics) is independent of PR2/PR3 dynamics and could land in
-parallel; sequencing here is for review-bandwidth reasons (one PR
-in flight at a time).
+PR3 (free decay) before PR4 (RAOs) — free response isolates
+restoring + radiation; RAO comparison adds excitation on top.
+Without correct free decay, RAO disagreements are confusing.
 
-PR5 (drag) needs the M5 Morison wiring, already on main.
+PR5 (moored) and PR6 (drag) are physics-extension checks; either
+order is fine. The plan lists them in scenario-order for
+report-readability.
 
-PR6 (mooring) needs the M4 catenary, already on main.
-
-PR7 closes the milestone.
+PR7 closes the milestone with the report.
 
 ## Risks
 
-- **Deck identity drift.** Any difference between FloatSim's deck
-  and OrcaFlex's deck — mass, BEM data, drag coefficients, mooring
-  pretension — produces a discrepancy that looks like a physics
-  bug. Mitigation: PR1's conventions doc is exhaustive; every PR
-  starts with a deck-identity sanity check.
-- **OrcaFlex version drift.** Xabier's OrcaFlex install pins a
-  specific version. If the CSV fixtures are regenerated against a
-  newer OrcaFlex, results may shift slightly. Mitigation: Capture
-  OrcaFlex version in `docs/orcaflex-cross-check-conventions.md`;
-  re-run is a documented full-cycle operation, not a silent bump.
-- **Phase convention slip.** OrcaFlex stores RAO phase in degrees
-  with the lags-by-default convention; FloatSim stores radians with
-  leads. The OrcaFlex VesselType reader handles the BEM database
-  side, but S2's per-frequency phase comparison is a fresh path —
-  the comparison must explicitly conjugate one side. Bug-catcher
-  test: a regular wave at heading 0° should produce surge with the
-  same phase in both tools.
-- **OrcFxAPI not strictly required, but helpful.** If Xabier has
-  the full license, an OrcFxAPI-driven CSV export script
-  (`scripts/extract_orcaflex_timeseries.py`) avoids GUI clicks for
-  every fixture regeneration. Optional.
-- **Moored cross-check sensitivity.** Catenary pretension depends
-  exquisitely on line length, weight per unit length, and EA. Tiny
-  deck-input differences propagate to ~20% tension differences.
-  Mitigation: S5's tolerance budget is `rtol=5e-2` on tension,
-  acknowledging that anything tighter would over-fit the deck
-  match. If we see >20% disagreement, the deck is wrong, not the
-  physics.
+- **Deck identity drift across tools.** Any difference between the
+  FloatSim deck and the OpenFAST deck — mass, BEM data, drag
+  coefficients, mooring pretension — produces a discrepancy that
+  looks like a physics bug. Mitigation: PR1's conventions doc is
+  exhaustive; every scenario PR starts with a deck-identity check
+  that asserts FloatSim's `Body.mass`, `Body.inertia`, `(M+A_inf)`,
+  `C` match OpenFAST's `Platform*` inputs to numerical noise
+  before any time-domain assertion fires.
+- **OpenFAST version drift.** The committed CSVs are
+  version-locked. Each `outputs/*.json` records the OpenFAST
+  version that produced it; the regeneration script logs the
+  detected version on launch. Re-running on a different OpenFAST
+  version is a documented full-cycle operation.
+- **Phase convention slip.** HydroDyn's RAO phase convention is
+  documented in the manual; we assume "leads" (matches our
+  `HydroDatabase.RAO`) but **must verify** in PR1 — if HydroDyn
+  uses lags internally, the comparison conjugates one side. Q8
+  item 3 covers this.
+- **OpenFAST install.** Anyone regenerating fixtures needs
+  OpenFAST. Binaries are available at
+  https://github.com/OpenFAST/openfast/releases. Windows users:
+  `openfast_win64.exe`. Linux users: build from source or use
+  conda-forge. The script's installation requirements are
+  documented but not enforced (no auto-install).
+- **HydroDyn nonlinearity assumptions.** The `_Linear` variant of
+  the OC4Semi case uses linear hydrostatic restoring — matches
+  FloatSim's Phase 1 fidelity. If a future scenario needs
+  nonlinear restoring (large-angle pitch, wave-modulated
+  waterplane), it's out of scope; flag as Phase 2.
+- **MoorDyn vs MAP++ choice.** S4 cross-check uses MAP++ (analytical
+  catenary). If the OC4 reference deck ships with MoorDyn instead,
+  PR5 must replace MoorDyn with MAP++ in a per-scenario deck
+  override (small input file edit, documented in PR5).
 
 ## Session-continuity notes
 
 If a fresh session picks this up: M5 closed partially at merge
 commit `8f5225d` on main (PR3 sphere fixtures deferred on branch
 `milestone-5-pr3-sphere-fixtures`). M6 has no code yet, only this
-plan. Branch `milestone-6-orcaflex-cross-check` is created off main
-and tracks main. Q1–Q8 above are **proposals** — do not implement
-until Xabier has reviewed and locked them.
+plan (v2, post-OrcaFlex-license-loss). Branch
+`milestone-6-openfast-cross-check` is created off main and tracks
+main; the v1 draft branch `milestone-6-orcaflex-cross-check` was
+deleted on the remote when v2 landed.
 
-The reference OrcaFlex case lives outside the repo at
-`C:\Users\xlama\OneDrive\Documents\buoy\Orca\orcawave\model3small_nomor.*`.
-The `.sim` time histories must be exported to CSV (Xabier's side,
-either GUI or OrcFxAPI) before PR2 can write its first failing test.
+Q1–Q9 above are **proposals** — do not implement until Xabier has
+reviewed and locked them.
+
+The reference OpenFAST case lives in the OpenFAST/r-test repo.
+Inputs will be vendored at
+`tests/fixtures/openfast/oc4_deepcwind/inputs/`; reference time
+histories must be extracted by `scripts/extract_openfast_fixtures.py`
+(Xabier's side, on a machine with OpenFAST installed) before PR2
+can write its first failing test.
