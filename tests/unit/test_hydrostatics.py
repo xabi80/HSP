@@ -54,21 +54,22 @@ def test_offset_cog_produces_hand_derived_cross_coupling() -> None:
         m = 1000 kg,  g = 10 m/s^2  (so m*g = 1e4)
         r_G = (x_G, y_G, z_G) = (+2, -3, -4) m
 
-    Per the rotation-vector convention derivation in
-    ``floatsim.hydro.hydrostatics`` module docstring:
+    Per Faltinsen 1990 Eq. 2.104 (Newton-Euler convention; settled by
+    :mod:`tests.validation.test_gravity_restoring_asymmetric_cog`):
 
-        ΔC[3, 3] = -m·g·z_G   = -1e4 · (-4)     = +4e4
-        ΔC[4, 4] = -m·g·z_G   = -1e4 · (-4)     = +4e4
-        ΔC[3, 5] = +½·m·g·x_G = +0.5 · 1e4 · 2  = +1e4
-        ΔC[5, 3] = +½·m·g·x_G = +1e4   (symmetric)
-        ΔC[4, 5] = +½·m·g·y_G = +0.5 · 1e4 · -3 = -1.5e4
-        ΔC[5, 4] = +½·m·g·y_G = -1.5e4   (symmetric)
+        ΔC[3, 3] = -m·g·z_G   = -1e4 · (-4)  = +4e4
+        ΔC[4, 4] = -m·g·z_G   = -1e4 · (-4)  = +4e4
+        ΔC[3, 5] = +m·g·x_G   = 1e4 · 2      = +2e4
+        ΔC[5, 3] = +m·g·x_G   = +2e4   (symmetric)
+        ΔC[4, 5] = +m·g·y_G   = 1e4 · -3     = -3e4
+        ΔC[5, 4] = +m·g·y_G   = -3e4   (symmetric)
         all others = 0
 
-    This test pins down the convention: any change to the gravity
-    formula (e.g. switching to the Faltinsen/Euler m·g·x_G off-diagonal
-    without ½) will trip this assertion and force re-evaluation of the
-    parameterisation choice.
+    This test pins down the convention: any reversion to a
+    rotation-vector V-Hessian formula (½ on the cross-couplings)
+    will trip this assertion. See
+    ``docs/post-mortems/hydrostatic-gravity-bug.md``
+    §"Asymmetric CoG verification" for the resolution.
     """
     m, g = 1000.0, 10.0
     x_G, y_G, z_G = 2.0, -3.0, -4.0
@@ -76,10 +77,10 @@ def test_offset_cog_produces_hand_derived_cross_coupling() -> None:
     expected = np.zeros((6, 6))
     expected[3, 3] = -m * g * z_G  # +40_000
     expected[4, 4] = -m * g * z_G  # +40_000
-    expected[3, 5] = 0.5 * m * g * x_G  # +10_000
-    expected[5, 3] = 0.5 * m * g * x_G
-    expected[4, 5] = 0.5 * m * g * y_G  # -15_000
-    expected[5, 4] = 0.5 * m * g * y_G
+    expected[3, 5] = m * g * x_G  # +20_000
+    expected[5, 3] = m * g * x_G
+    expected[4, 5] = m * g * y_G  # -30_000
+    expected[5, 4] = m * g * y_G
 
     dC = gravity_restoring_contribution(
         mass=m,

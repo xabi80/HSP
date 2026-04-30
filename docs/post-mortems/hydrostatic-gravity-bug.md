@@ -149,30 +149,62 @@ missing-step survived, but the missing step was never built.
      cross-coupling against a hand-derived reference, symmetry,
      translation/yaw zero-block, and four argument-validation cases.
 
-## Convention notes — the rotation-vector factor of ½
+## Asymmetric CoG verification (convention settled)
 
-For an offset CoG (``x_G``, ``y_G`` non-zero), the cross-coupling
-``C[3, 5]`` and ``C[4, 5]`` depend on the rotation-vector
-parameterisation chosen for the linearisation. The textbook
-Faltinsen (1990, *Sea Loads*, Eq. 2.104) gives ``ΔC_46 = m·g·x_G`` (no
-factor of ½) under the ZYX-intrinsic Euler convention. The
-rotation-vector convention used here gives ``½·m·g·x_G``. Both agree
-on the diagonal terms ``ΔC[3,3] = ΔC[4,4] = -m·g·z_G``.
+The original implementation of :func:`gravity_restoring_contribution`
+shipped with a factor of ½ on the cross-couplings:
+``ΔC[3, 5] = ½·m·g·x_G``, ``ΔC[4, 5] = ½·m·g·y_G``. The rationale was
+a rotation-vector V-Hessian derivation: expanding ``z_G_inertial`` to
+second order in the rotation vector ``θ`` and reading off the
+symmetric Hessian of the gravitational potential ``V = m·g·z_G_inertial``.
+The diagonal terms ``-m·g·z_G`` agree with the textbook Faltinsen
+(1990, *Sea Loads*, Eq. 2.104) regardless of the parameterisation
+choice; only the cross-couplings differ.
 
-FloatSim uses rotation-vector throughout the linearised assembly
-(consistent with the quaternion-internal storage and the integrator
-advancing quaternions via ``integrate_quaternion`` rather than
-Euler-angle composition). The rotation-vector ½ is therefore the
-convention-consistent choice.
+**Resolution (settled 2026-04-29):** the ½ is wrong. The Cummins-
+equation linearised stiffness ``C·ξ`` represents the linearised
+total restoring force/moment that balances the inertia in the
+Newton-Euler equation; the right value comes from
+linearising the gravity moment ``r_G_inertial × F_grav`` directly,
+not from the V-Hessian in rotation-vector coordinates. The two
+disagree at second order because the metric on the rotation manifold
+is non-Euclidean for the rotation-vector parameterisation, and
+that non-Euclidean structure does not enter the Newton-Euler moment
+balance.
 
-For OC4 DeepCwind and any axisymmetric platform with ``x_G = y_G = 0``,
-the cross-coupling vanishes and the convention choice is moot. It
-matters only for non-symmetric mass distributions (e.g. ballasted
-asymmetrically), which Phase 1 does not target. If a future Phase 2
-case needs the Faltinsen convention specifically (because the BEM tool
-producing the input uses ZYX-Euler), revisit by adding a
-``rotation_parameterisation`` flag to
-:func:`gravity_restoring_contribution`.
+The discriminator is :mod:`tests.validation.test_gravity_restoring_asymmetric_cog`:
+
+- **Surge perturbation:** ``ΔC_grav[:, 0] = 0`` exactly (gravity is
+  translation-invariant). Passes both conventions.
+- **Pitch perturbation:** ``δM_y = m·g·z_G·θ_y`` from first
+  principles, giving ``C[4, 4] = -m·g·z_G``. Passes both conventions.
+- **Yaw perturbation (THE discriminator):** for the reference body
+  ``m = 1.347e7 kg``, ``r_G = (5, -3, -13.46) m``, ``g = 9.80665``,
+  Newton-Euler-from-first-principles gives ``C[3, 5] = m·g·x_G ≈ 6.605e8 N·m/rad``.
+  The original ½-implementation produced ``3.302e8 N·m/rad``. Failure
+  was an exact factor of 2.
+- **Symmetry:** ``ΔC = ΔC^T`` is required by the conservation of
+  energy (so ``V = ½·ξ^T·C·ξ`` is well-defined). Both conventions
+  satisfy this; the Newton-Euler perspective alone gives an
+  asymmetric matrix, which the symmetry requirement repairs by
+  populating ``C[5, 3] = C[3, 5]`` and ``C[5, 4] = C[4, 5]``.
+
+The implementation now uses the Faltinsen convention
+(``m·g·x_G``, ``m·g·y_G`` — no ½). The OC4 DeepCwind regression test
+still passes because OC4 is axisymmetric (``x_G = y_G = 0``); only
+the asymmetric-CoG test discriminates.
+
+Industry codes (HydroDyn, AQWA, WAMIT) all use the Faltinsen
+convention. The roll-back to ``m·g·x_G`` is now the
+convention-consistent choice across the offshore-engineering stack,
+and matches the Newton-Euler moment that the Cummins integrator
+consumes.
+
+**Lesson for future convention questions:** the V-Hessian and
+Newton-Euler can give different answers for cross-couplings under
+non-Euclidean rotation parameterisations. The Cummins-equation
+linearised C is a Newton-Euler quantity, not a V-Hessian quantity;
+when the two disagree, the Newton-Euler answer wins.
 
 ## What this teaches us
 

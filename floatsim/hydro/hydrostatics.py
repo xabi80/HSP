@@ -17,59 +17,64 @@ What this module provides
 :attr:`HydroDatabase.C_source` flag is ``"buoyancy_only"`` and the
 caller supplies the body's mass, centre-of-gravity offset, and gravity.
 
-Derivation (rotation-vector convention)
----------------------------------------
+Derivation (Newton-Euler / Faltinsen 1990 Eq. 2.104)
+----------------------------------------------------
 Let ``r_G = (x_G, y_G, z_G)`` be the body-frame position of the centre
 of gravity, measured **from the BEM database's hydrostatic reference
 origin** (not from any body-internal reference). For a small rotation
-parameterised as a rotation vector ``θ = (θ_x, θ_y, θ_z)`` (so that
-``R(θ) = exp(θ̂) ≈ I + θ̂ + ½θ̂²``), the inertial-frame z-coordinate of
-the CoG to second order in ``θ`` is::
+parameterised by ``ξ = (θ_x, θ_y, θ_z)`` (the linearised rotation
+vector / integrated body-frame angular velocity), the linearised
+moment of gravity about the body reference point is computed from
+first principles as ``δM = (R(θ)·r_G - r_G) × F_grav`` with
+``F_grav = (0, 0, -m·g)`` and ``R(θ) ≈ I + θ̂``::
 
-    z_G_inertial = z_P + z_G + (θ × r_G)_z + ½(θ × (θ × r_G))_z + O(θ³)
-                 = z_P + z_G + (θ_x·y_G − θ_y·x_G)
-                   + ½(θ_x·θ_z·x_G − θ_x²·z_G − θ_y²·z_G + θ_y·θ_z·y_G)
+    δr_G_inertial = θ × r_G
+                  = (θ_y·z_G - θ_z·y_G, θ_z·x_G - θ_x·z_G,
+                     θ_x·y_G - θ_y·x_G)
+    δM = δr_G_inertial × F_grav
+       = (-m·g·(θ_z·x_G - θ_x·z_G), -m·g·(θ_y·z_G - θ_z·y_G), 0)
+       = (m·g·z_G·θ_x - m·g·x_G·θ_z,
+          m·g·z_G·θ_y - m·g·y_G·θ_z,
+          0)
 
-The gravitational potential energy is ``V_grav = m·g·z_G_inertial``.
-Dropping the constants and the linear-in-``θ`` part (absorbed into the
-static equilibrium balance), the quadratic part is::
+By the Cummins convention ``C·ξ = -δM_total``, the gravity
+contribution to the restoring matrix is::
 
-    V_quad = ½·m·g·(θ_x·θ_z·x_G − θ_x²·z_G − θ_y²·z_G + θ_y·θ_z·y_G)
-
-With the standard convention ``V_quad = ½·ξᵀ·C·ξ`` and ``C`` symmetric,
-the gravity contribution to the restoring matrix is::
-
-    ΔC[3, 3] = ∂²V/∂θ_x² = -m·g·z_G        (roll-roll)
-    ΔC[4, 4] = ∂²V/∂θ_y² = -m·g·z_G        (pitch-pitch)
-    ΔC[3, 5] = ∂²V/∂θ_x∂θ_z = ½·m·g·x_G    (roll-yaw, rotation-vector)
-    ΔC[4, 5] = ∂²V/∂θ_y∂θ_z = ½·m·g·y_G    (pitch-yaw, rotation-vector)
-    ΔC[5, 3] = ΔC[3, 5]                    (symmetric)
-    ΔC[5, 4] = ΔC[4, 5]                    (symmetric)
+    ΔC[3, 3] = -m·g·z_G       (roll-roll diagonal)
+    ΔC[4, 4] = -m·g·z_G       (pitch-pitch diagonal)
+    ΔC[3, 5] = +m·g·x_G       (roll-yaw cross-coupling)
+    ΔC[4, 5] = +m·g·y_G       (pitch-yaw cross-coupling)
+    ΔC[5, 3] = +m·g·x_G       (symmetric companion of [3, 5])
+    ΔC[5, 4] = +m·g·y_G       (symmetric companion of [4, 5])
     all other entries: 0
 
-Why a factor of ½ on the cross-couplings
-----------------------------------------
-The textbook Faltinsen (1990, *Sea Loads*, Eq. 2.104) gives
-``ΔC_46 = m·g·x_G`` (no factor of ½). Faltinsen's derivation uses
-ZYX-intrinsic Euler angles for the linearisation; rotation-vector and
-ZYX-Euler agree at first order in ``θ`` but differ at second order, and
-the cross-coupling ``C[3, 5]`` is itself a second-order quantity — so
-the parameterisation matters.
+Convention settled — ½ vs 1 on the cross-couplings
+--------------------------------------------------
+The cross-couplings carry a factor of 1, **not** ½. The factor was
+explicitly probed in
+:mod:`tests.validation.test_gravity_restoring_asymmetric_cog`
+against a Newton-Euler-from-first-principles reference: applying a
+small yaw perturbation ``θ_z`` and computing ``δM_x = -m·g·x_G·θ_z``
+gives ``C[3, 5] = m·g·x_G``. A rotation-vector V-Hessian alternative
+would put a ½ here, but that ½ is parameterisation-artifact noise and
+does not match the linearised moment that the Cummins integrator
+actually consumes.
 
-FloatSim uses **rotation-vector** parameterisation throughout the
-linearised assembly: ``ξ[3:6]`` is the integrated body-frame angular
-velocity (which is exactly the rotation vector at small angles), and
-the integrator advances quaternions via :func:`integrate_quaternion`
-rather than Euler-angle composition. The rotation-vector ½ is therefore
-the convention-consistent answer here.
+The symmetric companions ``C[5, 3] = C[3, 5]`` and
+``C[5, 4] = C[4, 5]`` are populated by the ``C = C^T`` requirement
+of any conservative restoring (so the energy
+``V = ½·ξ^T·C·ξ`` is well-defined) — they do not arise from a
+single Newton-Euler perturbation but from the conservation
+structure. This matches the symmetric form used by HydroDyn, AQWA,
+WAMIT, and Faltinsen 1990 Eq. 2.104.
 
-For the OC4 DeepCwind case and any other axisymmetric platform with
-``x_G = y_G = 0``, the cross-coupling vanishes and the parameterisation
-choice is moot — ``ΔC[3, 3] = ΔC[4, 4] = -m·g·z_G`` is unambiguous.
-The convention only matters for non-axisymmetric mass distributions,
-which Phase 1 does not target. See
-``docs/post-mortems/hydrostatic-gravity-bug.md`` §"Convention notes"
-for the discussion.
+For the OC4 DeepCwind case and any axisymmetric platform with
+``x_G = y_G = 0`` the cross-couplings vanish and the convention
+choice is moot — only ``ΔC[3, 3] = ΔC[4, 4] = -m·g·z_G`` is
+exercised. The asymmetric-CoG regression test is the only place
+where the factor matters; see
+``docs/post-mortems/hydrostatic-gravity-bug.md``
+§"Asymmetric CoG verification" for the resolution log.
 
 References
 ----------
@@ -124,9 +129,10 @@ def gravity_restoring_contribution(
 
         - ``ΔC[3, 3] = ΔC[4, 4] = -m·g·z_G`` (the dominant terms; the
           only ones for axisymmetric ``x_G = y_G = 0`` cases).
-        - ``ΔC[3, 5] = ΔC[5, 3] = ½·m·g·x_G`` (rotation-vector
-          convention; see module docstring).
-        - ``ΔC[4, 5] = ΔC[5, 4] = ½·m·g·y_G`` (same).
+        - ``ΔC[3, 5] = ΔC[5, 3] = m·g·x_G`` (Faltinsen 1990
+          Eq. 2.104; settled by the asymmetric-CoG test, see module
+          docstring).
+        - ``ΔC[4, 5] = ΔC[5, 4] = m·g·y_G`` (same).
 
     Raises
     ------
@@ -159,9 +165,16 @@ def gravity_restoring_contribution(
     # Diagonal terms — dominant for any non-zero CoG depth.
     dC[_DOF_ROLL, _DOF_ROLL] = -m_g * z_G
     dC[_DOF_PITCH, _DOF_PITCH] = -m_g * z_G
-    # Cross-couplings (rotation-vector convention; zero for axisymmetric mass).
-    dC[_DOF_ROLL, _DOF_YAW] = 0.5 * m_g * x_G
-    dC[_DOF_YAW, _DOF_ROLL] = 0.5 * m_g * x_G
-    dC[_DOF_PITCH, _DOF_YAW] = 0.5 * m_g * y_G
-    dC[_DOF_YAW, _DOF_PITCH] = 0.5 * m_g * y_G
+    # Cross-couplings (Faltinsen / Newton-Euler convention; zero for
+    # axisymmetric mass). The factor-of-1 (no ½) is settled by
+    # tests/validation/test_gravity_restoring_asymmetric_cog.py against
+    # the Newton-Euler-from-first-principles reference; the rotation-
+    # vector V-Hessian alternative would put a ½ here but does not match
+    # the linearised moment that the Cummins integrator actually uses.
+    # See docs/post-mortems/hydrostatic-gravity-bug.md
+    # §"Asymmetric CoG verification" for the resolution.
+    dC[_DOF_ROLL, _DOF_YAW] = m_g * x_G
+    dC[_DOF_YAW, _DOF_ROLL] = m_g * x_G
+    dC[_DOF_PITCH, _DOF_YAW] = m_g * y_G
+    dC[_DOF_YAW, _DOF_PITCH] = m_g * y_G
     return dC
