@@ -99,11 +99,13 @@ One of the architectural commitments is pluggable BEM input (OrcaWave, WAMIT, Ca
 - Readers are pure: file path in, `HydroDatabase` out. No side effects.
 - Every reader ships with a minimal sample file in `tests/fixtures/bem/<format>/` and a round-trip test.
 
-**Known issue for `orcawave.py` reader:** the `.owr` file is OrcaWave's binary results format and typically requires the `OrcFxAPI` Python module (licensed, ships with Orcina installs) to parse. Two implementation paths:
-1. **Preferred:** read OrcaWave's companion YAML / text exports (load RAOs, QTFs, added mass, damping from human-readable output).
-2. **Fallback:** detect `OrcFxAPI` at import time; if available, use it to read `.owr` directly. If not, raise a helpful error pointing at option 1.
+**Status of `orcawave.py` reader (as of M6 PR1):** unvalidated end-to-end. No working test fixture is currently available — Xabier no longer has OrcaWave or OrcaFlex licenses (license loss recorded in `docs/milestone-6-plan.md` v2 pivot). The module remains in the tree as a placeholder for future re-introduction; the verified paths for OrcaWave-derived BEM data are:
 
-The first validation file will be `C:\Users\xlama\OneDrive\Documents\buoy\Orca\orcawave\model3small_nomor.owr`. Confirm with Xabier which companion exports are available before writing the reader — this informs the approach.
+1. **`floatsim/hydro/readers/orcaflex_vessel_yaml.py`** (M1.5) — reads OrcaFlex's VesselType YAML export (the human-readable serialisation produced when OrcaWave `.owr` is imported into OrcaFlex and saved). Exercised by the `platform_small.yml` fixture and the M2/M4 OC4 validation tests.
+2. **`floatsim/hydro/readers/wamit.py`** (M5 PR1) — reads WAMIT plain-text outputs directly. The OpenFAST/r-test OC4 case (M6 reference) ships its BEM data in this format.
+3. **`floatsim/hydro/readers/capytaine.py`** (M5 PR2) — reads Capytaine NetCDF.
+
+The original two implementation paths for `orcawave.py` (preferred: companion YAML/text exports; fallback: `OrcFxAPI` for direct `.owr` parsing) are still the right design when the module is re-validated. Until then, do not extend it; redirect users to the three verified paths above.
 
 ---
 
@@ -161,8 +163,9 @@ When Claude Code opens this repo for the first time:
 ## 12. Contact / Escalation
 
 - Project owner: Xabier
-- Reference OrcaFlex/OrcaWave case: `C:\Users\xlama\OneDrive\Documents\buoy\Orca\orcawave\model3small_nomor.owr` — to be used in Milestones 2, 3, and 6 validation.
-- If OrcFxAPI licensing or BEM file format questions arise, ask before guessing.
+- **Reference validation deck:** OC4 DeepCwind semi-submersible, configured per OpenFAST/r-test `5MW_OC4Semi_Linear/`. The case ships full BEM data as `marin_semi.{1,3,hst,4}` (a trimmed subset is committed at `tests/fixtures/bem/wamit/marin_semi_trimmed.*`); the geometry citation is Robertson et al. 2014, NREL/TP-5000-60601. Used by M5 PR1 reader unit tests and the M6 OpenFAST/HydroDyn cross-check (`docs/milestone-6-plan.md`).
+- The earlier reference case (`model3small_nomor.owr` HSFP platform) is no longer the primary — the OrcaWave/OrcaFlex licenses needed to regenerate it are not currently available. M6 was re-planned around OpenFAST + OC4 DeepCwind in `docs/milestone-6-plan.md` v2.
+- If BEM file format questions arise (especially for the unvalidated `orcawave.py` reader), ask before guessing.
 
 ---
 
@@ -234,3 +237,23 @@ Both bugs lasted because:
 **For all future Phase 1 work:** when a module's docstring
 documents a precondition on its input, that precondition belongs
 in code as a `ValueError` gate, not as prose.
+
+---
+
+## 14. Pre-Cross-Check Audit Pattern
+
+Before running any tool-cross-check milestone (M6 OpenFAST, future M7+), audit the FloatSim modules whose conventions sit on the path between the reference tool's output and the assertion under test. This is a workflow discipline: **conventions that look settled often aren't**, and disagreements between tools can hide as off-by-one errors in any module along the chain.
+
+The motivating example is the hydrostatic-gravity bug (`docs/post-mortems/hydrostatic-gravity-bug.md`). M6 PR1's planning surfaced it: the BEM readers (WAMIT, Capytaine) explicitly documented that gravity is added by downstream `Body` assembly, but the assembly step did not exist. `floatsim/hydro/hydrostatics.py` was listed in ARCHITECTURE.md §4 but never written. `assemble_cummins_lhs` consumed the buoyancy-only `C` verbatim. No M5 test exercised the buggy combination, so the gap was invisible until the M6 audit traced it. A direct M6 PR2 assertion against OC4 pitch period would have failed with NaN, surfacing the bug as a *cross-check* failure rather than an *internal* one.
+
+**Audit sequence (run before the first cross-check assertion fires):**
+
+1. **List the modules on the cross-check path.** For M6 PR2 (S1 OC4 static equilibrium): the BEM reader → `assemble_cummins_lhs` → `floatsim/hydro/hydrostatics.py` → `static_equilibrium_solver` → comparison against the OpenFAST CSV.
+2. **For each module, check that its docstring contract matches its implementation.** Reader docstrings claim "downstream assembly will add gravity" — does that downstream assembly exist? Does the integrator's `state_force` lag policy match what the connector docstring asserts? Does the conventions doc's pre-flight checklist cover every assumption the cross-check depends on?
+3. **For every "TODO" or "expected to be added later" annotation found, treat it as a Phase-1 bug, not a future task.** If a downstream invariant is asserted in module A but not implemented, that's the bug to fix today.
+4. **For convention-call entries, verify with both a written-source citation AND a runnable sanity-check protocol.** The HydroDyn conventions doc (`docs/openfast-cross-check-conventions.md` for M6) makes this explicit: every item carries both columns. Single-column items default to "not yet verified."
+5. **For settling parameterisation choices, write a discriminator test BEFORE the cross-check fires.** The asymmetric-CoG test (`tests/validation/test_gravity_restoring_asymmetric_cog.py`) is the template — first-principles derivation alongside the implementation, with the test failing loudly when the convention is wrong.
+
+The audit is not a one-time exercise; it runs at the start of every cross-check milestone. A pinned audit checklist lives in the milestone plan's Q8 (or equivalent) section, with each line marked verified / pending / N/A. Items that lack both a source citation and a sanity-check protocol are not allowed past PR1.
+
+**This pattern is the institutional memory.** The hydrostatic-gravity bug stayed dormant for five milestones because no test exercised the buggy combination; the audit caught it the moment it became reachable. Future cross-checks will surface their own latent issues — the audit pattern surfaces them at PR1 plan time, not at the assertion-under-test failure.
