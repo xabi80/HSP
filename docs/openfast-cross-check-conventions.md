@@ -517,11 +517,14 @@ settling envelope. The cross-check tolerance must be **at least
 the oscillation amplitude**, not the typical analytical-comparison
 tolerance.
 
-Concrete locks per the M6 baseline sanity-check (2026-05-01):
+Concrete locks per the M6 baseline sanity-check (2026-05-01,
+amended 2026-05-04 after the S1 TMax=600 re-extraction):
 
 | Scenario | Channel | Tolerance |
 |----------|---------|-----------|
-| S1 | `heave_m` (equilibrium) | ≥ ±0.15 m absolute (vs ~0.65 m signal) |
+| **S1 (unmoored static equilibrium): cross-check heave, roll, pitch only.** Surge/sway/yaw have zero hydrostatic stiffness in the unmoored OC4 configuration; neutrally stable, no defined equilibrium. Validated in S4 (moored) and S3 (wave-excited) instead. See Item 14 for the general principle. | | |
+| S1 | `heave_m` (equilibrium) | ≥ ±0.15 m absolute |
+| S1 | `roll_rad` (equilibrium) | ≥ ±0.5° absolute (~8.7e-3 rad) |
 | S1 | `pitch_rad` (equilibrium) | ≥ ±0.5° absolute (~8.7e-3 rad) |
 | S4 | `surge_m` (offset) | ≥ ±0.7 m absolute |
 | S4 | `fair_ten_line{1,2,3}_n` | ±5% relative |
@@ -555,7 +558,122 @@ itself is wrong.
 
 ---
 
-## Verification status summary (PR1.1)
+## Item 14 -- Static equilibrium cross-checks are valid only on restored DOFs
+
+**(a) Citation.** Static equilibrium is the configuration ``ξ*``
+where ``F_total(ξ*) = 0``. For the linearised Cummins assembly,
+this reduces to ``C·ξ* = F_external`` for time-independent
+``F_external``. **A DOF whose row/column of ``C`` is all zero
+has no defined equilibrium**: any value of that ``ξ`` component
+satisfies ``F_total = 0``. The system is rank-deficient on that
+DOF; the equilibrium is a manifold (a line, plane, or
+higher-dimensional subspace), not a point.
+
+For the OC4 DeepCwind unmoored configuration:
+
+- **Restored** (non-zero ``C[i, i]``): heave (``C_33 = ρgA_wp``),
+  roll (``C_44 = ρgI_xx_wp + buoyancy/gravity coupling``), pitch
+  (``C_55``).
+- **Unrestored** (``C[i, i] = 0``): surge, sway, yaw. No waterplane
+  contribution; no gravity coupling at first order; no mooring.
+
+Concrete consequence:
+
+- FloatSim's :func:`floatsim.solver.equilibrium.static_equilibrium_solver`
+  applies a small diagonal regularisation ``λ·I`` (default
+  ``λ ≈ 1e-8 · max|C_ii|``) to make the system invertible. For
+  unrestored DOFs this regularised solution returns ``ξ_i ≈ 0``.
+  This is the correct and only well-defined behaviour.
+- OpenFAST's free time-domain integrator does *not* regularise.
+  Without restoring, surge/sway/yaw drift slowly (a few mm/s for
+  OC4) under residual numerical noise, integrating to non-zero
+  but physically meaningless offsets over a few hundred seconds.
+- A naive ``rtol=5e-2`` cross-check on every DOF would flag the
+  drift offset as a FloatSim-vs-OpenFAST mismatch -- but it
+  measures **numerical drift in the reference**, not physics.
+
+**Rule.** Each scenario PR must explicitly enumerate the restored
+DOFs and assert only on those. Unrestored DOFs are tested in
+the scenarios where they *are* restored (S3 wave-excited;
+S4 mooring-restored) or skipped entirely.
+
+**(b) Sanity-check protocol.** ✅ verified at PR2 (S1).
+
+```
+1. For each scenario, identify the restored DOFs by inspecting
+   diag(C) where C is the FloatSim-assembled hydrostatic matrix
+   (after gravity term per Item 5). DOFs with ``C[i, i] == 0``
+   are unrestored.
+2. Cross-check assertions iterate only over restored DOFs.
+3. The test docstring documents which DOFs are tested and why
+   the others are excluded, citing this Item.
+```
+
+For the M6 set:
+
+| Scenario | Restored DOFs | Unrestored DOFs |
+|----------|---------------|-----------------|
+| S1 (unmoored statics) | heave, roll, pitch | surge, sway, yaw |
+| S2 (free decay) | n/a -- dynamic test, period-fitting not equilibrium |
+| S3 (RAO sweep) | all 6 (excited by waves) | n/a |
+| S4 (moored statics) | all 6 (mooring restores horizontals) | n/a |
+| S5 (drag decay) | n/a -- dynamic test, peak-fitting not equilibrium |
+
+---
+
+## Item 15 -- Static equilibrium under Cummins linearisation
+
+**(a) Citation.** The Cummins formulation linearises the platform's
+equation of motion about a chosen reference point -- conventionally
+the BEM solver's hydrostatic origin (where ``PtfmVol0`` was
+computed). Inside FloatSim's
+:func:`floatsim.solver.equilibrium.solve_static_equilibrium`, the
+residual is
+
+    r(xi) = C * xi - F_external(t=0, xi, xi_dot=0)
+
+For a deck whose total mass and displaced volume balance exactly at
+the BEM reference (``m_total * g = rho * V0 * g``), ``F_external = 0``
+and the equilibrium is at ``xi = 0`` -- the linearisation point
+itself. **A FloatSim deck whose mass/buoyancy balance does not
+coincide with the BEM reference will not show the imbalance as an
+equilibrium offset (xi=0 always); the imbalance must be applied as
+an external static force.**
+
+OpenFAST handles this differently: its nonlinear time-domain
+integrator settles into the offset directly, with the unbalanced
+weight pushing the platform up (or down) until the buoyancy
+restores at the new draft. The two formulations are equivalent in
+the small-displacement limit -- the OpenFAST equilibrium offset
+is ``F_residual / C_diag`` for the dominant DOFs -- but they
+report different ``xi_eq`` for the same deck.
+
+**Implication for cross-checks.** M6 cross-checks therefore apply
+OpenFAST's deck residual as ``F_external`` in FloatSim
+(:func:`tests.support.openfast_deck.compute_openfast_deck_residual`)
+rather than asserting equilibrium-offset agreement. This validates
+the linearised assembly + the gravity decomposition (Item 5)
+without forcing a deck-identity refit between the two tools.
+
+**(b) Sanity-check protocol.** ✅ verified at PR2 (S1).
+
+```
+1. Confirm with no F_external, FloatSim's solve_static_equilibrium
+   returns xi=0 (test_zero_external_force_returns_zero_xi).
+2. Compute F_residual = compute_openfast_deck_residual(deck_dir).
+3. Apply F_residual via the state_force callable; solve.
+4. Assert resulting xi_eq matches the OpenFAST CSV's last-30-s
+   mean within Item 13 tolerances on RESTORED DOFs only (Item 14).
+```
+
+The test in
+``tests/validation/test_m6_openfast_static_eq.py`` exercises this
+end-to-end against the committed S1 (unmoored) reference; six
+assertions, all pass at PR2.
+
+---
+
+## Verification status summary (PR2)
 
 | Item | Status |
 |------|--------|
@@ -570,8 +688,10 @@ itself is wrong.
 | 9. Coordinate sign | 🟡 PR2 |
 | 10. RAO phase convention (HIGH RISK) | 🟡 PR3 (runnable test) |
 | 11. Channel naming + `out.info["attribute_names"]` access | ✅ verified at PR1.1 |
-| 12. Last-30-s averaging for S1 / S4 | 🟡 PR2 (S1), PR5 (S4) |
-| 13. Tolerances accommodate residual oscillation | 🟡 PR2 (S1), PR5 (S4) |
+| 12. Last-30-s averaging for S1 / S4 | ✅ verified at PR2 (S1), 🟡 PR5 (S4) |
+| 13. Tolerances accommodate residual oscillation | ✅ verified at PR2 (S1), 🟡 PR5 (S4) |
+| 14. Static equilibrium tests assert only on restored DOFs | ✅ verified at PR2 (S1) |
+| 15. Static equilibrium under Cummins linearisation | ✅ verified at PR2 (S1) |
 
 **Items not allowed past PR1 without both columns filled:** none.
 Every item above carries (a) a written assertion + source citation
