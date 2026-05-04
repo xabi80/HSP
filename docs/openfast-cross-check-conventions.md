@@ -493,6 +493,16 @@ and S4 only.
    (see Item 13).
 ```
 
+**Equilibrium reference is the strict last-30-s mean of the
+decimated CSV.** Eyeballed last-value or last-10% values used
+in earlier sanity reports are NOT the reference. The PR1.1 vs
+PR1.2 disagreement on the S1 heave equilibrium (~0.65 m vs
+0.475 m) traces to this -- they were different measurements of
+the same time series. Cross-check tests must compute the
+last-30-s mean from the committed CSV directly (per the protocol
+above) so the reference is reproducible from the artifact rather
+than from a one-off observation.
+
 This protocol is also documented in `docs/milestone-6-plan.md` v2
 Q4's tolerance table.
 

@@ -29,7 +29,7 @@
         "CompInflow": 0,
         "CompServo": 0,
         "CompMooring": 0,
-        "TMax": 200.0
+        "TMax": 600.0
       },
       "elastodyn_edits": {
         "FlapDOF1": false,
