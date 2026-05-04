@@ -1,121 +1,115 @@
-# OpenFAST OC4 DeepCwind Fixture Set (M6)
+# OpenFAST OC4 DeepCwind Fixture
 
-The committed-fixture vendoring + regeneration recipe for the M6
-OpenFAST/HydroDyn cross-check. Owned by `docs/milestone-6-plan.md` v2.
+Vendored from the OpenFAST/r-test repository
+([github.com/OpenFAST/r-test](https://github.com/OpenFAST/r-test),
+Apache 2.0) at the version pinned in `inputs/manifest.json`. The
+case is `5MW_OC4Semi_Linear` per CLAUDE.md §12; see
+`docs/milestone-6-plan.md` v2 for the M6 cross-check scope.
 
-## What lives here
+## Layout
 
 ```
-tests/fixtures/openfast/oc4_deepcwind/
-├── README.md                  # this file
-├── inputs/                    # vendored OpenFAST input files
-│   ├── OC4Semi_S1_static_eq.fst
-│   ├── OC4Semi_S2_free_decay.fst
-│   ├── OC4Semi_S3_rao_T08.fst       # ... + T10, T12, T14, T16, T18
-│   ├── OC4Semi_S4_moored_eq.fst
-│   ├── OC4Semi_S5_drag_decay.fst
-│   ├── OC4Semi_HydroDyn.dat
-│   ├── OC4Semi_ElastoDyn.dat
-│   ├── OC4Semi_ServoDyn.dat         # off (CompServo=0) but referenced
-│   ├── OC4Semi_AeroDyn.dat          # off
-│   ├── OC4Semi_InflowWind.dat       # off
-│   ├── OC4Semi_MAP.dat              # mooring (S4 only)
-│   └── HydroData/
-│       └── marin_semi.{1,3,hst,4}   # full OC4 BEM (not the trimmed
-│                                    # subset under tests/fixtures/bem/wamit)
-├── outputs/                   # pre-extracted SI-canonical CSVs (committed)
-│   ├── s1_static_eq.csv       # see tests/support/openfast_csv.py for schema
-│   ├── s1_static_eq.json
-│   ├── ... (one CSV+JSON per scenario)
-└── (none yet -- this is the M6 PR1 scaffolding state)
+oc4_deepcwind/
+├── README.md                      this file
+├── baseline/                      OpenFAST 5MW_Baseline + reference case
+│   ├── 5MW_Baseline/              wind-turbine + WAMIT data shared by all decks
+│   │   ├── HydroData/             marin_semi.{1,3,hst,ss,ssexctn} (full BEM)
+│   │   ├── AeroData/              wind-turbine airfoil tables (unused, CompAero=0)
+│   │   ├── Airfoils/              same
+│   │   └── *.dat                  ElastoDyn / BeamDyn / InflowWind defaults
+│   └── case/                      reference baseline run (sanity-check artifact)
+│       ├── 5MW_OC4Semi_WSt_WavesWN.fst
+│       └── *.dat                  baseline subdeck files
+└── inputs/
+    ├── manifest.json              canonical scenario manifest (18 entries)
+    ├── s1_static_eq/              S1: static equilibrium, no waves, no mooring
+    ├── s2_pitch_decay/            S2: 5° pitch IC, free decay, 600 s sim
+    ├── s3_rao_sweep/              S3: regular-wave RAO at 14 periods (Tp=4..30s)
+    │   ├── WaveTp_004p0/
+    │   ├── WaveTp_005p0/
+    │   ├── ...
+    │   └── WaveTp_030p0/
+    ├── s4_moored_eq/              S4: moored equilibrium with MoorDyn (3 lines)
+    └── s5_drag_decay/             S5: heave free decay with Morison drag
 ```
 
-**M6 PR1 scaffolding note:** at PR1 time the `inputs/` directory is
-empty -- the OpenFAST input files have not yet been vendored. PR2
-will land them alongside the first scenario it activates. The
-vendoring procedure below is the agreed-upon recipe; PR2 (and any
-subsequent PR re-vendoring) follows it verbatim.
+Each scenario directory holds the full OpenFAST input set (`.fst`
+driver, `_ElastoDyn.dat`, `_HydroDyn.dat`, `_SeaState.dat`,
+`_BeamDyn*.dat`, etc.) **and** the OpenFAST run log (`run_log/`
+with stdout/stderr/exit_code captured at extraction time).
 
-## Vendoring procedure (inputs)
+## What is NOT committed
 
-The OpenFAST inputs derive from the OpenFAST/r-test repository:
+The repository root ignores OpenFAST run artifacts that are too
+large for git, via `tests/fixtures/openfast/.gitignore`:
 
-- **Upstream:** [OpenFAST/r-test](https://github.com/OpenFAST/r-test)
-- **Path in upstream:** `glue-codes/openfast/5MW_OC4Semi_Linear/`
-- **License:** [Apache 2.0](https://github.com/OpenFAST/r-test/blob/main/LICENSE)
-  -- safe to redistribute with attribution.
+- `*.outb` — OpenFAST binary output (50–100 MB per scenario,
+  ~1 GB across the M6 set).
+- `*.chkp` — OpenFAST checkpoint files (~350 MB per scenario).
 
-Step 1 -- shallow-clone the upstream:
+These are **regenerable** from the committed inputs by re-running
+OpenFAST. The downstream artifacts the M6 scenario tests actually
+consume are the small canonical CSV + JSON pairs that
+`scripts/extract_openfast_fixtures.py` writes (~50 KB per
+scenario; committed under each scenario's directory once produced).
 
-```bash
-git clone --depth 1 https://github.com/OpenFAST/r-test.git /tmp/r-test
+## Manifest-driven configuration
+
+`inputs/manifest.json` is the canonical scenario list:
+
+- `openfast_version_required` — pinned OpenFAST version that
+  produced the reference data. Cross-check tests should error if
+  the local OpenFAST version (when re-extracting) differs.
+- `r_test_tag_required` — corresponding OpenFAST/r-test tag.
+- `scenarios[]` — one entry per scenario, with:
+    - `scenario_name`, `deck_dir`, `purpose` (one-line)
+    - `output_channels` — exact OpenFAST channel names used.
+      MoorDyn outputs `FairTen{1,2,3}` and `AnchTen{1,2,3}`;
+      platform DOFs are `PtfmSurge`/`PtfmHeave`/etc. without
+      module prefix (per the conventions doc, Item 11).
+    - `fst_edits`, `elastodyn_edits`, `hydrodyn_edits`,
+      `seastate_edits` — overrides applied to the upstream
+      r-test deck to scope the run to the M6 scenario.
+    - `sweep_value` — for S3 only, the wave period in seconds.
+
+## Reproduction
+
+To regenerate the .outb binaries from scratch (e.g. after an
+OpenFAST version bump or a deck-edit):
+
 ```
+# Install OpenFAST locally (download at
+# https://github.com/OpenFAST/openfast/releases or build from source).
+# Ensure 'openfast' is on PATH.
 
-Step 2 -- copy the linear-restoring OC4 case verbatim:
+# Install the .outb reader (used by extract_openfast_fixtures.py).
+pip install openfast-toolbox
 
-```bash
-cp -r /tmp/r-test/glue-codes/openfast/5MW_OC4Semi_Linear/* \
-      tests/fixtures/openfast/oc4_deepcwind/inputs/
-cp /tmp/r-test/glue-codes/openfast/5MW_Baseline/HydroData/marin_semi.* \
-   tests/fixtures/openfast/oc4_deepcwind/inputs/HydroData/
-```
-
-Step 3 -- per-scenario `.fst` overrides. The upstream r-test ships
-one `.fst` per case; the M6 cross-check needs five hydrodynamics-only
-variants (S1-S5 per `docs/milestone-6-plan.md` v2 Q2) that share the
-same submodule files but differ in `CompElast/CompAero/CompInflow/CompServo`
-flags, initial conditions, wave parameters, and durations. PR2 commits
-the per-scenario `.fst` files alongside its first failing assertion;
-the rest of the inputs stay verbatim from upstream.
-
-The decision to **disable the wind turbine** (`CompElast=CompAero=
-CompInflow=CompServo=0`) for hydrodynamics-only isolation is locked
-in `docs/milestone-6-plan.md` v2 Q2. **Footgun** -- with `CompElast=0`
-ElastoDyn does not apply gravity, so HydroDyn alone provides only the
-buoyancy-referenced restoring (no `m*g*z_G` term). For the static
-equilibrium scenario (S1) we use the workaround documented in
-`docs/openfast-cross-check-conventions.md` (CompElast=1 with
-locked-DOF approach OR HydroDyn standalone driver with explicit
-gravity input).
-
-## Output regeneration
-
-The SI-canonical CSV+JSON pairs under `outputs/` are produced by:
-
-```bash
-# Ensure 'openfast' is on PATH; download from
-# https://github.com/OpenFAST/openfast/releases
+# Run the extraction script -- it iterates over manifest.json,
+# invokes OpenFAST against each scenario's .fst driver, and writes
+# the canonical CSV + JSON pair next to each scenario.
 python scripts/extract_openfast_fixtures.py --scenario all
+
+# To process already-existing .outb files (skip OpenFAST
+# re-execution, e.g. after a fresh checkout where the binaries
+# were regenerated locally but the CSVs were not committed):
+python scripts/extract_openfast_fixtures.py --scenario all --read-only
 ```
 
-The script is the **single point of unit conversion** between
-OpenFAST's native output (degrees, mixed units) and FloatSim's
-canonical SI fixtures (radians, metres, Newtons). See
-`tests/support/openfast_csv.py` module docstring for the canonical
-CSV schema and the JSON sidecar contract.
+The script's `--read-only` mode skips the OpenFAST invocation and
+just reads the existing `*.outb` per the manifest, applies the SI
+unit conversions, and writes the canonical CSV+JSON pairs. Used
+when the OpenFAST run is owned by someone else (e.g. on a
+license-restricted machine).
 
-CI does **not** regenerate; CSVs are committed as artefacts and
-loaded directly via `tests.support.openfast_csv.load_openfast_history`.
+## Attribution
 
-## Re-vendor when
+The committed inputs are derived from the OpenFAST/r-test
+distribution under the Apache 2.0 license. The wind-turbine
+files (AeroData, Airfoils, `_BeamDyn*`) are present because the
+`.fst` driver references their paths even though the M6
+scenarios disable wind (`CompAero=CompInflow=CompServo=0`).
 
-- OpenFAST major version bump that changes output channel naming
-  (the rename table in `scripts/extract_openfast_fixtures.py
-  _convert_to_canonical_si` may need updating).
-- Geometry tweak in the upstream r-test fixture (rare; the OC4
-  marin_semi case is multi-tool-validated and stable).
-- Initial-condition / scenario-parameter change that requires a fresh
-  `.fst` file.
-
-Re-vendoring updates the JSON sidecars' `openfast_version` and
-`extracted_at` so an audit can detect the bump.
-
-## Geometry citation
-
-Robertson, A. et al., 2014. *Definition of the Semisubmersible
-Floating System for Phase II of OC4*. NREL/TP-5000-60601.
-[PDF](https://www.nrel.gov/docs/fy14osti/60601.pdf)
-
-The same case is also cited from `docs/wamit-fixture-attribution.md`
-(M5 PR1's trimmed `marin_semi.*` subset) and is the canonical
-floating-platform reference deck across M5-M6.
+OC4 DeepCwind geometry citation: Robertson, A. et al., *Definition
+of the Semisubmersible Floating System for Phase II of OC4*,
+NREL/TP-5000-60601 (2014).

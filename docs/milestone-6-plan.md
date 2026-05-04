@@ -154,23 +154,38 @@ tests/fixtures/openfast/oc4_deepcwind/
 - Anyone with OpenFAST installed can regenerate via the script —
   no license, no proprietary dependency, no GUI clicks.
 
-### Q4 — Comparison metrics and tolerances
+### Q4 — Comparison metrics and tolerances (revised at PR1.1)
 
-**Proposal: per-scenario closed-form metrics plus overlay-plot
-diagnostics. Tolerances unchanged from v1 of this plan:**
+**Locked per the M6 baseline sanity-check (Xabier, 2026-05-01).**
+Tolerances on the static-equilibrium scenarios (S1, S4) were
+**loosened** from the v1 draft to accommodate the residual
+oscillation present in the OpenFAST reference at TMax=200s in
+still water (heave natural period ~17 s, light radiation damping
+in still water). Reference values are computed as the
+**time-average over the last 30 s** of each channel, NOT the
+instantaneous final-sample value (per
+`docs/openfast-cross-check-conventions.md` Item 12).
 
 | Scenario | Primary metric | Tolerance |
 | -------- | -------------- | --------- |
-| S1 static eq. | 6-DOF displaced position | `atol = 1e-3 m` (translations), `atol = 1e-2°` (rotations) |
+| **S1** static eq. | 6-DOF displaced position, time-averaged over the last 30 s of the OpenFAST reference | `atol = 0.15 m` (heave), `atol = 0.05 m` (surge/sway), `atol = 0.5°` (rotations) |
 | S2 free decay | (a) heave/pitch period from upward zero crossings; (b) log-decrement damping ratio over first 5 cycles | period: `rtol = 2e-2`; damping: `rtol = 5e-2` |
 | S3 RAO sweep | per-frequency steady-state amplitude (mean of last 3 cycles); phase against wave elevation | amplitude: `rtol = 5e-2`; phase: `atol = 5°` |
-| S4 moored eq. | platform horizontal offset; per-line top tension | offset: `rtol = 5e-2`; tension: `rtol = 5e-2` |
+| **S4** moored eq. | platform horizontal offset (last-30-s mean); per-line top tension (last-30-s mean) | offset: `atol = 0.7 m` (surge), `atol = 0.3 m` (sway/heave); tension: `rtol = 5e-2` |
 | S5 drag decay | first 5 peak amplitudes against OpenFAST peaks | `rtol = 5e-2` per peak |
 
-Tighter on S1/S2 (`rtol = 2e-2`, `atol = 1e-3 m`) — no drag, no
-mooring, no waves means the integrator alone owns the residual,
-and our M2 free-decay validates that integrator at `rtol = 3e-2`
-against analytical references already.
+The S1 heave tolerance accommodates the ~0.13 m last-10%-std
+observed in the reference (reference value ~0.65 m, so tolerance
+is ~23% of signal). The S4 surge tolerance accommodates the
+~0.71 m last-10%-std observed in the reference (MoorDyn took
+~48 s of 200 s init time, leaving only ~152 s of usable sim).
+Tensions converged faster (line stiffness >> hydrostatic) but
+inherit the surge oscillation envelope.
+
+Tighter on S2 / S3 / S5 — these are *dynamic* scenarios where the
+metric is per-cycle peak amplitude or steady-state amplitude over
+multiple cycles, not a quasi-static mean; the integrator alone
+owns the residual.
 
 ### Q5 — Discrepancy report
 

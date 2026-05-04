@@ -386,7 +386,153 @@ out of phase with the wave -- exactly what this test catches.
 
 ---
 
-## Verification status summary (PR1)
+## Item 11 -- OpenFAST output channel naming and access
+
+**(a) Citation.** When `.outb` (binary) outputs are read via the
+`openfast_toolbox.io.FASTOutputFile` class:
+
+- Channel names are accessed via `output.info["attribute_names"]`.
+  The alternative `output.channels` attribute is **not** reliable
+  across openfast-toolbox versions; do not depend on it.
+- Channel units are at `output.info["attribute_units"]`.
+- Sample data is at `output.data` (shape `(n_samples, n_channels)`).
+
+Source: openfast-toolbox source code (`io/fast_output_file.py`),
+verified empirically against the M6 baseline run (Xabier,
+2026-05-01).
+
+For OpenFAST channel **names** themselves:
+
+- Platform DOFs are exposed without a module prefix:
+  `PtfmSurge`, `PtfmHeave`, `PtfmRoll`, `PtfmPitch`, `PtfmYaw`,
+  plus body-frame velocities `PtfmTVxt`, `PtfmRVxt`, etc. NOT
+  `ED.PtfmSurge` -- the ElastoDyn module prefix is dropped at
+  the OpenFAST glue-code level.
+- MoorDyn line tensions are `FairTen{1,2,3}` and `AnchTen{1,2,3}`
+  (capitalised at word starts, no underscores between words).
+  The S4 baseline OutList already includes these by default; no
+  HydroDyn-side edits required.
+
+**(b) Sanity-check protocol.** ✅ verified at PR1.1 (post-baseline run).
+
+```
+1. Run extract_openfast_fixtures.py --mode read-only --scenario all
+   on the committed .outb set. Confirm it returns successfully and
+   that the produced CSV files contain the canonical SI columns
+   (surge_m, sway_m, heave_m, roll_rad, pitch_rad, yaw_rad).
+2. For S4 only, additionally confirm fair_ten_line{1,2,3}_n and
+   anch_ten_line{1,2,3}_n columns are present and non-zero
+   (~1.10 MN at fairlead, ~0.90 MN at anchor per the M6-PR1.1
+   baseline sanity-check report).
+3. Spot-check by parsing one .outb manually:
+
+       from openfast_toolbox.io import FASTOutputFile
+       out = FASTOutputFile("inputs/s1_static_eq/s1_static_eq.outb")
+       assert "PtfmHeave" in out.info["attribute_names"]
+       assert "ED.PtfmHeave" not in out.info["attribute_names"]
+```
+
+The `_RENAME_TABLE` in `extract_openfast_fixtures.py` is the
+single source of truth for the OpenFAST -> canonical SI mapping;
+adding new channels requires only a new entry there.
+
+---
+
+## Item 12 -- Static-equilibrium scenarios use last-30-s time-averages
+
+**(a) Citation.** Empirical observation from the M6 baseline
+sanity-check (Xabier, 2026-05-01):
+
+- S1 (no waves, no mooring): heave equilibrium ~0.65 m with
+  `last10%_std = 0.13 m`. The natural heave period (~17 s) and the
+  light radiation damping in still water mean full settling
+  requires impractically long simulations (TMax = 200 s gives
+  ~12 cycles; would need ~40 cycles for `std < 0.01`).
+- S4 (moored, no waves): MoorDyn took ~48 s of init time, leaving
+  only ~152 s of usable sim. PtfmSurge `last10%_std = 0.71 m`.
+  Tensions converged faster (line stiffness >> hydrostatic) but
+  inherit the surge oscillation envelope.
+
+Both scenarios are **physically settling but not converged**; the
+reference value is therefore the **time-average over the last 30 s**
+of each channel, NOT the instantaneous final-sample value.
+
+For the dynamic scenarios (S2 free decay, S3 RAO sweep, S5 drag
+decay) the cross-check metric is per-cycle peak amplitude
+extraction, not a steady-state mean -- this Item 12 applies to S1
+and S4 only.
+
+**(b) Sanity-check protocol.** 🟡 PR2 (S1) and PR5 (S4).
+
+```
+1. In the scenario test (e.g. tests/validation/test_m6_s1_static_eq.py):
+   load the committed CSV via load_openfast_history.
+2. Compute mean over the last 30 s of simulated time:
+
+       t = history.t
+       mask = t >= (t[-1] - 30.0)
+       reference_value = float(np.mean(channel[mask]))
+
+3. The instantaneous final value (`channel[-1]`) is NOT the
+   reference -- it carries the residual oscillation that the
+   averaging window suppresses.
+4. Tolerance must accommodate the residual oscillation amplitude
+   (see Item 13).
+```
+
+This protocol is also documented in `docs/milestone-6-plan.md` v2
+Q4's tolerance table.
+
+---
+
+## Item 13 -- Cross-check tolerances must accommodate residual oscillation
+
+**(a) Citation.** Following from Item 12: in still-water
+quasi-static scenarios, the reference value's underlying
+time-history still oscillates with amplitude comparable to the
+settling envelope. The cross-check tolerance must be **at least
+the oscillation amplitude**, not the typical analytical-comparison
+tolerance.
+
+Concrete locks per the M6 baseline sanity-check (2026-05-01):
+
+| Scenario | Channel | Tolerance |
+|----------|---------|-----------|
+| S1 | `heave_m` (equilibrium) | ≥ ±0.15 m absolute (vs ~0.65 m signal) |
+| S1 | `pitch_rad` (equilibrium) | ≥ ±0.5° absolute (~8.7e-3 rad) |
+| S4 | `surge_m` (offset) | ≥ ±0.7 m absolute |
+| S4 | `fair_ten_line{1,2,3}_n` | ±5% relative |
+| S4 | `anch_ten_line{1,2,3}_n` | ±5% relative |
+
+These supersede the tighter tolerances in
+`docs/milestone-6-plan.md` v2 Q4 (which were drafted before live
+OpenFAST data was available).
+
+**(b) Sanity-check protocol.** 🟡 PR2 (S1) and PR5 (S4).
+
+```
+1. Use the last-30-s mean per Item 12 as the reference value.
+2. Optionally compute the OpenFAST-side residual standard
+   deviation over the same window for diagnostic context, but do
+   NOT widen the tolerance to "3 sigma" or similar -- the
+   tolerance is locked above by physics (settling envelope), not
+   by sample-statistics.
+3. If FloatSim's prediction sits within the tolerance band of the
+   reference, declare match. The asymmetry (FloatSim and OpenFAST
+   each settle at slightly different mean values around the same
+   physical equilibrium) is absorbed by the tolerance.
+```
+
+If the FloatSim equilibrium sits *outside* the band by more than
+the tolerance, the failure mode is one of: deck-identity
+mismatch (mass/inertia/restoring), gravity-decomposition error
+(Item 5 regression), or a real M2/M3-era integration bug -- treat
+as a debugging starting point, not as evidence the tolerance
+itself is wrong.
+
+---
+
+## Verification status summary (PR1.1)
 
 | Item | Status |
 |------|--------|
@@ -400,6 +546,9 @@ out of phase with the wave -- exactly what this test catches.
 | 8. Output sample rate alignment | ✅ verified at PR1 (loader invariant) |
 | 9. Coordinate sign | 🟡 PR2 |
 | 10. RAO phase convention (HIGH RISK) | 🟡 PR3 (runnable test) |
+| 11. Channel naming + `out.info["attribute_names"]` access | ✅ verified at PR1.1 |
+| 12. Last-30-s averaging for S1 / S4 | 🟡 PR2 (S1), PR5 (S4) |
+| 13. Tolerances accommodate residual oscillation | 🟡 PR2 (S1), PR5 (S4) |
 
 **Items not allowed past PR1 without both columns filled:** none.
 Every item above carries (a) a written assertion + source citation

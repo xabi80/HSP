@@ -41,10 +41,21 @@ exclude = ["tests*", "scripts*", "examples*", "docs*"]
 [tool.black]
 line-length = 100
 target-version = ["py311", "py312"]
+# Vendored OpenFAST fixture helpers under tests/fixtures/openfast/ are
+# Xabier-side tooling for regenerating the binary outputs locally; not
+# part of FloatSim's formatted code surface.
+extend-exclude = '''
+^/tests/fixtures/openfast/oc4_deepcwind/baseline/.*
+'''
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Vendored OpenFAST fixture helpers (under tests/fixtures/openfast/) are
+# Xabier-side tooling for regenerating the binary outputs locally; they
+# live in the repo as institutional memory, not as FloatSim code, so the
+# linter does not apply.
+extend-exclude = ["tests/fixtures/openfast/oc4_deepcwind/baseline"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]

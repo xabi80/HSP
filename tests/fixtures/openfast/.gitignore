@@ -1,0 +1,11 @@
+# OpenFAST output binaries are too large for git (50-100 MB each per
+# scenario; ~1 GB across the M6 set) and are regenerable from the
+# committed deck inputs. Run scripts/extract_openfast_fixtures.py to
+# (a) re-execute OpenFAST against the inputs and (b) extract the small
+# canonical CSV+JSON pairs that the M6 scenario tests consume.
+*.outb
+
+# OpenFAST checkpoint files are even larger (~350 MB per scenario)
+# and exist only because OpenFAST wrote them mid-run; not needed for
+# downstream consumption.
+*.chkp

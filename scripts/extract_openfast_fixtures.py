@@ -1,62 +1,73 @@
-"""Run OpenFAST locally and extract canonical CSV time histories for M6.
+"""Extract canonical CSV time histories from OpenFAST output for M6.
 
 This script is the **single point of unit conversion** between
-OpenFAST's native output format (`.out` text or `.outb` binary,
-typically with degrees for rotations and a mix of metres / kilonewtons /
-tonnes for forces) and FloatSim's canonical SI fixture format
-(metres / radians / Newtons / kilograms; see
-``tests/support/openfast_csv.py`` module docstring for the full
-schema). It is *not* run in CI -- it requires OpenFAST installed
-locally on the contributor's machine. The committed CSV+JSON pairs
-are the artifacts; this script regenerates them on demand.
+OpenFAST's native output format (`.outb` binary, with degrees for
+rotations and a mix of metres / kilonewtons / tonnes for forces) and
+FloatSim's canonical SI fixture format (metres / radians / Newtons /
+kilograms; see ``tests/support/openfast_csv.py`` module docstring for
+the full schema). It is **not** run in CI -- it requires OpenFAST and
+``openfast-toolbox`` installed locally on the contributor's machine.
+The committed CSV+JSON pairs are the artifacts; this script regenerates
+them on demand.
 
 Locked spec per ``docs/milestone-6-plan.md`` v2 Q3:
 
-- Reference deck: OpenFAST/r-test ``5MW_OC4Semi_Linear/`` vendored
-  under ``tests/fixtures/openfast/oc4_deepcwind/inputs/``.
-- Five scenarios in increasing-complexity order:
-  S1 static_eq, S2 free_decay, S3 rao_*, S4 moored_eq, S5 drag_decay.
-- Wind turbine disabled (``CompElast=CompAero=CompInflow=CompServo=0``)
-  for hydrodynamics-only isolation. **Footgun:** with
-  ``CompElast=0`` ElastoDyn does not apply gravity -- HydroDyn alone
-  provides only buoyancy-referenced restoring. For S1 (static
-  equilibrium) we use the workaround documented in
-  ``docs/openfast-cross-check-conventions.md`` (CompElast=1 with
-  unused platform DOFs locked, OR HydroDyn standalone driver with
-  explicit gravity input).
+- Reference deck: OpenFAST/r-test ``5MW_OC4Semi_Linear`` vendored under
+  ``tests/fixtures/openfast/oc4_deepcwind/`` per the layout described
+  in that directory's ``README.md``.
+- Five scenarios in increasing-complexity order plus a 14-period S3
+  RAO sweep, totalling 18 manifest entries.
+- Wind turbine disabled (``CompElast=1`` for static-equilibrium
+  scenarios so ElastoDyn applies gravity; ``CompAero=CompInflow=
+  CompServo=0`` everywhere).
 
-Status (M6 PR1)
----------------
-This is a **scaffolding** commit. The end-to-end orchestration --
-copying inputs into a working directory, invoking the OpenFAST
-executable, parsing its `.out` output, performing the unit
-conversions, writing the canonical CSV + JSON sidecar -- is sketched
-in skeleton form below but not exercised against a real OpenFAST
-binary. The goal of this PR is to land the contract (canonical
-fixture format, metadata schema, scenario list) so M6 PR2 can write
-its first failing assertion against a hand-authored fixture matching
-this contract; PR2 then either uses Xabier's locally-extracted CSVs
-or this script's output once OpenFAST is installed.
+Manifest-driven configuration
+-----------------------------
+The scenario list, output channels, deck overrides, and OpenFAST/r-test
+version pins are all in
+``tests/fixtures/openfast/oc4_deepcwind/inputs/manifest.json``. This
+script iterates over ``scenarios[]``, locates each scenario's deck
+directory, and either runs OpenFAST or reads an existing ``.outb``,
+then converts to the canonical CSV+JSON format.
 
-Usage (when OpenFAST is installed)
-----------------------------------
+Output channel names follow the conventions documented in
+``docs/openfast-cross-check-conventions.md`` Item 11:
+
+- Platform DOFs: ``PtfmSurge``, ``PtfmHeave``, ``PtfmRoll``, etc.,
+  without module prefix.
+- MoorDyn tensions: ``FairTen{1,2,3}`` and ``AnchTen{1,2,3}``,
+  capitalised, no underscore.
+
+Channel access uses ``output.info["attribute_names"]`` (per Xabier's
+M6-PR1.1 lock); the alternative ``output.channels`` attribute is not
+guaranteed to exist on the ``openfast_toolbox.io.FASTOutputFile``
+return value across all versions.
+
+Modes
+-----
+- ``--mode run``: invoke the OpenFAST executable on each scenario's
+  ``.fst``, then read the produced ``.outb``, convert, and write the
+  CSV+JSON. Requires OpenFAST on PATH.
+- ``--mode read-only``: skip the OpenFAST invocation and just read the
+  ``.outb`` files that already sit next to each ``.fst``. Used when
+  someone else has already run the simulations (e.g. on a machine where
+  the live OpenFAST run was owned by another contributor).
+
+Both modes require ``openfast-toolbox`` to read the binary outputs.
+
+Usage
+-----
 ::
 
-    pip install --editable .[dev]
-    # Ensure 'openfast' is on PATH (download from
-    # https://github.com/OpenFAST/openfast/releases).
-    python scripts/extract_openfast_fixtures.py --scenario s2_free_decay
-    python scripts/extract_openfast_fixtures.py --scenario all  # all five
+    pip install openfast-toolbox  # adds openfast_toolbox.io.FASTOutputFile
+    python scripts/extract_openfast_fixtures.py --mode read-only --scenario all
+    python scripts/extract_openfast_fixtures.py --mode read-only --scenario s1_static_eq
+    python scripts/extract_openfast_fixtures.py --mode run --scenario s5_drag_decay
 
-Each scenario writes ``tests/fixtures/openfast/oc4_deepcwind/outputs/{scenario}.csv``
+Each scenario writes
+``tests/fixtures/openfast/oc4_deepcwind/inputs/{scenario}/{scenario}.csv``
 plus ``{scenario}.json`` with the full metadata required by
 :func:`tests.support.openfast_csv.load_openfast_history`.
-
-Re-running is idempotent in the sense that the same OpenFAST inputs
-+ same OpenFAST version produce a byte-similar CSV (some BEM-integrator
-noise in the last few significant digits is expected). The JSON
-sidecar's ``openfast_version`` and ``extracted_at`` capture the
-non-determinism so an audit can detect a silent OpenFAST version bump.
 """
 
 from __future__ import annotations
@@ -65,152 +76,141 @@ import argparse
 import json
 import shutil
 import subprocess
-import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import numpy as np
 
 # ---------------------------------------------------------------------------
-# Repo-relative paths and scenario registry.
+# Repo-relative paths.
 # ---------------------------------------------------------------------------
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _FIXTURE_ROOT: Final[Path] = _REPO_ROOT / "tests" / "fixtures" / "openfast" / "oc4_deepcwind"
 _INPUTS_DIR: Final[Path] = _FIXTURE_ROOT / "inputs"
-_OUTPUTS_DIR: Final[Path] = _FIXTURE_ROOT / "outputs"
+_MANIFEST_PATH: Final[Path] = _INPUTS_DIR / "manifest.json"
 
 _OPENFAST_DEFAULT_BINARY: Final[str] = "openfast"
 
 
+# ---------------------------------------------------------------------------
+# Channel-rename table (OpenFAST native -> FloatSim canonical SI).
+# Add to this table as new scenarios surface new channels.
+# ---------------------------------------------------------------------------
+
+_DEG_TO_RAD: Final[float] = float(np.pi / 180.0)
+_KN_TO_N: Final[float] = 1.0e3
+
+# (canonical_name, conversion_factor)
+_RENAME_TABLE: Final[dict[str, tuple[str, float]]] = {
+    # Platform DOFs (per conventions doc Item 11: no module prefix).
+    "PtfmSurge": ("surge_m", 1.0),
+    "PtfmSway": ("sway_m", 1.0),
+    "PtfmHeave": ("heave_m", 1.0),
+    "PtfmRoll": ("roll_rad", _DEG_TO_RAD),
+    "PtfmPitch": ("pitch_rad", _DEG_TO_RAD),
+    "PtfmYaw": ("yaw_rad", _DEG_TO_RAD),
+    # Platform velocities -- OpenFAST's "T" prefix is translational, "R"
+    # rotational; "xt"/"yt"/"zt" are body-frame components.
+    "PtfmTVxt": ("surge_dot_m_per_s", 1.0),
+    "PtfmTVyt": ("sway_dot_m_per_s", 1.0),
+    "PtfmTVzt": ("heave_dot_m_per_s", 1.0),
+    "PtfmRVxt": ("roll_dot_rad_per_s", _DEG_TO_RAD),
+    "PtfmRVyt": ("pitch_dot_rad_per_s", _DEG_TO_RAD),
+    "PtfmRVzt": ("yaw_dot_rad_per_s", _DEG_TO_RAD),
+    # MoorDyn outputs (per conventions doc Item 11; capitalised, no
+    # underscore). OpenFAST writes line tensions in kN -> N.
+    "FairTen1": ("fair_ten_line1_n", _KN_TO_N),
+    "FairTen2": ("fair_ten_line2_n", _KN_TO_N),
+    "FairTen3": ("fair_ten_line3_n", _KN_TO_N),
+    "AnchTen1": ("anch_ten_line1_n", _KN_TO_N),
+    "AnchTen2": ("anch_ten_line2_n", _KN_TO_N),
+    "AnchTen3": ("anch_ten_line3_n", _KN_TO_N),
+    # Wave elevation and B1 wave loads (S3 RAO sweep) -- forces in N,
+    # moments in N*m, no conversion.
+    "Wave1Elev": ("wave_elev_m", 1.0),
+    "B1WvsF1xi": ("wave_force_x_n", 1.0),
+    "B1WvsF1yi": ("wave_force_y_n", 1.0),
+    "B1WvsF1zi": ("wave_force_z_n", 1.0),
+    "B1WvsM1xi": ("wave_moment_x_nm", 1.0),
+    "B1WvsM1yi": ("wave_moment_y_nm", 1.0),
+    "B1WvsM1zi": ("wave_moment_z_nm", 1.0),
+}
+
+
 @dataclass(frozen=True)
-class Scenario:
-    """One M6 cross-check scenario."""
+class ScenarioEntry:
+    """One row from the canonical manifest."""
 
-    scenario_id: str
-    description: str
-    fst_filename: str  # the top-level .fst driver file, relative to _INPUTS_DIR
-    duration_s: float
-    dt_s: float
-    notes: str
+    scenario_name: str
+    deck_dir: Path  # absolute, resolved from manifest's relative path
+    purpose: str
+    moordyn_active: bool
+    output_channels: tuple[str, ...]
+    sweep_value: float | None
 
+    @property
+    def fst_path(self) -> Path:
+        """Top-level ``.fst`` driver in the deck directory."""
+        # Each deck dir holds exactly one .fst file per the manifest layout.
+        candidates = sorted(self.deck_dir.glob("*.fst"))
+        if len(candidates) != 1:
+            raise SystemExit(
+                f"{self.deck_dir.name}: expected exactly one .fst file; "
+                f"found {len(candidates)}: {[c.name for c in candidates]}"
+            )
+        return candidates[0]
 
-# Locked per docs/milestone-6-plan.md v2 Q2 (in increasing-complexity
-# order: statics -> decay -> RAO -> moored statics -> drag decay).
-SCENARIOS: Final[tuple[Scenario, ...]] = (
-    Scenario(
-        scenario_id="s1_static_eq",
-        description="Static equilibrium (no waves, no wind, no mooring)",
-        fst_filename="OC4Semi_S1_static_eq.fst",
-        duration_s=200.0,
-        dt_s=0.05,
-        notes=(
-            "CompElast=1 with platform DOFs locked except heave/roll/pitch (the "
-            "CompElast=0 alternative would skip gravity in ElastoDyn -- see Q2 "
-            "footgun in docs/milestone-6-plan.md v2)."
-        ),
-    ),
-    Scenario(
-        scenario_id="s2_free_decay",
-        description="Heave + pitch free decay (Cummins free response)",
-        fst_filename="OC4Semi_S2_free_decay.fst",
-        duration_s=600.0,
-        dt_s=0.05,
-        notes="Heave IC = 0.5 m, pitch IC = 5 deg (no waves, no wind, no mooring).",
-    ),
-    Scenario(
-        scenario_id="s3_rao_T08",
-        description="Regular wave at T = 8 s (RAO sweep point)",
-        fst_filename="OC4Semi_S3_rao_T08.fst",
-        duration_s=400.0,
-        dt_s=0.05,
-        notes="Heading 0 deg, amplitude 0.5 m. Steady-state extracted from last 3 cycles.",
-    ),
-    Scenario(
-        scenario_id="s3_rao_T10",
-        description="Regular wave at T = 10 s",
-        fst_filename="OC4Semi_S3_rao_T10.fst",
-        duration_s=400.0,
-        dt_s=0.05,
-        notes="Heading 0 deg, amplitude 0.5 m.",
-    ),
-    Scenario(
-        scenario_id="s3_rao_T12",
-        description="Regular wave at T = 12 s",
-        fst_filename="OC4Semi_S3_rao_T12.fst",
-        duration_s=400.0,
-        dt_s=0.05,
-        notes="Heading 0 deg, amplitude 0.5 m.",
-    ),
-    Scenario(
-        scenario_id="s3_rao_T14",
-        description="Regular wave at T = 14 s",
-        fst_filename="OC4Semi_S3_rao_T14.fst",
-        duration_s=400.0,
-        dt_s=0.05,
-        notes="Heading 0 deg, amplitude 0.5 m.",
-    ),
-    Scenario(
-        scenario_id="s3_rao_T16",
-        description="Regular wave at T = 16 s (near OC4 heave natural)",
-        fst_filename="OC4Semi_S3_rao_T16.fst",
-        duration_s=400.0,
-        dt_s=0.05,
-        notes="Heading 0 deg, amplitude 0.5 m. Spans heave resonance ~17 s.",
-    ),
-    Scenario(
-        scenario_id="s3_rao_T18",
-        description="Regular wave at T = 18 s",
-        fst_filename="OC4Semi_S3_rao_T18.fst",
-        duration_s=400.0,
-        dt_s=0.05,
-        notes="Heading 0 deg, amplitude 0.5 m.",
-    ),
-    Scenario(
-        scenario_id="s4_moored_eq",
-        description="Moored static equilibrium (3-line catenary via MAP++)",
-        fst_filename="OC4Semi_S4_moored_eq.fst",
-        duration_s=300.0,
-        dt_s=0.05,
-        notes="MAP++ analytical catenary (NOT MoorDyn -- transient mooring is Phase 2).",
-    ),
-    Scenario(
-        scenario_id="s5_drag_decay",
-        description="Drag-on heave free decay (Morison Members populated)",
-        fst_filename="OC4Semi_S5_drag_decay.fst",
-        duration_s=600.0,
-        dt_s=0.05,
-        notes=(
-            "Same IC as S2 with HydroDyn Members block populated. Cross-checks "
-            "M5 PR4 Morison wiring against HydroDyn's drag-element implementation."
-        ),
-    ),
-)
+    @property
+    def outb_path(self) -> Path:
+        """The ``.outb`` next to the ``.fst`` (OpenFAST default output)."""
+        return self.fst_path.with_suffix(".outb")
+
+    @property
+    def csv_path(self) -> Path:
+        """Where the canonical CSV lands (next to the deck inputs)."""
+        return self.deck_dir / f"{self.fst_path.stem}.csv"
+
+    @property
+    def json_path(self) -> Path:
+        """JSON metadata sidecar."""
+        return self.deck_dir / f"{self.fst_path.stem}.json"
 
 
-def _scenario_by_id(sid: str) -> Scenario:
-    for s in SCENARIOS:
-        if s.scenario_id == sid:
-            return s
-    raise SystemExit(
-        f"unknown scenario_id {sid!r}; valid ids: " + ", ".join(s.scenario_id for s in SCENARIOS)
-    )
+def _load_manifest() -> tuple[dict[str, Any], list[ScenarioEntry]]:
+    """Load the manifest and convert ``scenarios[]`` to typed entries."""
+    if not _MANIFEST_PATH.is_file():
+        raise SystemExit(
+            f"manifest not found at {_MANIFEST_PATH.relative_to(_REPO_ROOT)}; "
+            f"see {_FIXTURE_ROOT.relative_to(_REPO_ROOT) / 'README.md'} for "
+            "the vendoring procedure."
+        )
+    raw = json.loads(_MANIFEST_PATH.read_text(encoding="utf-8"))
+    entries: list[ScenarioEntry] = []
+    for scenario in raw["scenarios"]:
+        deck_dir = _FIXTURE_ROOT / Path(scenario["deck_dir"].replace("\\", "/"))
+        entries.append(
+            ScenarioEntry(
+                scenario_name=scenario["scenario_name"],
+                deck_dir=deck_dir,
+                purpose=scenario["purpose"],
+                moordyn_active=scenario["moordyn_active"],
+                output_channels=tuple(scenario["output_channels"]),
+                sweep_value=scenario["sweep_value"],
+            )
+        )
+    return raw, entries
 
 
 # ---------------------------------------------------------------------------
-# Skeleton extraction pipeline.
+# OpenFAST execution and binary-output reading.
 # ---------------------------------------------------------------------------
 
 
 def _detect_openfast_version(binary: str) -> str:
-    """Probe ``{binary} -v`` and return a version string (e.g. ``v3.5.3``).
-
-    Skeleton: shells out to OpenFAST and parses the leading version
-    line from stdout. Falls back to ``"unknown"`` if the call fails;
-    the caller decides whether to abort.
-    """
+    """Probe ``{binary} -v`` and return a version string."""
     if shutil.which(binary) is None:
         return "unknown (binary not on PATH)"
     try:
@@ -219,132 +219,135 @@ def _detect_openfast_version(binary: str) -> str:
         )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:  # pragma: no cover
         return f"unknown (probe failed: {exc!s})"
-    # OpenFAST prints e.g. "OpenFAST-v3.5.3" on the first stdout line.
     for line in proc.stdout.splitlines():
-        if "OpenFAST" in line and "v" in line:
+        if "OpenFAST" in line and "v" in line.lower():
             return line.strip()
     return proc.stdout.splitlines()[0].strip() if proc.stdout else "unknown"
 
 
-def _run_openfast(binary: str, fst_path: Path) -> Path:
-    """Invoke OpenFAST on ``fst_path``; return the produced ``.out`` path.
-
-    Skeleton: assumes OpenFAST writes ``{stem}.out`` next to the input
-    by default. Real implementation will copy inputs into a fresh
-    working directory first (OpenFAST is sensitive to relative
-    sub-input paths).
-    """
-    if shutil.which(binary) is None:  # pragma: no cover
+def _run_openfast(binary: str, fst_path: Path) -> Path:  # pragma: no cover -- live-OpenFAST path
+    """Invoke OpenFAST on ``fst_path``; return the produced ``.outb`` path."""
+    if shutil.which(binary) is None:
         raise SystemExit(
             f"OpenFAST binary {binary!r} not found on PATH. Install from "
             "https://github.com/OpenFAST/openfast/releases or pass --binary."
         )
-    proc = subprocess.run(  # pragma: no cover -- depends on OpenFAST install
-        [binary, str(fst_path)], capture_output=True, text=True
-    )
-    if proc.returncode != 0:  # pragma: no cover
+    proc = subprocess.run([binary, str(fst_path)], capture_output=True, text=True)
+    if proc.returncode != 0:
         raise SystemExit(
             f"OpenFAST exited {proc.returncode} on {fst_path.name}.\n"
             f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
         )
-    out_path = fst_path.with_suffix(".out")
-    if not out_path.is_file():  # pragma: no cover
-        raise SystemExit(f"OpenFAST did not produce expected output {out_path}")
-    return out_path
+    outb_path = fst_path.with_suffix(".outb")
+    if not outb_path.is_file():
+        raise SystemExit(f"OpenFAST did not produce expected output {outb_path}")
+    return outb_path
 
 
-def _parse_openfast_out_text(out_path: Path) -> tuple[list[str], list[str], np.ndarray]:
-    """Parse an OpenFAST text ``.out`` file into (channel_names, units, data).
+def _read_outb(outb_path: Path) -> tuple[list[str], list[str], np.ndarray]:
+    """Read an OpenFAST ``.outb`` binary into (channel_names, units, data).
 
-    OpenFAST's text output has two header lines (channel names; units),
-    then whitespace-separated float rows. ``data`` is shape
-    ``(n_samples, n_channels)``.
+    Uses ``openfast_toolbox.io.FASTOutputFile``. Channel names are
+    fetched via ``output.info["attribute_names"]`` (NOT via
+    ``output.channels`` -- that attribute is unreliable across
+    library versions). Units are similarly via
+    ``output.info["attribute_units"]``.
     """
-    with open(out_path, encoding="utf-8") as fh:
-        # OpenFAST sometimes writes a banner of dash lines before the
-        # channel-name row. Skip until we hit a row that contains "Time".
-        for line in fh:
-            if line.strip().startswith("Time") or "Time " in line:
-                channel_line = line
-                break
-        else:  # pragma: no cover
-            raise SystemExit(f"could not find channel-names row in {out_path}")
-        units_line = next(fh)
-        # Remaining lines are the data block; some OpenFAST builds emit
-        # a trailing blank line which np.loadtxt happily ignores.
-    channels = channel_line.split()
-    units = units_line.split()
-    if len(channels) != len(units):  # pragma: no cover
+    try:
+        from openfast_toolbox.io import FASTOutputFile  # type: ignore[import-not-found]
+    except ImportError as exc:  # pragma: no cover
         raise SystemExit(
-            f"{out_path.name}: channel/unit header mismatch " f"({len(channels)} vs {len(units)})"
+            "openfast-toolbox is required to read .outb binaries. "
+            "Install via `pip install openfast-toolbox`."
+        ) from exc
+
+    output = FASTOutputFile(str(outb_path))
+    info = output.info
+    if "attribute_names" not in info:
+        raise SystemExit(
+            f"{outb_path.name}: openfast-toolbox FASTOutputFile.info "
+            "missing 'attribute_names' key. Library version mismatch?"
         )
-    data = np.loadtxt(out_path, skiprows=8)  # OpenFAST default: 8 header lines
+    channels = list(info["attribute_names"])
+    units = list(info.get("attribute_units", ["?"] * len(channels)))
+    # FASTOutputFile exposes the underlying array via .data (an
+    # ndarray of shape (n_samples, n_channels)).
+    data = np.asarray(output.data, dtype=np.float64)
+    if data.ndim != 2 or data.shape[1] != len(channels):
+        raise SystemExit(
+            f"{outb_path.name}: data shape {data.shape} mismatches channel "
+            f"count {len(channels)}"
+        )
     return channels, units, data
 
 
 def _convert_to_canonical_si(
     channels: list[str], units: list[str], data: np.ndarray
 ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
-    """Convert OpenFAST native units to SI canonical (rad, m, N, kg).
-
-    Returns ``(time_s, named_columns)`` with ``named_columns`` keyed by
-    a normalised SI-suffixed name (e.g. ``"surge_m"``, ``"pitch_rad"``,
-    ``"tension_line1_N"``). Caller is responsible for assembling these
-    into the canonical CSV header order.
-    """
+    """Convert the OpenFAST native units to canonical SI."""
     if "Time" not in channels:  # pragma: no cover
         raise SystemExit("OpenFAST output missing Time channel")
     t_idx = channels.index("Time")
-    t_unit = units[t_idx].strip("()")
+    t_unit = units[t_idx].strip("()") if t_idx < len(units) else "s"
     if t_unit not in ("s", "sec"):  # pragma: no cover
         raise SystemExit(f"unexpected Time unit {t_unit!r} (expected 's')")
     time_s = data[:, t_idx].astype(np.float64)
 
     canonical: dict[str, np.ndarray] = {}
-    # Map OpenFAST channel names to canonical (SI) names + conversion factor.
-    # Add to this table as new scenarios surface new channels.
-    rename_table: dict[str, tuple[str, float]] = {
-        "PtfmSurge": ("surge_m", 1.0),
-        "PtfmSway": ("sway_m", 1.0),
-        "PtfmHeave": ("heave_m", 1.0),
-        "PtfmRoll": ("roll_rad", np.pi / 180.0),  # OpenFAST writes degrees by default
-        "PtfmPitch": ("pitch_rad", np.pi / 180.0),
-        "PtfmYaw": ("yaw_rad", np.pi / 180.0),
-        # M6 PR5 (S4 moored) extension: per-line top tensions in kN -> N.
-        # Add conversions here when MoorDyn / MAP++ output channel names
-        # are confirmed against a live OpenFAST run.
-    }
     for ch in channels:
-        if ch in rename_table:
-            new_name, factor = rename_table[ch]
+        if ch in _RENAME_TABLE:
+            new_name, factor = _RENAME_TABLE[ch]
             canonical[new_name] = factor * data[:, channels.index(ch)].astype(np.float64)
     return time_s, canonical
 
 
 def _write_canonical_pair(
-    scenario: Scenario,
+    entry: ScenarioEntry,
     time_s: np.ndarray,
     canonical: dict[str, np.ndarray],
-    extra: dict[str, np.ndarray],
     *,
     openfast_version: str,
-    binary: str,
+    extraction_command: str,
+    manifest_meta: dict[str, Any],
 ) -> tuple[Path, Path]:
-    """Write the SI-canonical CSV + JSON sidecar for one scenario."""
-    _OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
-    csv_path = _OUTPUTS_DIR / f"{scenario.scenario_id}.csv"
-    json_path = _OUTPUTS_DIR / f"{scenario.scenario_id}.json"
+    """Write the canonical CSV + JSON sidecar for one scenario."""
+    csv_path = entry.csv_path
+    json_path = entry.json_path
 
+    # The canonical schema requires the six platform DOFs at minimum;
+    # additional columns (velocities, tensions, wave channels) are
+    # written if present.
     required = ["surge_m", "sway_m", "heave_m", "roll_rad", "pitch_rad", "yaw_rad"]
     missing = [c for c in required if c not in canonical]
-    if missing:  # pragma: no cover -- rename_table coverage gap
+    if missing:
         raise SystemExit(
-            f"{scenario.scenario_id}: extracted history missing canonical columns "
-            f"{missing}. Update rename_table in _convert_to_canonical_si."
+            f"{entry.scenario_name}: missing canonical columns {missing}. "
+            "Update _RENAME_TABLE in extract_openfast_fixtures.py."
         )
-
-    headers = ["time_s", *required, *extra.keys()]
-    columns = [time_s] + [canonical[c] for c in required] + list(extra.values())
+    optional_order = [
+        "surge_dot_m_per_s",
+        "sway_dot_m_per_s",
+        "heave_dot_m_per_s",
+        "roll_dot_rad_per_s",
+        "pitch_dot_rad_per_s",
+        "yaw_dot_rad_per_s",
+        "wave_elev_m",
+        "wave_force_x_n",
+        "wave_force_y_n",
+        "wave_force_z_n",
+        "wave_moment_x_nm",
+        "wave_moment_y_nm",
+        "wave_moment_z_nm",
+        "fair_ten_line1_n",
+        "fair_ten_line2_n",
+        "fair_ten_line3_n",
+        "anch_ten_line1_n",
+        "anch_ten_line2_n",
+        "anch_ten_line3_n",
+    ]
+    extras = [c for c in optional_order if c in canonical]
+    headers = ["time_s", *required, *extras]
+    columns = [time_s] + [canonical[c] for c in required + extras]
     arr = np.column_stack(columns)
     csv_path.write_text(
         ",".join(headers)
@@ -354,47 +357,79 @@ def _write_canonical_pair(
         encoding="utf-8",
     )
 
-    metadata = {
-        "scenario_id": scenario.scenario_id,
+    # Compute dt and duration from the time column (more reliable than
+    # parsing fst_edits).
+    dt_s = float(np.median(np.diff(time_s))) if time_s.size > 1 else float("nan")
+    duration_s = float(time_s[-1] - time_s[0]) if time_s.size > 1 else 0.0
+
+    metadata: dict[str, Any] = {
+        "scenario_name": entry.scenario_name,
+        "deck_dir": str(entry.deck_dir.relative_to(_FIXTURE_ROOT).as_posix()),
+        "purpose": entry.purpose,
+        "moordyn_active": entry.moordyn_active,
+        "sweep_value": entry.sweep_value,
         "openfast_version": openfast_version,
-        "dt_s": scenario.dt_s,
-        "duration_s": scenario.duration_s,
+        "openfast_version_required": manifest_meta.get("openfast_version_required"),
+        "r_test_tag_required": manifest_meta.get("r_test_tag_required"),
+        "dt_s": dt_s,
+        "duration_s": duration_s,
+        "n_samples": int(time_s.size),
         "unit_system": "SI_canonical",
-        "extracted_by": (
-            f"scripts/extract_openfast_fixtures.py --scenario {scenario.scenario_id} "
-            f"--binary {binary}"
-        ),
+        "extracted_by": extraction_command,
         "extracted_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "source_inputs": [str(_INPUTS_DIR.relative_to(_REPO_ROOT) / scenario.fst_filename)],
-        "description": scenario.description,
-        "notes": scenario.notes,
+        "channels_canonical": headers,
     }
     json_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     return csv_path, json_path
 
 
-def _extract_one(scenario: Scenario, binary: str) -> None:  # pragma: no cover
-    """Run OpenFAST + extract one scenario. Real-execution path."""
-    fst_path = _INPUTS_DIR / scenario.fst_filename
-    if not fst_path.is_file():
+def _extract_one(
+    entry: ScenarioEntry,
+    *,
+    mode: str,
+    binary: str,
+    manifest_meta: dict[str, Any],
+) -> None:
+    """Run OpenFAST (if mode=run) and extract canonical CSV+JSON for one scenario."""
+    if not entry.deck_dir.is_dir():
         raise SystemExit(
-            f"OpenFAST input {fst_path} not found. The committed fixture set "
-            f"may be incomplete; see {_FIXTURE_ROOT / 'README.md'} for the "
-            "vendoring procedure."
+            f"deck directory {entry.deck_dir.relative_to(_REPO_ROOT)} not "
+            "found; manifest may be stale."
         )
-    print(f"  scenario {scenario.scenario_id}: running OpenFAST...", flush=True)
-    out_path = _run_openfast(binary, fst_path)
-    channels, units, data = _parse_openfast_out_text(out_path)
+
+    if mode == "run":  # pragma: no cover -- live-OpenFAST path
+        print(f"  scenario {entry.scenario_name}: running OpenFAST...", flush=True)
+        outb_path = _run_openfast(binary, entry.fst_path)
+    elif mode == "read-only":
+        outb_path = entry.outb_path
+        if not outb_path.is_file():
+            raise SystemExit(
+                f"--mode read-only but {outb_path.relative_to(_REPO_ROOT)} not "
+                "found. Either run OpenFAST first (--mode run) or check that "
+                "the .outb file was committed/extracted to the deck directory."
+            )
+        print(f"  scenario {entry.scenario_name}: reading {outb_path.name}", flush=True)
+    else:  # pragma: no cover -- argparse choices guard
+        raise SystemExit(f"unknown mode {mode!r}")
+
+    channels, units, data = _read_outb(outb_path)
     time_s, canonical = _convert_to_canonical_si(channels, units, data)
-    csv, json_path = _write_canonical_pair(
-        scenario,
+    csv_path, json_path = _write_canonical_pair(
+        entry,
         time_s,
         canonical,
-        extra={},  # M6 PR5/PR6 extend with per-line tensions
         openfast_version=_detect_openfast_version(binary),
-        binary=binary,
+        extraction_command=(
+            f"scripts/extract_openfast_fixtures.py --mode {mode} "
+            f"--scenario {entry.scenario_name}"
+            + (f" --sweep {entry.sweep_value}" if entry.sweep_value is not None else "")
+        ),
+        manifest_meta=manifest_meta,
     )
-    print(f"    wrote {csv.relative_to(_REPO_ROOT)} + {json_path.name}", flush=True)
+    print(
+        f"    wrote {csv_path.relative_to(_REPO_ROOT)} + {json_path.name}",
+        flush=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -402,14 +437,36 @@ def _extract_one(scenario: Scenario, binary: str) -> None:  # pragma: no cover
 # ---------------------------------------------------------------------------
 
 
+def _select_entries(entries: list[ScenarioEntry], scenario_arg: str) -> list[ScenarioEntry]:
+    """Filter the manifest entries by the ``--scenario`` CLI argument."""
+    if scenario_arg == "all":
+        return entries
+    selected = [e for e in entries if e.scenario_name == scenario_arg]
+    if not selected:
+        valid = sorted({e.scenario_name for e in entries})
+        raise SystemExit(f"unknown --scenario {scenario_arg!r}; valid: {', '.join(valid)} or 'all'")
+    return selected
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--mode",
+        choices=("run", "read-only"),
+        default="read-only",
+        help=(
+            "'run': invoke OpenFAST against each .fst (requires OpenFAST on "
+            "PATH); 'read-only': just read existing .outb files (default)."
+        ),
+    )
     parser.add_argument(
         "--scenario",
         default="all",
         help=(
-            "Scenario id to extract, or 'all' for the full M6 set. Valid ids: "
-            + ", ".join(s.scenario_id for s in SCENARIOS)
+            "Scenario name from manifest.json (e.g. s1_static_eq), or 'all' "
+            "for the full set. The S3 RAO sweep registers as 14 entries with "
+            "scenario_name='s3_rao_sweep' and distinct sweep_value -- 'all' "
+            "processes all of them."
         ),
     )
     parser.add_argument(
@@ -419,18 +476,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    if not _INPUTS_DIR.is_dir():
-        print(
-            f"OpenFAST inputs directory {_INPUTS_DIR.relative_to(_REPO_ROOT)} not found. "
-            f"See {_FIXTURE_ROOT.relative_to(_REPO_ROOT) / 'README.md'} for the vendoring "
-            "recipe.",
-            file=sys.stderr,
-        )
-        return 1
-
-    scenarios = SCENARIOS if args.scenario == "all" else (_scenario_by_id(args.scenario),)
-    for sc in scenarios:
-        _extract_one(sc, args.binary)  # pragma: no cover -- live OpenFAST path
+    manifest_meta, entries = _load_manifest()
+    selected = _select_entries(entries, args.scenario)
+    print(
+        f"extract_openfast_fixtures: mode={args.mode}, "
+        f"selected {len(selected)} of {len(entries)} manifest entries",
+        flush=True,
+    )
+    for entry in selected:
+        _extract_one(entry, mode=args.mode, binary=args.binary, manifest_meta=manifest_meta)
     return 0
 
 
