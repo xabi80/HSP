@@ -9,3 +9,11 @@
 # and exist only because OpenFAST wrote them mid-run; not needed for
 # downstream consumption.
 *.chkp
+
+# MoorDyn writes a separate text output alongside the main .outb
+# whenever the module is active (S4 only in our M6 set, ~1.7 MB).
+# Its tension columns are merged into the canonical CSV by the
+# extraction script (see _merge_moordyn_into_canonical), so the raw
+# .MD.out is not needed by consumers and is regenerable from the
+# committed inputs. Same policy as .outb.
+*.MD.out

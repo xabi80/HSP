@@ -1,0 +1,26 @@
+{
+  "scenario_name": "s3_rao_sweep",
+  "deck_dir": "inputs/s3_rao_sweep/WaveTp_010p0",
+  "purpose": "Regular-wave RAO at 14 wave periods, no mooring. Cross-checks first-order excitation and steady-state response.",
+  "moordyn_active": false,
+  "sweep_value": 10.0,
+  "openfast_version": "unknown (binary not on PATH)",
+  "openfast_version_required": "v4.1.2",
+  "r_test_tag_required": "v4.1.2",
+  "dt_s": 0.04999999999999716,
+  "duration_s": 1200.0,
+  "n_samples": 24001,
+  "unit_system": "SI_canonical",
+  "extracted_by": "scripts/extract_openfast_fixtures.py --mode read-only --scenario s3_rao_sweep --sweep 10.0",
+  "extracted_at": "2026-05-04T00:49:39Z",
+  "channels_canonical": [
+    "time_s",
+    "surge_m",
+    "sway_m",
+    "heave_m",
+    "roll_rad",
+    "pitch_rad",
+    "yaw_rad",
+    "wave_elev_m"
+  ]
+}

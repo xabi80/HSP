@@ -95,6 +95,20 @@ _MANIFEST_PATH: Final[Path] = _INPUTS_DIR / "manifest.json"
 
 _OPENFAST_DEFAULT_BINARY: Final[str] = "openfast"
 
+# OpenFAST native output rate is typically 80 Hz (dt=0.0125 s); we
+# decimate to 20 Hz (dt=0.05 s) so the committed CSV fixtures stay
+# small while remaining well above the highest signal frequency of
+# interest (OC4 platform DOFs are <1 Hz). Decimation is a simple
+# stride-pick (no filter), Nyquist-safe because OpenFAST's internal
+# integrator already runs at much finer dt than the output stride.
+_TARGET_DT_S: Final[float] = 0.05
+
+# Per-sample numeric precision in the canonical CSV. Cross-check
+# tolerances are at most rtol=5e-2; 6 sig figs is more than enough
+# and keeps the file size manageable. Bumping to :.10e quadruples
+# the S3 sweep size with no measurable physics gain.
+_NUMERIC_FORMAT: Final[str] = ".6e"
+
 
 # ---------------------------------------------------------------------------
 # Channel-rename table (OpenFAST native -> FloatSim canonical SI).
@@ -104,7 +118,8 @@ _OPENFAST_DEFAULT_BINARY: Final[str] = "openfast"
 _DEG_TO_RAD: Final[float] = float(np.pi / 180.0)
 _KN_TO_N: Final[float] = 1.0e3
 
-# (canonical_name, conversion_factor)
+# (canonical_name, conversion_factor) -- keys are matched
+# case-insensitively against the OpenFAST channel name list.
 _RENAME_TABLE: Final[dict[str, tuple[str, float]]] = {
     # Platform DOFs (per conventions doc Item 11: no module prefix).
     "PtfmSurge": ("surge_m", 1.0),
@@ -121,14 +136,17 @@ _RENAME_TABLE: Final[dict[str, tuple[str, float]]] = {
     "PtfmRVxt": ("roll_dot_rad_per_s", _DEG_TO_RAD),
     "PtfmRVyt": ("pitch_dot_rad_per_s", _DEG_TO_RAD),
     "PtfmRVzt": ("yaw_dot_rad_per_s", _DEG_TO_RAD),
-    # MoorDyn outputs (per conventions doc Item 11; capitalised, no
-    # underscore). OpenFAST writes line tensions in kN -> N.
-    "FairTen1": ("fair_ten_line1_n", _KN_TO_N),
-    "FairTen2": ("fair_ten_line2_n", _KN_TO_N),
-    "FairTen3": ("fair_ten_line3_n", _KN_TO_N),
-    "AnchTen1": ("anch_ten_line1_n", _KN_TO_N),
-    "AnchTen2": ("anch_ten_line2_n", _KN_TO_N),
-    "AnchTen3": ("anch_ten_line3_n", _KN_TO_N),
+    # MoorDyn outputs -- read from the SEPARATE *.MD.out text file, NOT
+    # the main .outb. Names are UPPERCASE there ("FAIRTEN1", "ANCHTEN1")
+    # and units are already Newtons (no kN -> N conversion). The
+    # case-insensitive match below catches both spellings the
+    # OpenFAST glue code may emit. Per conventions doc Item 11.
+    "FairTen1": ("fair_ten_line1_n", 1.0),
+    "FairTen2": ("fair_ten_line2_n", 1.0),
+    "FairTen3": ("fair_ten_line3_n", 1.0),
+    "AnchTen1": ("anch_ten_line1_n", 1.0),
+    "AnchTen2": ("anch_ten_line2_n", 1.0),
+    "AnchTen3": ("anch_ten_line3_n", 1.0),
     # Wave elevation and B1 wave loads (S3 RAO sweep) -- forces in N,
     # moments in N*m, no conversion.
     "Wave1Elev": ("wave_elev_m", 1.0),
@@ -138,6 +156,11 @@ _RENAME_TABLE: Final[dict[str, tuple[str, float]]] = {
     "B1WvsM1xi": ("wave_moment_x_nm", 1.0),
     "B1WvsM1yi": ("wave_moment_y_nm", 1.0),
     "B1WvsM1zi": ("wave_moment_z_nm", 1.0),
+}
+
+# Lookup table built once at import time, keys lowercased.
+_RENAME_TABLE_CI: Final[dict[str, tuple[str, float]]] = {
+    k.lower(): v for k, v in _RENAME_TABLE.items()
 }
 
 
@@ -289,10 +312,17 @@ def _read_outb(outb_path: Path) -> tuple[list[str], list[str], np.ndarray]:
 def _convert_to_canonical_si(
     channels: list[str], units: list[str], data: np.ndarray
 ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
-    """Convert the OpenFAST native units to canonical SI."""
-    if "Time" not in channels:  # pragma: no cover
+    """Convert the OpenFAST native units to canonical SI.
+
+    Channel-name matching is case-insensitive: ``FairTen1`` (camel) and
+    ``FAIRTEN1`` (MoorDyn-style upper) both map to the same canonical
+    ``fair_ten_line1_n`` column.
+    """
+    # Normalise channel-name lookup: build a case-insensitive index.
+    chan_index = {c.lower(): i for i, c in enumerate(channels)}
+    if "time" not in chan_index:  # pragma: no cover
         raise SystemExit("OpenFAST output missing Time channel")
-    t_idx = channels.index("Time")
+    t_idx = chan_index["time"]
     t_unit = units[t_idx].strip("()") if t_idx < len(units) else "s"
     if t_unit not in ("s", "sec"):  # pragma: no cover
         raise SystemExit(f"unexpected Time unit {t_unit!r} (expected 's')")
@@ -300,10 +330,79 @@ def _convert_to_canonical_si(
 
     canonical: dict[str, np.ndarray] = {}
     for ch in channels:
-        if ch in _RENAME_TABLE:
-            new_name, factor = _RENAME_TABLE[ch]
-            canonical[new_name] = factor * data[:, channels.index(ch)].astype(np.float64)
+        key = ch.lower()
+        if key in _RENAME_TABLE_CI:
+            new_name, factor = _RENAME_TABLE_CI[key]
+            canonical[new_name] = factor * data[:, chan_index[key]].astype(np.float64)
     return time_s, canonical
+
+
+def _read_moordyn_text_output(md_path: Path) -> tuple[np.ndarray, list[str], np.ndarray]:
+    """Read a MoorDyn ``*.MD.out`` text file -> (time, channel_names, data).
+
+    MoorDyn writes a separate plain-text output file alongside the main
+    OpenFAST ``.outb`` whenever the moodyn module is active. Format:
+
+        line 0: banner ("These predictions were generated by MoorDyn ...")
+        lines 1-4: blanks
+        line 5: whitespace-separated channel names ("Time ANCHTEN1 ANCHTEN2 ...")
+        line 6: whitespace-separated units in parens
+        lines 7+: whitespace-separated float rows
+
+    Channel names are uppercase; units are already Newtons (the
+    rename-table entry uses factor=1.0). The first sample is at
+    ``t = dt``, NOT ``t = 0`` -- MoorDyn skips the initial step. The
+    caller must time-align this to the main .outb time grid.
+    """
+    with open(md_path, encoding="utf-8") as fh:
+        lines = fh.readlines()
+    # Find the header row (first row whose first token is "Time").
+    header_idx = None
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.split()[:1] == ["Time"]:
+            header_idx = i
+            break
+    if header_idx is None:  # pragma: no cover
+        raise SystemExit(f"{md_path.name}: could not find 'Time' header row")
+    channels = lines[header_idx].split()
+    # units = lines[header_idx + 1].split()  -- already implicit in rename table
+    data_rows = [line.split() for line in lines[header_idx + 2 :] if line.strip()]
+    arr = np.asarray(data_rows, dtype=np.float64)
+    if arr.ndim != 2 or arr.shape[1] != len(channels):  # pragma: no cover
+        raise SystemExit(
+            f"{md_path.name}: data shape {arr.shape} mismatches header count {len(channels)}"
+        )
+    time_s = arr[:, 0]
+    return time_s, channels, arr
+
+
+def _merge_moordyn_into_canonical(
+    md_path: Path,
+    main_time: np.ndarray,
+    canonical: dict[str, np.ndarray],
+) -> None:
+    """Read ``*.MD.out`` and append rename-mapped tensions to ``canonical``.
+
+    The MoorDyn time grid may differ slightly from the main .outb grid
+    (typically MoorDyn starts at t=dt rather than t=0). We linearly
+    interpolate each tension column onto ``main_time``; out-of-range
+    samples (the t=0 sample, if MoorDyn started later) are filled with
+    the first available MoorDyn value -- a static-equilibrium scenario
+    has near-constant tension at t=0+, so this is harmless.
+    """
+    md_time, md_channels, md_data = _read_moordyn_text_output(md_path)
+    for j, ch in enumerate(md_channels):
+        key = ch.lower()
+        if key == "time" or key not in _RENAME_TABLE_CI:
+            continue
+        new_name, factor = _RENAME_TABLE_CI[key]
+        if new_name in canonical:
+            # Already present in the main .outb (unlikely for MoorDyn but
+            # guard against double-population).
+            continue
+        col = factor * md_data[:, j]
+        canonical[new_name] = np.interp(main_time, md_time, col, left=col[0], right=col[-1])
 
 
 def _write_canonical_pair(
@@ -354,18 +453,29 @@ def _write_canonical_pair(
     headers = ["time_s", *required, *extras]
     columns = [time_s] + [canonical[c] for c in required + extras]
     arr = np.column_stack(columns)
+
+    # Decimate to _TARGET_DT_S to keep committed CSVs small. Stride is
+    # round(target / native); native dt is inferred from the time column.
+    if arr.shape[0] > 1:
+        native_dt = float(np.median(np.diff(time_s)))
+        stride = max(1, round(_TARGET_DT_S / native_dt))
+        arr = arr[::stride]
+
+    fmt = "{:" + _NUMERIC_FORMAT + "}"
     csv_path.write_text(
         ",".join(headers)
         + "\n"
-        + "\n".join(",".join(f"{v:.10e}" for v in row) for row in arr)
+        + "\n".join(",".join(fmt.format(v) for v in row) for row in arr)
         + "\n",
         encoding="utf-8",
     )
 
-    # Compute dt and duration from the time column (more reliable than
-    # parsing fst_edits).
-    dt_s = float(np.median(np.diff(time_s))) if time_s.size > 1 else float("nan")
-    duration_s = float(time_s[-1] - time_s[0]) if time_s.size > 1 else 0.0
+    # Compute dt and duration from the (possibly decimated) time column
+    # — more reliable than parsing fst_edits, and reflects the actual
+    # sample rate the loader sees.
+    decimated_time = arr[:, 0]
+    dt_s = float(np.median(np.diff(decimated_time))) if decimated_time.size > 1 else float("nan")
+    duration_s = float(decimated_time[-1] - decimated_time[0]) if decimated_time.size > 1 else 0.0
 
     metadata: dict[str, Any] = {
         "scenario_name": entry.scenario_name,
@@ -378,7 +488,7 @@ def _write_canonical_pair(
         "r_test_tag_required": manifest_meta.get("r_test_tag_required"),
         "dt_s": dt_s,
         "duration_s": duration_s,
-        "n_samples": int(time_s.size),
+        "n_samples": int(arr.shape[0]),
         "unit_system": "SI_canonical",
         "extracted_by": extraction_command,
         "extracted_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -419,6 +529,21 @@ def _extract_one(
 
     channels, units, data = _read_outb(outb_path)
     time_s, canonical = _convert_to_canonical_si(channels, units, data)
+
+    # MoorDyn writes a separate text output (*.MD.out) alongside the
+    # main .outb whenever the module is active. Merge it in.
+    if entry.moordyn_active:
+        md_path = entry.fst_path.with_suffix(".MD.out")
+        if md_path.is_file():
+            print(f"    merging MoorDyn output {md_path.name}", flush=True)
+            _merge_moordyn_into_canonical(md_path, time_s, canonical)
+        else:
+            print(
+                f"    WARNING: scenario claims moordyn_active=True but "
+                f"{md_path.name} not found; tensions will be missing from CSV",
+                flush=True,
+            )
+
     csv_path, json_path = _write_canonical_pair(
         entry,
         time_s,

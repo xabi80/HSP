@@ -39,25 +39,38 @@ Companion JSON sidecar
 ----------------------
 Every CSV must ship with a ``{stem}.json`` sidecar in the same
 directory containing the metadata required for downstream
-verification. Required keys:
+verification. The schema is the one written by
+``scripts/extract_openfast_fixtures.py`` after consuming
+``inputs/manifest.json``. Required keys:
 
-    scenario_id        -- one of {"s1_static_eq", "s2_free_decay",
-                           "s3_rao_*", "s4_moored_eq", "s5_drag_decay"};
-                           must match the CSV stem.
-    openfast_version   -- e.g. "v3.5.3" -- pinned at extraction time.
+    scenario_name      -- one of {"s1_static_eq", "s2_pitch_decay",
+                           "s3_rao_sweep", "s4_moored_eq",
+                           "s5_drag_decay"}. The CSV stem may carry
+                           additional context (e.g. the S3 sweep
+                           stems include the wave-period suffix
+                           ``s3_rao_sweep_WaveTp_004p0``); the
+                           loader does NOT enforce stem-equals-
+                           scenario_name.
+    openfast_version   -- runtime-detected version string.
+    openfast_version_required -- pin from manifest.json (e.g.
+                           "v4.1.2"); the loader warns if the
+                           runtime version disagrees.
+    deck_dir           -- relative path (under tests/fixtures/openfast/
+                           oc4_deepcwind/) of the deck the .outb
+                           was produced from. Lets a future audit
+                           re-run the same case from the same inputs.
     dt_s               -- output sample rate in seconds (positive).
     duration_s         -- total duration in seconds (positive).
+    n_samples          -- row count in the CSV (positive integer).
     unit_system        -- must be "SI_canonical" (radians, metres,
                            Newtons). The extraction script is the
                            single point of unit conversion.
     extracted_by       -- the script invocation that produced the file.
-    source_inputs      -- list of OpenFAST input file paths
-                           (relative to the repo root) that fed the
-                           extraction. Lets a future audit re-run
-                           the same case from the same inputs.
 
-Optional keys (e.g. ``compfast_flags``, ``notes``) flow through
-unchanged into :attr:`OpenFASTHistory.metadata` for use by tests.
+Optional keys (``purpose``, ``moordyn_active``, ``sweep_value``,
+``r_test_tag_required``, ``extracted_at``, ``channels_canonical``)
+flow through unchanged into :attr:`OpenFASTHistory.metadata` for
+use by tests.
 
 Why a JSON sidecar rather than a CSV-preamble comment
 -----------------------------------------------------
@@ -99,13 +112,14 @@ _REQUIRED_DOF_COLUMNS: Final[tuple[str, ...]] = (
 )
 
 _REQUIRED_METADATA_KEYS: Final[tuple[str, ...]] = (
-    "scenario_id",
+    "scenario_name",
+    "deck_dir",
     "openfast_version",
     "dt_s",
     "duration_s",
+    "n_samples",
     "unit_system",
     "extracted_by",
-    "source_inputs",
 )
 
 _CANONICAL_UNIT_SYSTEM: Final[str] = "SI_canonical"
@@ -196,14 +210,14 @@ def load_openfast_history(csv_path: str | Path) -> OpenFASTHistory:
             "in the same directory. Every committed CSV must ship its metadata."
         )
 
-    metadata = _load_metadata(json_path, expected_scenario_id=csv.stem)
+    metadata = _load_metadata(json_path)
     t, xi, extras = _load_csv_columns(csv)
     _validate_time_column(t, dt_s_metadata=float(metadata["dt_s"]))
 
     return OpenFASTHistory(t=t, xi=xi, extra_columns=extras, metadata=metadata)
 
 
-def _load_metadata(json_path: Path, *, expected_scenario_id: str) -> dict[str, Any]:
+def _load_metadata(json_path: Path) -> dict[str, Any]:
     """Read and validate the JSON sidecar."""
     with open(json_path, encoding="utf-8") as fh:
         raw = json.load(fh)
@@ -214,11 +228,6 @@ def _load_metadata(json_path: Path, *, expected_scenario_id: str) -> dict[str, A
         raise ValueError(
             f"{json_path.name} is missing required keys: {missing}. "
             f"See tests/support/openfast_csv.py module docstring for the schema."
-        )
-    if raw["scenario_id"] != expected_scenario_id:
-        raise ValueError(
-            f"{json_path.name} scenario_id={raw['scenario_id']!r} does not match "
-            f"the CSV stem {expected_scenario_id!r}; the two must agree."
         )
     if raw["unit_system"] != _CANONICAL_UNIT_SYSTEM:
         raise ValueError(
@@ -234,10 +243,13 @@ def _load_metadata(json_path: Path, *, expected_scenario_id: str) -> dict[str, A
         raise ValueError(
             f"{json_path.name} duration_s must be a positive number; " f"got {raw['duration_s']!r}"
         )
-    if not isinstance(raw["source_inputs"], list):
+    if not isinstance(raw["n_samples"], int) or int(raw["n_samples"]) <= 0:
         raise ValueError(
-            f"{json_path.name} source_inputs must be a list; got "
-            f"{type(raw['source_inputs']).__name__}"
+            f"{json_path.name} n_samples must be a positive integer; " f"got {raw['n_samples']!r}"
+        )
+    if not isinstance(raw["deck_dir"], str) or not raw["deck_dir"]:
+        raise ValueError(
+            f"{json_path.name} deck_dir must be a non-empty string; " f"got {raw['deck_dir']!r}"
         )
     return raw
 

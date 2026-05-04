@@ -1,0 +1,26 @@
+{
+  "scenario_name": "s5_drag_decay",
+  "deck_dir": "inputs/s5_drag_decay",
+  "purpose": "Heave free-decay with viscous drag elements active. Cross-checks Morison drag formulation via hyperbolic envelope of decay peaks.",
+  "moordyn_active": false,
+  "sweep_value": null,
+  "openfast_version": "unknown (binary not on PATH)",
+  "openfast_version_required": "v4.1.2",
+  "r_test_tag_required": "v4.1.2",
+  "dt_s": 0.05000000000001137,
+  "duration_s": 600.0,
+  "n_samples": 12001,
+  "unit_system": "SI_canonical",
+  "extracted_by": "scripts/extract_openfast_fixtures.py --mode read-only --scenario s5_drag_decay",
+  "extracted_at": "2026-05-04T00:49:45Z",
+  "channels_canonical": [
+    "time_s",
+    "surge_m",
+    "sway_m",
+    "heave_m",
+    "roll_rad",
+    "pitch_rad",
+    "yaw_rad",
+    "wave_elev_m"
+  ]
+}

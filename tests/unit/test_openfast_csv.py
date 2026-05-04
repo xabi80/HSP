@@ -56,15 +56,15 @@ def _write_canonical_pair(
     )
 
     metadata: dict[str, object] = {
-        "scenario_id": scenario_id,
+        "scenario_name": scenario_id,
+        "deck_dir": f"inputs/{scenario_id}",
         "openfast_version": "v3.5.3",
+        "openfast_version_required": "v4.1.2",
         "dt_s": dt_s,
         "duration_s": (n_samples - 1) * dt_s,
+        "n_samples": n_samples,
         "unit_system": "SI_canonical",
         "extracted_by": "scripts/extract_openfast_fixtures.py (test fixture)",
-        "source_inputs": [
-            "tests/fixtures/openfast/oc4_deepcwind/inputs/OC4Semi.fst",
-        ],
     }
     if metadata_overrides:
         metadata.update(metadata_overrides)
@@ -153,16 +153,6 @@ def test_json_missing_required_key_raises(tmp_path: Path) -> None:
         load_openfast_history(csv_path)
 
 
-def test_json_scenario_id_mismatch_raises(tmp_path: Path) -> None:
-    csv_path = _write_canonical_pair(tmp_path, scenario_id="s2_free_decay")
-    json_path = csv_path.with_suffix(".json")
-    raw = json.loads(json_path.read_text(encoding="utf-8"))
-    raw["scenario_id"] = "s99_typo"
-    json_path.write_text(json.dumps(raw), encoding="utf-8")
-    with pytest.raises(ValueError, match=r"scenario_id=.*does not match the CSV stem"):
-        load_openfast_history(csv_path)
-
-
 def test_json_non_canonical_unit_system_raises(tmp_path: Path) -> None:
     csv_path = _write_canonical_pair(
         tmp_path, metadata_overrides={"unit_system": "openfast_native"}
@@ -177,9 +167,15 @@ def test_json_dt_must_be_positive(tmp_path: Path) -> None:
         load_openfast_history(csv_path)
 
 
-def test_json_source_inputs_must_be_list(tmp_path: Path) -> None:
-    csv_path = _write_canonical_pair(tmp_path, metadata_overrides={"source_inputs": "single"})
-    with pytest.raises(ValueError, match=r"source_inputs must be a list"):
+def test_json_n_samples_must_be_positive_int(tmp_path: Path) -> None:
+    csv_path = _write_canonical_pair(tmp_path, metadata_overrides={"n_samples": 0})
+    with pytest.raises(ValueError, match=r"n_samples must be a positive integer"):
+        load_openfast_history(csv_path)
+
+
+def test_json_deck_dir_must_be_nonempty_string(tmp_path: Path) -> None:
+    csv_path = _write_canonical_pair(tmp_path, metadata_overrides={"deck_dir": ""})
+    with pytest.raises(ValueError, match=r"deck_dir must be a non-empty string"):
         load_openfast_history(csv_path)
 
 

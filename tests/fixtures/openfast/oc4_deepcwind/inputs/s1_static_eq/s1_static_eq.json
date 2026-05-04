@@ -1,0 +1,26 @@
+{
+  "scenario_name": "s1_static_eq",
+  "deck_dir": "inputs/s1_static_eq",
+  "purpose": "Static equilibrium under gravity + buoyancy, no waves, no mooring. Cross-checks hydrostatic decomposition (conventions doc Item 5).",
+  "moordyn_active": false,
+  "sweep_value": null,
+  "openfast_version": "unknown (binary not on PATH)",
+  "openfast_version_required": "v4.1.2",
+  "r_test_tag_required": "v4.1.2",
+  "dt_s": 0.04999999999999716,
+  "duration_s": 200.0,
+  "n_samples": 4001,
+  "unit_system": "SI_canonical",
+  "extracted_by": "scripts/extract_openfast_fixtures.py --mode read-only --scenario s1_static_eq",
+  "extracted_at": "2026-05-04T00:49:34Z",
+  "channels_canonical": [
+    "time_s",
+    "surge_m",
+    "sway_m",
+    "heave_m",
+    "roll_rad",
+    "pitch_rad",
+    "yaw_rad",
+    "wave_elev_m"
+  ]
+}

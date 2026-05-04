@@ -409,10 +409,22 @@ For OpenFAST channel **names** themselves:
   plus body-frame velocities `PtfmTVxt`, `PtfmRVxt`, etc. NOT
   `ED.PtfmSurge` -- the ElastoDyn module prefix is dropped at
   the OpenFAST glue-code level.
-- MoorDyn line tensions are `FairTen{1,2,3}` and `AnchTen{1,2,3}`
-  (capitalised at word starts, no underscores between words).
-  The S4 baseline OutList already includes these by default; no
-  HydroDyn-side edits required.
+- MoorDyn line tensions are `FAIRTEN{1,2,3}` and `ANCHTEN{1,2,3}`
+  (FORTRAN-uppercase) **inside the separate `*.MD.out` text file**
+  that MoorDyn writes alongside the main `.outb`. They are NOT in
+  the `.outb` channel list. The same conceptual names also appear
+  in HydroDyn-side documentation as `FairTen{1,2,3}` /
+  `AnchTen{1,2,3}` (capitalised-at-word-starts) -- the
+  `_RENAME_TABLE_CI` in `extract_openfast_fixtures.py` matches
+  case-insensitively so both spellings map to the same canonical
+  column. The S4 baseline OutList in MoorDyn's input deck already
+  emits these by default; no MoorDyn-side edits required.
+
+  Time alignment: MoorDyn skips the t=0 sample (its first row is
+  at t=dt). The merge step in `_merge_moordyn_into_canonical`
+  linearly interpolates each tension column onto the main `.outb`
+  time grid, filling out-of-range samples with the nearest
+  available value (`np.interp` with `left=col[0]`, `right=col[-1]`).
 
 **(b) Sanity-check protocol.** ✅ verified at PR1.1 (post-baseline run).
 
