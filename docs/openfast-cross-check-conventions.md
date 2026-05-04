@@ -389,17 +389,18 @@ out of phase with the wave -- exactly what this test catches.
 ## Item 11 -- OpenFAST output channel naming and access
 
 **(a) Citation.** When `.outb` (binary) outputs are read via the
-`openfast_toolbox.io.FASTOutputFile` class:
+`openfast_io.FAST_output_reader.FASTOutputFile` class:
 
 - Channel names are accessed via `output.info["attribute_names"]`.
   The alternative `output.channels` attribute is **not** reliable
-  across openfast-toolbox versions; do not depend on it.
+  across `openfast_io` versions; do not depend on it.
 - Channel units are at `output.info["attribute_units"]`.
 - Sample data is at `output.data` (shape `(n_samples, n_channels)`).
 
-Source: openfast-toolbox source code (`io/fast_output_file.py`),
-verified empirically against the M6 baseline run (Xabier,
-2026-05-01).
+Source: `openfast_io` source code
+(`openfast_io/FAST_output_reader.py`), verified empirically against
+the M6 baseline run by `scripts/openfast_setup/quick_sanity.py`
+(Xabier, 2026-05-01).
 
 For OpenFAST channel **names** themselves:
 
@@ -426,7 +427,7 @@ For OpenFAST channel **names** themselves:
    baseline sanity-check report).
 3. Spot-check by parsing one .outb manually:
 
-       from openfast_toolbox.io import FASTOutputFile
+       from openfast_io.FAST_output_reader import FASTOutputFile
        out = FASTOutputFile("inputs/s1_static_eq/s1_static_eq.outb")
        assert "PtfmHeave" in out.info["attribute_names"]
        assert "ED.PtfmHeave" not in out.info["attribute_names"]

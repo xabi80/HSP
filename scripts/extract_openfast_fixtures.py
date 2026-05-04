@@ -6,8 +6,8 @@ rotations and a mix of metres / kilonewtons / tonnes for forces) and
 FloatSim's canonical SI fixture format (metres / radians / Newtons /
 kilograms; see ``tests/support/openfast_csv.py`` module docstring for
 the full schema). It is **not** run in CI -- it requires OpenFAST and
-``openfast-toolbox`` installed locally on the contributor's machine.
-The committed CSV+JSON pairs are the artifacts; this script regenerates
+``openfast_io`` installed locally on the contributor's machine. The
+committed CSV+JSON pairs are the artifacts; this script regenerates
 them on demand.
 
 Locked spec per ``docs/milestone-6-plan.md`` v2 Q3:
@@ -40,8 +40,9 @@ Output channel names follow the conventions documented in
 
 Channel access uses ``output.info["attribute_names"]`` (per Xabier's
 M6-PR1.1 lock); the alternative ``output.channels`` attribute is not
-guaranteed to exist on the ``openfast_toolbox.io.FASTOutputFile``
-return value across all versions.
+guaranteed to exist on the
+``openfast_io.FAST_output_reader.FASTOutputFile`` return value
+across all versions.
 
 Modes
 -----
@@ -53,13 +54,13 @@ Modes
   someone else has already run the simulations (e.g. on a machine where
   the live OpenFAST run was owned by another contributor).
 
-Both modes require ``openfast-toolbox`` to read the binary outputs.
+Both modes require ``openfast_io`` to read the binary outputs.
 
 Usage
 -----
 ::
 
-    pip install openfast-toolbox  # adds openfast_toolbox.io.FASTOutputFile
+    pip install openfast_io  # provides openfast_io.FAST_output_reader.FASTOutputFile
     python scripts/extract_openfast_fixtures.py --mode read-only --scenario all
     python scripts/extract_openfast_fixtures.py --mode read-only --scenario s1_static_eq
     python scripts/extract_openfast_fixtures.py --mode run --scenario s5_drag_decay
@@ -247,25 +248,29 @@ def _run_openfast(binary: str, fst_path: Path) -> Path:  # pragma: no cover -- l
 def _read_outb(outb_path: Path) -> tuple[list[str], list[str], np.ndarray]:
     """Read an OpenFAST ``.outb`` binary into (channel_names, units, data).
 
-    Uses ``openfast_toolbox.io.FASTOutputFile``. Channel names are
-    fetched via ``output.info["attribute_names"]`` (NOT via
+    Uses ``openfast_io.FAST_output_reader.FASTOutputFile``. Channel
+    names are fetched via ``output.info["attribute_names"]`` (NOT via
     ``output.channels`` -- that attribute is unreliable across
     library versions). Units are similarly via
-    ``output.info["attribute_units"]``.
+    ``output.info["attribute_units"]``. This is the same access
+    path used by the verified ``scripts/openfast_setup/quick_sanity.py``
+    helper.
     """
     try:
-        from openfast_toolbox.io import FASTOutputFile  # type: ignore[import-not-found]
+        from openfast_io.FAST_output_reader import (  # type: ignore[import-not-found]
+            FASTOutputFile,
+        )
     except ImportError as exc:  # pragma: no cover
         raise SystemExit(
-            "openfast-toolbox is required to read .outb binaries. "
-            "Install via `pip install openfast-toolbox`."
+            "openfast_io is required to read .outb binaries. "
+            "Install via `pip install openfast_io`."
         ) from exc
 
     output = FASTOutputFile(str(outb_path))
     info = output.info
     if "attribute_names" not in info:
         raise SystemExit(
-            f"{outb_path.name}: openfast-toolbox FASTOutputFile.info "
+            f"{outb_path.name}: openfast_io FASTOutputFile.info "
             "missing 'attribute_names' key. Library version mismatch?"
         )
     channels = list(info["attribute_names"])

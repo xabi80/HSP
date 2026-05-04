@@ -124,7 +124,7 @@ For every milestone in `ARCHITECTURE.md` §8, follow this sequence:
 
 ## 9. What Claude Code Should NOT Do
 
-- **Do not add dependencies** without asking. Every dep is weight. Current baseline: `numpy`, `scipy`, `pydantic`, `h5py`, `pyyaml`, `xarray`, `netCDF4`, `pytest`, `hypothesis`. Add only with a one-line justification and Xabier's approval. (`xarray` + `netCDF4` added in M5 to read Capytaine output natively — see `docs/milestone-5-plan.md` Q3.)
+- **Do not add dependencies** without asking. Every dep is weight. Current baseline: `numpy`, `scipy`, `pydantic`, `h5py`, `pyyaml`, `xarray`, `netCDF4`, `pytest`, `hypothesis`. Add only with a one-line justification and Xabier's approval. (`xarray` + `netCDF4` added in M5 to read Capytaine output natively — see `docs/milestone-5-plan.md` Q3.) **M6 fixture-extraction-only dep:** `openfast_io` is required by `scripts/extract_openfast_fixtures.py` to read OpenFAST `.outb` binaries; it is **not** in the FloatSim runtime baseline (CI does not need it). Install via `pip install openfast_io` only on the contributor machine that re-extracts the M6 reference CSVs.
 - **Do not write UI or visualization** in Phase 1 beyond basic `matplotlib` plots in validation scripts. No GUI, no web dashboards, no interactive tooling.
 - **Do not parallelize** in Phase 1. NumPy vectorization is enough. Save `numba`/`multiprocessing`/`joblib` for Phase 4.
 - **Do not refactor across milestones.** If Module A needs a cleanup pass, do it in a dedicated `refactor-<module>` PR, not mixed with new physics.

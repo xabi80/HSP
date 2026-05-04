@@ -83,7 +83,7 @@ OpenFAST version bump or a deck-edit):
 # Ensure 'openfast' is on PATH.
 
 # Install the .outb reader (used by extract_openfast_fixtures.py).
-pip install openfast-toolbox
+pip install openfast_io
 
 # Run the extraction script -- it iterates over manifest.json,
 # invokes OpenFAST against each scenario's .fst driver, and writes
