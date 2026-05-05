@@ -18,7 +18,7 @@ from floatsim.hydro.retardation import (
     RetardationKernel,
     compute_retardation_kernel,
 )
-from tests.support.synthetic_bem import make_diagonal_hdb
+from tests.support.synthetic_bem import make_diagonal_hdb, well_behaved_b
 
 
 def _hdb_with_diagonal_damping(
@@ -86,14 +86,18 @@ def test_zero_damping_gives_zero_kernel() -> None:
 
 
 def test_kernel_is_symmetric_at_each_lag() -> None:
-    # Build a non-diagonal B(omega) by stacking full symmetric matrices
-    omega = np.linspace(0.05, 2.5, 40)
-    n_w = omega.size
+    # Build a non-diagonal B(omega) by stacking the SAME symmetric matrix
+    # at every frequency, scaled by a well-behaved ω⁻⁴ roll-off. This is
+    # symmetric at every ω and has a clean ω⁻⁴ asymptote (so the M6 PR3
+    # Refinement-2 input gates pass).
+    omega = np.linspace(0.05, 20.0, 200)
     rng = np.random.default_rng(seed=42)
-    B_stack = np.empty((6, 6, n_w), dtype=np.float64)
-    for j in range(n_w):
-        m = rng.standard_normal((6, 6))
-        B_stack[:, :, j] = 0.5 * (m + m.T)
+    m = rng.standard_normal((6, 6))
+    sym_matrix = 0.5 * (m + m.T)
+    # Ensure diagonals are positive (radiation damping is passive).
+    np.fill_diagonal(sym_matrix, np.abs(np.diag(sym_matrix)))
+    rolloff = well_behaved_b(omega, band_value=1.0, cutoff_omega=3.0)
+    B_stack = sym_matrix[:, :, None] * rolloff[None, None, :]
     hdb = make_diagonal_hdb(
         A_inf_diag=[0.0] * 6,
         C_diag=[0.0] * 6,
@@ -121,37 +125,42 @@ def test_kernel_is_symmetric_at_each_lag() -> None:
 # ---------- analytical sanity: box-damping DCT ----------
 
 
-def test_kernel_matches_analytical_box_damping_on_fine_grid() -> None:
-    """For B_33(omega) = B0 on [0, omega_max], else 0:
+def test_kernel_matches_analytical_lorentzian_damping_on_fine_grid() -> None:
+    """For B_33(ω) = B0 · exp(-ω/τ):
 
-        K_33(t) = (2 B0/pi) * sin(omega_max t) / t    (t > 0)
-        K_33(0) = 2 B0 omega_max / pi
+        K_33(t) = (2 B0 / π) · a / (a² + t²)    with a = 1/τ
 
-    The reader+transform combo is trapezoidal on a dense uniform grid
-    starting at 0 — we prepend B(0)=0 when needed — so the match is
-    trapezoidal-error-limited: rtol ~ 1e-2 on a 400-point grid is safe.
+    Filon-trapezoidal computes the integral of (piecewise-linear B)·cos(ωt)
+    exactly per segment; the only discretisation error is the linear
+    interpolation of the smooth exponential. On a dense grid (200 pts on
+    [0, 20]) the residual is below 1e-2 of the peak.
+
+    (Replaces the pre-M6-PR3 sharp-box test, whose B(ω_max)/peak = 100% is
+    exactly what Refinement-2 Check 1 is designed to prevent. The
+    smooth-box analogue with a Hann taper is covered separately in
+    test_retardation_kernel_extension.test_synthetic_smooth_box_kernel_matches_analytical.)
     """
     B0 = 1000.0
-    omega_max = 3.0
-    omega = np.linspace(0.0, omega_max, 401)
+    tau = 2.0
+    omega = np.linspace(0.0, 20.0, 401)
     B_diag = np.zeros((omega.size, 6))
-    B_diag[:, 2] = B0  # heave
+    B_diag[:, 2] = B0 * np.exp(-omega / tau)  # heave
     hdb = _hdb_with_diagonal_damping(omega=omega, B_diag_per_omega=B_diag)
 
     k = compute_retardation_kernel(hdb, t_max=8.0, dt=0.05)
     t = k.t
-    analytical = np.empty_like(t)
-    analytical[0] = 2.0 * B0 * omega_max / np.pi
-    analytical[1:] = (2.0 * B0 / np.pi) * np.sin(omega_max * t[1:]) / t[1:]
+    a = 1.0 / tau
+    analytical = (2.0 * B0 / np.pi) * a / (a * a + t * t)
 
     np.testing.assert_allclose(k.K[2, 2, :], analytical, rtol=2e-2, atol=1e-2)
 
 
 def test_kernel_off_diagonal_dofs_stay_zero_for_diagonal_damping() -> None:
     """Pure-diagonal B(omega) produces a pure-diagonal K(t)."""
-    omega = np.linspace(0.0, 3.0, 101)
+    omega = np.linspace(0.0, 20.0, 401)
     B_diag = np.zeros((omega.size, 6))
-    B_diag[:, 2] = 500.0  # heave only
+    # Heave-only damping with ω⁻⁴ roll-off so the gates pass.
+    B_diag[:, 2] = well_behaved_b(omega, band_value=500.0, cutoff_omega=5.0)
     hdb = _hdb_with_diagonal_damping(omega=omega, B_diag_per_omega=B_diag)
     k = compute_retardation_kernel(hdb, t_max=5.0, dt=0.1)
     # All non-(2,2) entries must be exactly zero.
@@ -182,9 +191,10 @@ def test_kernel_warns_when_decay_is_too_slow() -> None:
 
 def test_kernel_does_not_warn_on_fast_decay() -> None:
     """Broad B(omega) gives a tight K(t) that decays well before t_max."""
-    omega = np.linspace(0.0, 5.0, 501)
+    omega = np.linspace(0.0, 20.0, 501)
     B_diag = np.zeros((omega.size, 6))
-    B_diag[:, 2] = 1.0  # flat -> sinc-shaped K, decays as 1/t
+    # Well-behaved B with ω⁻⁴ tail -- gates pass; K decays as 1/t².
+    B_diag[:, 2] = well_behaved_b(omega, band_value=1.0, cutoff_omega=5.0)
     hdb = _hdb_with_diagonal_damping(omega=omega, B_diag_per_omega=B_diag)
     # Use a large t_max so K has decayed below 1% of its peak.
     with warnings.catch_warnings(record=True) as caught:

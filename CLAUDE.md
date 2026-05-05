@@ -163,3 +163,74 @@ When Claude Code opens this repo for the first time:
 - Project owner: Xabier
 - Reference OrcaFlex/OrcaWave case: `C:\Users\xlama\OneDrive\Documents\buoy\Orca\orcawave\model3small_nomor.owr` — to be used in Milestones 2, 3, and 6 validation.
 - If OrcFxAPI licensing or BEM file format questions arise, ask before guessing.
+
+---
+
+## 13. Lessons Learned from Phase 1 Latent Bugs
+
+Two latent bugs surfaced during the M6 OpenFAST cross-check that none
+of the M1-M5 tests caught. Both fit the same anti-pattern:
+**a downstream module silently consumed an upstream output without
+gating the assumptions it depended on.** Future code reviews should
+look hard for this shape.
+
+### Example 1 — missing `m·g·z_G` gravity contribution to ``C``
+
+The BEM readers (WAMIT, Capytaine) produced a buoyancy-only
+hydrostatic restoring matrix and explicitly documented "downstream
+``floatsim.bodies.Body`` assembly is expected to add the gravity
+contribution from the body's mass and CoG." That downstream
+assembly was never written. ``assemble_cummins_lhs`` consumed
+``hdb.C`` verbatim and produced a negative pitch restoring on OC4.
+See `docs/post-mortems/hydrostatic-gravity-bug.md`.
+
+**Generalisation:** when a producer ships data with caveats in its
+docstring, the consumer should either *honour* the caveat
+explicitly (call the missing module) or *gate* it (raise on
+inputs that violate the caveat). Silently passing the data through
+is the bug.
+
+### Example 2 — radiation kernel: truncation discontinuity + Nyquist aliasing
+
+`compute_retardation_kernel` evaluated
+``∫_0^∞ B(ω) cos(ωt) dω`` as a discrete trapezoidal sum on the BEM
+grid, with no gate on whether the grid had reached the asymptotic
+regime. On the OrcaFlex `platform_small.yml` fixture (10-point grid,
+`B(ω_max) = 50 %` of peak), the missing tail was huge — but the
+kernel was used through M2-M5 anyway. On well-resolved grids, the
+*discrete cosine sum itself* failed Nyquist beyond `t = π/dω`,
+producing sustained `ω_max`-frequency oscillations at amplitude
+`~ K_max`. Period was forgiving (`M+A_inf+C` dominated); damping
+was unforgiving and showed `t_max`-dependent values, including
+sign flips. See `docs/post-mortems/m6-pr3-radiation-kernel-bug.md`.
+
+**Generalisation:** for any oscillatory integral
+``∫ f(ω) cos(ωt) dω`` evaluated at variable `t`, never sample the
+cosine onto a grid — use a Filon-type rule that integrates the
+oscillation analytically per segment. And gate the grid: refuse to
+run when `B(ω_max)` is not at the noise floor, or when the
+high-frequency asymptote is not clean.
+
+### Pattern lock — the recurring shape
+
+Both bugs lasted because:
+
+1. **Caveats lived only in docstrings, not in code gates.** The
+   reader said "downstream must add gravity"; the kernel's docstring
+   said "B must reach asymptotic regime by ω_max." Neither was
+   enforced by a runtime check. Consequence: every downstream
+   consumer was free to violate the caveat silently.
+2. **No test exercised the cross-module combination.** Each module's
+   unit tests covered its piece in isolation, with controlled
+   synthetic inputs that happened not to trigger the latent
+   condition. The bug surfaced only when realistic inputs flowed
+   end-to-end.
+3. **Period was the M2-M5 validation lever; damping wasn't.**
+   Period is dominated by `M+A_inf+C` and barely sees the
+   convolution. Damping is the strict test of the kernel — and was
+   asserted only on a constant-`B` synthetic (which happens to mask
+   one of the two pathologies) until M6 PR3.
+
+**For all future Phase 1 work:** when a module's docstring
+documents a precondition on its input, that precondition belongs
+in code as a `ValueError` gate, not as prose.

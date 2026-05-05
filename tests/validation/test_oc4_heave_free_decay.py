@@ -1,6 +1,6 @@
 """Milestone 2 gate validation — OC4 DeepCwind heave free decay (period).
 
-Release the OC4-shaped OrcaFlex YAML fixture from a small heave
+Release a marin_semi.1-driven OC4-shaped fixture from a small heave
 displacement with all other DOFs at rest and integrate the Cummins
 equation through several natural periods. The fitted period must match
 the analytical single-DOF formula evaluated at the heave natural
@@ -13,26 +13,27 @@ frequency-dependent, so the naive ``T_inf = 2*pi*sqrt((M+A_inf)/C)``
 underestimates the true period (documented in
 :mod:`tests.validation.test_oc4_natural_periods`).
 
+BEM source — marin_semi.1 (M6 PR3 fixture migration)
+----------------------------------------------------
+Pre-fix, this test consumed the small ``platform_small.yml`` OrcaFlex
+export, whose frequency grid only extended to ``ω ~= 5 rad/s`` and did
+not reach the asymptotic ``B ~ ω⁻⁴`` regime. The Refinement-2 input
+gates (``compute_retardation_kernel``) reject such grids. The test now
+combines the well-resolved marin_semi.1 BEM database (which OC4
+DeepCwind validation in M6 already uses) with the OC4 platform mass and
+hydrostatic stiffness from :mod:`tests.validation.test_oc4_natural_periods`.
+
 Why no analytical damping assertion here
 ----------------------------------------
-The OrcaWave-derived ``B_33(omega)`` in this fixture has a near-zero
-dip at ``omega = 0.4 rad/s``, adjacent to the heave natural frequency
-``omega_n ~ 0.36 rad/s``. Linear interpolation across the 0.1-rad/s
-grid therefore drags ``B(omega_n)`` to a pathologically small value
-(~1.1e4 N*s/m), while the time-domain kernel integrates ``B(omega)``
-over the full spectrum and reflects roughly an order of magnitude
-more effective damping. The single-DOF formula
-``zeta = B(omega_n) / (2 omega_n (M + A(omega_n)))`` is therefore not
-a valid analytical reference for *this* fixture — it assumes a
-narrowband local linearization that the near-zero dip invalidates.
-
-Analytical damping agreement is validated separately on a synthetic
-constant-``B(omega)`` BEM in
-:mod:`tests.validation.test_cummins_free_decay_analytical`. Here we
-assert only that the envelope decays monotonically, which confirms
-that the radiation convolution extracts energy as expected on realistic
-BEM data — an integrator-level sanity check that complements the
-closed-form damping test.
+The marin_semi-derived ``B_33(omega)`` has frequency-dependent local
+structure that makes the single-DOF formula
+``zeta = B(omega_n) / (2 omega_n (M + A(omega_n)))`` sensitive to
+linear-interpolation artefacts at the heave natural frequency. The
+clean analytical damping check lives in
+:mod:`tests.validation.test_cummins_free_decay_analytical` on a
+purpose-built well-behaved B(ω). Here we assert only that the envelope
+decays monotonically — an integrator-level sanity check that
+complements the closed-form damping test.
 
 Tolerance
 ---------
@@ -40,9 +41,9 @@ Per CLAUDE.md §5, analytical comparisons default to ``rtol=1e-3`` unless
 a looser bound can be argued.
 
 * **Period**: ``rtol=3e-2`` — 3 %. Generalized-alpha has O(h^2) period
-  error (< 0.1 % at dt=0.05 s, T ~17 s); zero-crossing fit quantization
-  at dt-granularity adds ~ dt/T = 0.3 % worst-case. The remainder is
-  the causal response of the true kernel ``K(t)`` vs. the fixed-point
+  error (< 0.1 % at dt=0.05 s); zero-crossing fit quantization at
+  dt-granularity adds ~ dt/T worst-case. The remainder is the causal
+  response of the true kernel ``K(t)`` vs. the fixed-point
   single-frequency estimate of ``omega_n``.
 """
 
@@ -54,17 +55,50 @@ import numpy as np
 
 from floatsim.hydro.database import HydroDatabase
 from floatsim.hydro.radiation import assemble_cummins_lhs
-from floatsim.hydro.readers.orcaflex_vessel_yaml import read_orcaflex_vessel_yaml
+from floatsim.hydro.readers.wamit import read_added_mass_and_damping
 from floatsim.hydro.retardation import compute_retardation_kernel
 from floatsim.solver.newmark import integrate_cummins
 from tests.validation.test_oc4_natural_periods import (
+    OC4_C33_HEAVE_N_PER_M,
+    OC4_C44_ROLL_NM_PER_RAD,
+    OC4_C55_PITCH_NM_PER_RAD,
     OC4_PLATFORM_MASS_KG,
     _oc4_rigid_body_mass_matrix,
 )
 
-FIXTURE_PATH = (
-    Path(__file__).resolve().parents[1] / "fixtures" / "bem" / "orcaflex" / "platform_small.yml"
+# marin_semi.1 — high-resolution BEM database used for OC4 validation.
+# Lives under tests/fixtures/openfast/oc4_deepcwind/baseline/.../HydroData/.
+_MARIN_SEMI_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "fixtures"
+    / "openfast"
+    / "oc4_deepcwind"
+    / "baseline"
+    / "5MW_Baseline"
+    / "HydroData"
+    / "marin_semi.1"
 )
+
+
+def _build_oc4_marin_semi_hdb() -> HydroDatabase:
+    """Combine marin_semi.1 BEM coefficients with OC4 hydrostatic stiffness."""
+    omega, A, B, A_inf = read_added_mass_and_damping(_MARIN_SEMI_PATH)
+    C = np.zeros((6, 6), dtype=np.float64)
+    C[2, 2] = OC4_C33_HEAVE_N_PER_M
+    C[3, 3] = OC4_C44_ROLL_NM_PER_RAD
+    C[4, 4] = OC4_C55_PITCH_NM_PER_RAD
+    n_w = omega.size
+    return HydroDatabase(
+        omega=omega,
+        heading_deg=np.array([0.0, 90.0]),
+        A=A,
+        B=B,
+        A_inf=A_inf,
+        C=C,
+        RAO=np.zeros((6, n_w, 2), dtype=np.complex128),
+        reference_point=np.array([0.0, 0.0, 0.0]),
+        C_source="full",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +180,7 @@ def _fit_damping_log_decrement(t: np.ndarray, x: np.ndarray) -> float:
 
 
 def _run_heave_free_decay():
-    hdb = read_orcaflex_vessel_yaml(FIXTURE_PATH)
+    hdb = _build_oc4_marin_semi_hdb()
     lhs = assemble_cummins_lhs(rigid_body_mass=_oc4_rigid_body_mass_matrix(), hdb=hdb)
     dt = 0.05
     kernel = compute_retardation_kernel(hdb, t_max=60.0, dt=dt)

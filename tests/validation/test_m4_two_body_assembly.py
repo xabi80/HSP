@@ -56,11 +56,12 @@ from floatsim.solver.state import (
     assemble_global_lhs,
     pack_state,
 )
-from tests.support.synthetic_bem import make_diagonal_hdb
+from tests.support.synthetic_bem import make_diagonal_hdb, well_behaved_b
 from tests.validation.test_cummins_free_decay_analytical import (
     _A_INF_33,
     _B_33,
     _C_33,
+    _CUTOFF_OMEGA,
     _I_OTHER,
     _M_33,
     _M_OTHER,
@@ -75,10 +76,11 @@ _T_N = 2.0 * np.pi * float(np.sqrt((_M_33 + _A_INF_33) / _C_33))
 
 
 def _single_body_hdb():
-    n_w = _OMEGA_GRID.size
     A_inf_diag = [_M_OTHER, _M_OTHER, _A_INF_33, _I_OTHER, _I_OTHER, _I_OTHER]
-    A_diag_per_omega = [list(A_inf_diag) for _ in range(n_w)]
-    B_diag_per_omega = [[1.0e3, 1.0e3, _B_33, 1.0e4, 1.0e4, 1.0e4] for _ in range(n_w)]
+    A_diag_per_omega = [list(A_inf_diag) for _ in range(_OMEGA_GRID.size)]
+    band_values = [1.0e3, 1.0e3, _B_33, 1.0e4, 1.0e4, 1.0e4]
+    rolloff = well_behaved_b(_OMEGA_GRID, band_value=1.0, cutoff_omega=_CUTOFF_OMEGA)
+    B_diag_per_omega = [[bv * float(r) for bv in band_values] for r in rolloff]
     C_diag = [0.0, 0.0, _C_33, 0.0, 0.0, 0.0]
     return make_diagonal_hdb(
         A_inf_diag=A_inf_diag,

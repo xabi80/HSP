@@ -296,6 +296,31 @@ Pluggable readers. Morison drag elements. Full Phase 1 validation suite.
 ### Milestone 6 — OrcaFlex cross-check (week 9)
 Set up a representative deck in both tools. Document discrepancies.
 
+### Phase 2 — Deferred work (post-Milestone-6)
+
+The Phase 1 milestones above must close before any Phase 2 work
+begins. Items deferred from Phase 1 that are now Phase 2 deliverables:
+
+- **State-space approximation of `K(t)`** (Prony / vector fitting) for
+  performance — see §9.1.
+- **Irregular seas** (JONSWAP, Pierson-Moskowitz spectra) and
+  sum-of-cosines time-series realisation.
+- **Second-order drift forces** (mean and slow-drift QTFs).
+- **FE mooring lines** (co-rotational beams) replacing the analytical
+  catenary.
+- **Damping-side restoration of the full Refinement-2 Call 3 spec for
+  off-diagonal `compute_retardation_kernel` gates.** M6 PR3 (the
+  radiation kernel post-mortem in `docs/post-mortems/`) shipped a
+  pragmatic deviation: off-diagonal Check 2 failures fall back to
+  zeroing the tail contribution rather than erroring, calibrated
+  against `marin_semi.1` where small-magnitude couplings reach the
+  BEM solver's noise floor at the highest frequencies. Phase 2
+  should revisit this once a high-fidelity reference BEM dataset
+  with clean off-diagonal asymptotes is available, and either
+  (a) sharpen the `_OFFDIAG_REL_THRESHOLD` skip rule or
+  (b) hard-error on off-diagonal failures with a documented escape
+  hatch for noisy datasets.
+
 ---
 
 ## 9. Resolved Design Decisions

@@ -23,7 +23,7 @@ import pytest
 from floatsim.hydro.radiation import assemble_cummins_lhs
 from floatsim.hydro.retardation import compute_retardation_kernel
 from floatsim.solver.newmark import IntegrationResult, integrate_cummins
-from tests.support.synthetic_bem import make_diagonal_hdb
+from tests.support.synthetic_bem import make_diagonal_hdb, well_behaved_b
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -47,7 +47,9 @@ def _build_setup(
 ) -> tuple:
     """Assemble (lhs, kernel) for an integrator test on a diagonal fixture."""
     if omega is None:
-        omega = np.linspace(0.0, 8.0, 401)
+        # M6 PR3: extend grid into the asymptotic decay band so the
+        # Refinement-2 input gates pass.
+        omega = np.linspace(0.0, 20.0, 401)
     if A_inf_diag is None:
         A_inf_diag = [0.0] * 6
     if C_diag is None:
@@ -139,9 +141,17 @@ def test_initial_acceleration_satisfies_eom() -> None:
 
 
 def test_zero_ic_and_zero_force_stays_at_rest() -> None:
+    omega = np.linspace(0.0, 20.0, 401)
+    # Well-behaved B(ω): flat ≈ 1.0 in the band, decays as ω⁻⁴ above
+    # the cutoff so the Refinement-2 input gates pass.
+    b_per_omega = np.tile(
+        well_behaved_b(omega, band_value=1.0, cutoff_omega=5.0)[:, None],
+        (1, 6),
+    )
     lhs, kernel = _build_setup(
         C_diag=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-        B_diag_per_omega=np.ones((401, 6)),  # non-trivial damping
+        B_diag_per_omega=b_per_omega,
+        omega=omega,
     )
     res = integrate_cummins(
         lhs=lhs,
@@ -207,10 +217,10 @@ def test_constant_force_drives_toward_static_offset() -> None:
     at xi_ss = C^-1 F_ext (within a small residual oscillation)."""
     M_diag = [1.0] * 6
     C_diag = [0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
-    # Uniform narrow-band B(omega) near omega_n=1 gives significant damping.
-    omega = np.linspace(0.0, 5.0, 501)
+    # Well-behaved B(omega) near omega_n=1 with ω⁻⁴ tail -- gates pass.
+    omega = np.linspace(0.0, 20.0, 501)
     B_diag = np.zeros((omega.size, 6))
-    B_diag[:, 2] = 0.8  # flat B -> near-viscous for the oscillator band
+    B_diag[:, 2] = well_behaved_b(omega, band_value=0.8, cutoff_omega=5.0)
     lhs, kernel = _build_setup(
         M_diag=M_diag,
         C_diag=C_diag,
@@ -244,9 +254,9 @@ def test_radiation_damping_causes_decay() -> None:
     smaller several periods later than at the first peak."""
     M_diag = [1.0] * 6
     C_diag = [0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
-    omega = np.linspace(0.0, 5.0, 501)
+    omega = np.linspace(0.0, 20.0, 501)
     B_diag = np.zeros((omega.size, 6))
-    B_diag[:, 2] = 0.5
+    B_diag[:, 2] = well_behaved_b(omega, band_value=0.5, cutoff_omega=5.0)
     lhs, kernel = _build_setup(
         M_diag=M_diag,
         C_diag=C_diag,

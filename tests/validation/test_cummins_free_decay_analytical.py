@@ -10,9 +10,14 @@ linear-interpolation artefacts at the heave natural frequency.
 
 This file carries the **damping** gate. It isolates the integrator +
 discrete convolution by feeding the code a BEM whose ``B(omega)`` is
-constant across the band. In the narrowband free-decay limit
-``B(omega_n) = B_0`` is unambiguous and the single-DOF formula is a
-closed-form reference.
+flat in the natural-frequency band and decays cleanly as ``omega^-4``
+at high frequency (per the M6 PR3 Refinement-2 input gates: the BEM
+grid must reach the asymptotic regime). At the heave natural
+frequency ``omega_n = 0.8 rad/s`` the value is essentially ``B_0`` —
+the smooth roll-off has ``cutoff_omega = 5 rad/s`` so
+``B(0.8)/B_0 = 5^4 / (5^4 + 0.8^4) ≈ 0.999``. In the narrowband
+free-decay limit ``B(omega_n) = B_0`` is unambiguous and the
+single-DOF formula is a closed-form reference.
 
 Why no period assertion here
 ----------------------------
@@ -57,7 +62,7 @@ import numpy as np
 from floatsim.hydro.radiation import assemble_cummins_lhs
 from floatsim.hydro.retardation import compute_retardation_kernel
 from floatsim.solver.newmark import integrate_cummins
-from tests.support.synthetic_bem import make_diagonal_hdb
+from tests.support.synthetic_bem import make_diagonal_hdb, well_behaved_b
 from tests.validation.test_oc4_heave_free_decay import (
     _fit_damping_log_decrement,
 )
@@ -77,18 +82,27 @@ _B_33 = 1.6e6  # constant heave radiation damping         [N*s/m]
 _M_OTHER = 1.0e7  # surge/sway mass                          [kg]
 _I_OTHER = 1.0e9  # roll/pitch/yaw inertia                   [kg*m^2]
 
-_OMEGA_GRID = np.arange(0.05, 3.0 + 1.0e-9, 0.05)  # 60-point grid [rad/s]
+# Grid extends to 20 rad/s so that |B(omega_max)| < 1% of peak per the
+# Refinement-2 amplitude gate.
+_OMEGA_GRID = np.linspace(0.05, 20.0, 401)
 _HEADING = np.array([0.0, 90.0])
+# Roll-off above this cutoff; chosen well above heave omega_n = 0.8 rad/s
+# so B(omega_n) ≈ B_0 (within 0.1 %).
+_CUTOFF_OMEGA = 5.0
 
 
 def _build_hdb():
-    n_w = _OMEGA_GRID.size
     A_inf_diag = [_M_OTHER, _M_OTHER, _A_INF_33, _I_OTHER, _I_OTHER, _I_OTHER]
-    # A(omega) = A_inf across the grid (frequency-flat added mass).
-    A_diag_per_omega = [list(A_inf_diag) for _ in range(n_w)]
-    # Constant B across the grid for every DOF — only heave matters for this
-    # test; the other DOFs' B values are there to make the kernel well-defined.
-    B_diag_per_omega = [[1.0e3, 1.0e3, _B_33, 1.0e4, 1.0e4, 1.0e4] for _ in range(n_w)]
+    # A(omega) = A_inf across the grid (frequency-flat added mass). Note
+    # this is intentionally not Kramers-Kronig-consistent with the chosen
+    # B(omega) -- see module docstring for why period is not asserted here.
+    A_diag_per_omega = [list(A_inf_diag) for _ in range(_OMEGA_GRID.size)]
+    # B with the well-behaved profile per DOF: flat in the band and
+    # ω⁻⁴ at high frequency. The DOF band-values reproduce the
+    # pre-fix [1.0e3, 1.0e3, _B_33, 1.0e4, 1.0e4, 1.0e4] plateau.
+    band_values = [1.0e3, 1.0e3, _B_33, 1.0e4, 1.0e4, 1.0e4]
+    rolloff = well_behaved_b(_OMEGA_GRID, band_value=1.0, cutoff_omega=_CUTOFF_OMEGA)
+    B_diag_per_omega = [[bv * float(r) for bv in band_values] for r in rolloff]
     C_diag = [0.0, 0.0, _C_33, 0.0, 0.0, 0.0]  # heave-only restoring
     return make_diagonal_hdb(
         A_inf_diag=A_inf_diag,

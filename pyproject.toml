@@ -78,7 +78,7 @@ no_implicit_optional = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["h5py", "yaml", "scipy", "scipy.optimize"]
+module = ["h5py", "yaml", "scipy", "scipy.integrate", "scipy.optimize"]
 ignore_missing_imports = true
 
 # ----- Tests -----

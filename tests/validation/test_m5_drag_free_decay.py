@@ -70,7 +70,7 @@ from floatsim.hydro.morison import MorisonElement, make_morison_state_force
 from floatsim.hydro.radiation import assemble_cummins_lhs
 from floatsim.hydro.retardation import compute_retardation_kernel
 from floatsim.solver.newmark import integrate_cummins
-from tests.support.synthetic_bem import make_diagonal_hdb
+from tests.support.synthetic_bem import make_diagonal_hdb, well_behaved_b
 
 # Synthetic ``B(omega) = 1e-3`` (chosen so the radiation-induced linear
 # damping ratio is ~ 4e-10 and physically irrelevant) is constant across
@@ -107,8 +107,9 @@ _I_OTHER = 1.0e8  # roll/pitch/yaw inertia             [kg*m^2]
 # hyperbolic-envelope test.
 _B_TINY = 1.0e-3
 
-_OMEGA_GRID = np.arange(0.05, 3.0 + 1.0e-9, 0.05)  # 60-point grid
+_OMEGA_GRID = np.linspace(0.05, 20.0, 401)  # extended for M6 PR3 input gates
 _HEADING = np.array([0.0, 90.0])
+_CUTOFF_OMEGA = 5.0  # ω⁻⁴ roll-off cutoff
 
 _XI0_HEAVE = 0.5  # initial heave displacement         [m]
 
@@ -131,11 +132,13 @@ def _expected_peak(xi_0: float, n: int) -> float:
 
 
 def _build_hdb():
-    n_w = _OMEGA_GRID.size
     A_inf_diag = [_M_OTHER, _M_OTHER, _A_INF_33, _I_OTHER, _I_OTHER, _I_OTHER]
     # A(omega) = A_inf across the grid (frequency-flat added mass).
-    A_diag_per_omega = [list(A_inf_diag) for _ in range(n_w)]
-    B_diag_per_omega = [[_B_TINY] * 6 for _ in range(n_w)]
+    A_diag_per_omega = [list(A_inf_diag) for _ in range(_OMEGA_GRID.size)]
+    # Tiny well-behaved B per DOF: ω⁻⁴ roll-off above the cutoff so the
+    # M6 PR3 Refinement-2 input gates pass.
+    rolloff = well_behaved_b(_OMEGA_GRID, band_value=_B_TINY, cutoff_omega=_CUTOFF_OMEGA)
+    B_diag_per_omega = [[float(r)] * 6 for r in rolloff]
     C_diag = [0.0, 0.0, _C_33, 0.0, 0.0, 0.0]  # heave-only restoring
     return make_diagonal_hdb(
         A_inf_diag=A_inf_diag,
