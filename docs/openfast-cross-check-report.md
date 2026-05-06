@@ -172,6 +172,52 @@ margin status as heave.
 | 14 | Static eq tests assert only on restored DOFs | ✅ verified (skipped surge/sway/yaw per the OC4 unmoored topology) |
 | 15 | Static equilibrium under Cummins linearisation | ✅ verified (zero-F_external returns xi=0; residual-driven assertions) |
 
+### Post-landing audit and fix (`fix-pr2-cmzt`, 2026-05-05)
+
+The PR3 diagnostic (Pre-1) flagged a convention inconsistency in
+`compute_openfast_deck_residual`: the parser was reading OpenFAST's
+`PtfmCMzt = -8.66 m` (steel-only platform CoG) for the
+`platform_with_ballast` component while pairing it with Robertson
+2014's `1.347 × 10⁷ kg` (with-ballast mass). The mismatched
+`(M, z_G)` pair entered only the diagnostic `cog_total_z_m` field;
+F-vector elements were unchanged because the moment formulas at
+`xi=0` reference only horizontal CoG offsets (verified
+numerically: F[2:5] deltas under -8.66 m → -13.46 m substitution
+were ≤ 10⁻⁹ N).
+
+**Disposition**: small fix on `fix-pr2-cmzt` branch off main,
+merged before M6 PR4 starts. Same precedent as the M5 hydrostatic-
+gravity fix (caveats live in code gates, not in prose).
+
+**Changes**:
+
+- `tests/support/openfast_deck.py`: removed the `PtfmCMzt` scan
+  for the platform-with-ballast component; replaced with the
+  Robertson constant `OC4_PLATFORM_COG_Z_M = -13.46 m`. Added
+  `platform_cog_z_m` kwarg paired with `platform_total_mass_kg`
+  for non-OC4 deck overrides.
+- `tests/unit/test_openfast_deck.py`: two new unit tests pinning
+  the algebraic invariant (`F_residual[2:5]` independent of
+  `platform_cog_z_m` for axisymmetric on-axis-CoB decks) and the
+  default consistency (Robertson mass pairs with Robertson CoG;
+  guards against a future swap to OpenFAST's steel-only `PtfmCMzt`).
+- Conventions doc Item 17 ("z_G must be consistent with mass M
+  and stiffness C across all uses").
+
+**Numerical impact on PR2 assertions**: zero (within 10⁻⁹ N float
+noise). All 6 PR2 assertions still pass; `cog_total_z_m`
+diagnostic now reports -10.701 m (all-Robertson convention)
+instead of -5.308 m (mixed convention).
+
+The fix is forward-looking: PR4 will inherit a consistent
+convention, and any future scenario PR that introduces a
+vertical-lever-arm moment formula (e.g., S4's mooring lines
+attaching at depth, or a non-axisymmetric body) is protected by
+the new invariant test.
+
+See `docs/diagnostics/m6-pr4-pre1-cmzt-audit.md` for the full
+audit.
+
 ---
 
 ## PR3 -- S2 pitch free decay (closed 2026-05-05)

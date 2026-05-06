@@ -92,6 +92,15 @@ from numpy.typing import NDArray
 # OpenFAST applies via HydroDyn `FillGroups` + member geometry.
 OC4_PLATFORM_TOTAL_MASS_KG: Final[float] = 1.3473e7
 
+# Robertson 2014 Table 3-1: vertical coordinate of the platform-with-
+# ballast CoG, relative to SWL (positive z = up). This is the *with-
+# ballast* CoG that pairs with `OC4_PLATFORM_TOTAL_MASS_KG`. The
+# OpenFAST `PtfmCMzt` parameter (-8.66 m) is the *steel-only* CoG that
+# pairs with `PtfmMass = 3.852e6 kg`. Mixing one mass with the
+# other CoG is a bookkeeping error -- see conventions doc Item 17 and
+# `docs/diagnostics/m6-pr4-pre1-cmzt-audit.md`.
+OC4_PLATFORM_COG_Z_M: Final[float] = -13.46
+
 # NREL 5-MW reference values (Jonkman 2009 Table 6-1) for the values
 # we don't read from the deck. Used as fallbacks if the per-deck
 # integration fails (e.g. TwrFile or BldFile unparseable).
@@ -270,6 +279,7 @@ def compute_openfast_deck_residual(
     deck_dir: Path,
     *,
     platform_total_mass_kg: float = OC4_PLATFORM_TOTAL_MASS_KG,
+    platform_cog_z_m: float = OC4_PLATFORM_COG_Z_M,
 ) -> DeckResidual:
     """Net static-residual 6-vector for an OpenFAST deck at FloatSim's reference.
 
@@ -285,12 +295,31 @@ def compute_openfast_deck_residual(
         steel/structure only and does NOT include the column-ballast
         water; using ``PtfmMass`` directly here would underestimate the
         weight by ~10e6 kg for OC4.
+    platform_cog_z_m
+        Vertical coordinate of the platform-with-ballast CoG, in metres
+        relative to SWL (positive z = up). MUST pair with
+        ``platform_total_mass_kg``: Robertson's value (-13.46 m) goes
+        with the with-ballast mass; OpenFAST's ``PtfmCMzt`` (-8.66 m for
+        OC4) is steel-only and pairs with ``PtfmMass``. Mixing one
+        mass with the other CoG is a bookkeeping error (conventions
+        doc Item 17). The default `OC4_PLATFORM_COG_Z_M = -13.46 m`
+        is consistent with the default mass.
 
     Returns
     -------
     DeckResidual
         See dataclass docstring. ``F_residual`` is in inertial-frame
         Newtons / Newton-metres at the BEM reference origin.
+
+    Notes
+    -----
+    For axisymmetric decks with on-axis CoB (OC4 satisfies),
+    ``F_residual[2:5]`` is provably independent of ``platform_cog_z_m``
+    -- the moment formulas (F[3], F[4]) reference only horizontal
+    CoG offsets. The ``platform_cog_z_m`` argument enters only the
+    diagnostic ``cog_total_z_m`` field. Pinned by
+    ``test_F_residual_invariant_to_platform_cog_z`` in
+    ``tests/unit/test_openfast_deck.py``.
     """
     fst_files = sorted(deck_dir.glob("*.fst"))
     if len(fst_files) != 1:
@@ -299,9 +328,11 @@ def compute_openfast_deck_residual(
     g = _scan_named_float(fst, "Gravity")
     rho = _scan_named_float(fst, "WtrDens")
 
-    # ElastoDyn provides platform & RNA mass details.
+    # ElastoDyn provides platform & RNA mass details. NOTE: PtfmCMzt
+    # (steel-only platform CoG, -8.66 m for OC4) is intentionally
+    # NOT read here -- the platform CoG used in this routine must
+    # pair with `platform_total_mass_kg` (with-ballast). See Item 17.
     elastodyn = _scan_named_path(fst, "EDFile")
-    ed_ptfm_cmzt = _scan_named_float(elastodyn, "PtfmCMzt")
     ed_hub_mass = _scan_named_float(elastodyn, "HubMass")
     ed_nac_mass = _scan_named_float(elastodyn, "NacMass")
     ed_yawbr_mass = _scan_named_float(elastodyn, "YawBrMass")
@@ -383,7 +414,9 @@ def compute_openfast_deck_residual(
     }
     m_total = sum(masses.values())
     cogs_z = {
-        "platform_with_ballast": ed_ptfm_cmzt,
+        # `platform_with_ballast` MUST pair with `platform_cog_z_m`,
+        # not OpenFAST's `PtfmCMzt`. See module docstring + Item 17.
+        "platform_with_ballast": platform_cog_z_m,
         "tower": tower_cog_z,
         "hub": hub_cog_z,
         "nacelle": nac_cog_z,

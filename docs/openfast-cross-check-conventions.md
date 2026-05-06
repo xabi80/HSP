@@ -728,6 +728,62 @@ S5 (drag-on heave decay, M6 PR6) will exercise regime 1.
 
 ---
 
+## Item 17 -- `z_G` must be consistent with the mass `M` and stiffness `C`
+
+**Source.** M6 PR4 Pre-1 audit
+(`docs/diagnostics/m6-pr4-pre1-cmzt-audit.md`); fix landed on the
+`fix-pr2-cmzt` branch.
+
+**Rule.** ``z_G`` (the vertical CoG coordinate used in any force,
+moment, or stiffness computation) must be paired consistently
+with the mass ``M`` and the stiffness ``C`` referenced in the
+same equation. The pairings come from the **same source** at the
+**same level of system completeness**:
+
+- **Robertson 2014 Table 3-1 OC4 platform-with-ballast pair**:
+  ``M = 1.3473 × 10⁷ kg``, ``z_G = -13.46 m``. This is the with-
+  ballast mass and CoG; the ballast water inside OC4's offset
+  columns and centre column is included in both.
+- **OpenFAST `*_ElastoDyn.dat` steel-only pair**: ``PtfmMass =
+  3.852 × 10⁶ kg``, ``PtfmCMzt = -8.66 m``. Steel-only structure;
+  the ballast water is treated separately by HydroDyn
+  ``FillGroups``.
+- **Combined-system pair** (platform + tower + RNA): aggregated
+  by the parser, with each component contributing its own
+  ``(m_i, z_i)`` from a consistent source.
+
+**Mixing one mass with the other CoG is a bookkeeping error.** It
+may not surface in a specific assertion (the M6 PR4 Pre-1 audit
+showed F-vector elements are independent of ``z_G`` for
+axisymmetric on-axis-CoB decks like OC4), but it leaks the moment
+the test reaches a configuration where vertical lever arms
+matter — non-axisymmetric mass distribution, a moored case where
+mooring-line anchor positions feed into a moment with vertical
+arms, or a body geometry where the CoB doesn't sit on the
+symmetry axis.
+
+**Verification status.** Pinned by:
+
+- Two unit tests in ``tests/unit/test_openfast_deck.py``:
+  ``test_F_residual_invariant_to_platform_cog_z`` (algebraic
+  invariant for axisymmetric decks); and
+  ``test_default_platform_cog_z_pairs_with_default_mass``
+  (default ``(M, z_G)`` consistency for OC4).
+- The pre-fix behaviour was inconsistent (parser used
+  ``PtfmCMzt = -8.66 m`` with ``M = 1.347 × 10⁷ kg``); the fix
+  replaced ``PtfmCMzt`` reads with the explicit
+  ``OC4_PLATFORM_COG_Z_M = -13.46 m`` constant and exposed
+  ``platform_cog_z_m`` as a kwarg paired with
+  ``platform_total_mass_kg``.
+
+**The same protocol applies to any future scenario PR.** When a
+new component / coefficient enters the residual computation,
+verify that its ``(m, z_G)`` pair comes from a single, internally
+consistent source. The two unit tests above are the runnable
+sanity check.
+
+---
+
 ## Verification status summary (PR2)
 
 | Item | Status |
@@ -748,6 +804,7 @@ S5 (drag-on heave decay, M6 PR6) will exercise regime 1.
 | 14. Static equilibrium tests assert only on restored DOFs | ✅ verified at PR2 (S1) |
 | 15. Static equilibrium under Cummins linearisation | ✅ verified at PR2 (S1) |
 | 16. Damping tolerance depends on dissipation regime | ✅ verified at PR3 (S2 regime 3); 🟡 PR6 (S5 regime 1) |
+| 17. z_G consistency with mass M and stiffness C | ✅ verified at fix-pr2-cmzt (PR4 Pre-1 audit) |
 
 **Items not allowed past PR1 without both columns filled:** none.
 Every item above carries (a) a written assertion + source citation
