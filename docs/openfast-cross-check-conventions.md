@@ -673,6 +673,61 @@ assertions, all pass at PR2.
 
 ---
 
+## Item 16 -- Damping cross-check tolerance depends on dissipation regime
+
+**Source.** M6 PR3 Mod 2 diagnostic
+(`docs/diagnostics/m6-pr3-damping-stability.md`).
+
+**Rule.** Damping cross-check tolerance depends on the dominant
+dissipation mechanism in the scenario, not on a single project-wide
+rtol. Three regimes:
+
+1. **Quadratic-drag-dominated** (Morison drag active). Free-decay
+   envelope is hyperbolic (Faltinsen 1990 §4): successive peaks
+   follow ``ξ_n = ξ_0 / (1 + n · ξ_0 · δ)`` with
+   ``δ ∝ ρ · C_D · A_drag / m_eff``. Log-decrement ζ extracted from
+   short windows decreases with amplitude — there is no single
+   linear ζ to assert against. Cross-checks must compare
+   **per-peak amplitudes** against the hyperbolic-envelope
+   reference (per-peak rtol, not log-decrement).
+2. **Linear-radiation-dominated** (Morison disabled, but kernel
+   damping at ω_n is non-trivial). Envelope is exponential; ζ from
+   log-decrement is well-defined. Standard `rtol = 5e-2` per Q4 of
+   the M6 plan applies.
+3. **Radiation-only on a low-damping eigenmode**. Some BEM-defined
+   eigenmodes have radiation damping at the natural frequency that
+   sits at the numerical-noise floor (e.g., OC4 pitch:
+   ``B_55(ω_n=0.34 rad/s)`` ≈ 1.85 × 10⁴ N·m·s/rad gives ``ζ ~ 1.6 × 10⁻⁵``).
+   On these modes neither tool produces a meaningful damping value
+   — peaks barely decay over the simulation horizon. Tight ζ
+   assertions have **no signal**. The only testable property is
+   **non-negativity** (radiation must dissipate, not inject energy)
+   — this is what catches kernel pathologies like the M6 PR3
+   pre-fix bug.
+
+**Decision rule when scoping a damping cross-check on a new
+scenario:**
+
+- Is the dominant dissipation mechanism (radiation, viscous drag,
+  mooring) **matched** in both tools? If not, disable the unmatched
+  mechanism in the reference (per Option A of the M6 PR3 re-scope:
+  S2 disabled Morison drag) or move the comparison to a different
+  scenario.
+- After matching, measure ζ in the reference over windows
+  ``peaks 1-5 / 5-10 / 10-20``. If the windows agree to within
+  rtol = 5e-2, lock the tight assertion. If they don't, the
+  scenario is not in regime 2 — fall back to the matching
+  regime's protocol (per-peak hyperbolic for regime 1,
+  non-negativity-only for regime 3).
+
+**Verification status.** Applied to S2 in M6 PR3:
+``tests/validation/test_m6_openfast_free_decay.py`` runs the
+non-negativity assertion (regime 3); the diagnostic-log test
+emits ζ over the three windows for the cross-check report. Future
+S5 (drag-on heave decay, M6 PR6) will exercise regime 1.
+
+---
+
 ## Verification status summary (PR2)
 
 | Item | Status |
@@ -692,6 +747,7 @@ assertions, all pass at PR2.
 | 13. Tolerances accommodate residual oscillation | ✅ verified at PR2 (S1), 🟡 PR5 (S4) |
 | 14. Static equilibrium tests assert only on restored DOFs | ✅ verified at PR2 (S1) |
 | 15. Static equilibrium under Cummins linearisation | ✅ verified at PR2 (S1) |
+| 16. Damping tolerance depends on dissipation regime | ✅ verified at PR3 (S2 regime 3); 🟡 PR6 (S5 regime 1) |
 
 **Items not allowed past PR1 without both columns filled:** none.
 Every item above carries (a) a written assertion + source citation

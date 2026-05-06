@@ -12,7 +12,7 @@
   "n_samples": 12001,
   "unit_system": "SI_canonical",
   "extracted_by": "scripts/extract_openfast_fixtures.py --mode read-only --scenario s2_pitch_decay",
-  "extracted_at": "2026-05-04T00:49:35Z",
+  "extracted_at": "2026-05-05T14:28:23Z",
   "channels_canonical": [
     "time_s",
     "surge_m",

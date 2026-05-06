@@ -240,7 +240,58 @@ in code as a `ValueError` gate, not as prose.
 
 ---
 
-## 14. Pre-Cross-Check Audit Pattern
+## 14. OpenFAST execution access
+
+Claude Code has end-to-end access to OpenFAST on this machine
+and may run it as part of M6 cross-check work without handoff.
+
+**Tooling:**
+- Binary: `C:\Users\xlama\OneDrive\Documents\buoy\OpenFast\openfast_x64.exe`
+  (OpenFAST v4.1.2)
+- r-test reference: v4.1.2 tag at
+  `C:\Users\xlama\OneDrive\Documents\buoy\OpenfastRepos\r-test`
+- Python wrapper: `openfast_io` v5.0.0 (pip-installed, NOT
+  `openfast-toolbox` which doesn't exist on PyPI)
+- Generator scripts:
+  `C:\Users\xlama\OneDrive\Documents\buoy\openfast_setup\`
+
+**In-scope actions:**
+- Edit `scenario_config.py` to modify scenario definitions
+- Run `generate_scenario_decks.py --clean` to regenerate decks
+- Run `run_scenarios.py --scenarios <name>` to execute simulations
+  (per-scenario: 30s-4min; full 18-scenario sweep: ~60min)
+- Run `extract_openfast_fixtures.py --scenario <name>` to convert
+  `.outb` to canonical CSV+JSON
+- Commit regenerated fixtures with explicit per-scenario rationale
+  in the commit message
+
+**Out of scope without explicit approval:**
+- Modifying the vendored baseline at
+  `tests/fixtures/openfast/oc4_deepcwind/baseline/` (as-shipped
+  r-test snapshot; all variation goes through scenario_config.py)
+- Full 18-scenario regenerations triggered casually (S3 RAO sweep
+  alone is ~30min; flag in PR descriptions before committing
+  fixture changes that touch S3)
+- Adding new external dependencies to FloatSim's runtime baseline
+  (§9 still applies; openfast_io is scripting-only)
+
+**Known gotchas:**
+- HSP repo lives under OneDrive. Scripts that wipe directories
+  (`--clean`) can hit `PermissionError` from OneDrive sync locks.
+  Retry once after a short pause; if it persists, escalate to
+  Xabier rather than partial-cleaning.
+- `.outb` files use `openfast_io.FAST_output_reader.FASTOutputFile`
+  (channels are at `out.info["attribute_names"]`, not
+  `out.channels`). MoorDyn outputs are in a separate `.MD.out`
+  text file that the extractor merges per Item 11.
+- `CompMooring` is an enum (0=none, 1=MAP++, 3=MoorDyn), not a
+  boolean. OC4 uses MoorDyn.
+- Wave kinematics live in fst_vt['SeaState'], not fst_vt['HydroDyn']
+  in OpenFAST v4+.
+
+---
+
+## 15. Pre-Cross-Check Audit Pattern
 
 Before running any tool-cross-check milestone (M6 OpenFAST, future M7+), audit the FloatSim modules whose conventions sit on the path between the reference tool's output and the assertion under test. This is a workflow discipline: **conventions that look settled often aren't**, and disagreements between tools can hide as off-by-one errors in any module along the chain.
 

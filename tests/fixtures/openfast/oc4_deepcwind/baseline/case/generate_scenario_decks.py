@@ -302,11 +302,57 @@ def generate_deck_for_scenario(
     if sweep_value is not None:
         apply_sweep_value(writer.fst_vt, scenario, sweep_value)
 
+    if scenario.morison_drag_disabled:
+        _zero_morison_drag(writer.fst_vt["HydroDyn"])
+
     # Write the deck. The writer emits .fst + every module file
     # referenced by fst_vt's flags (CompElast, CompHydro, CompMooring,
     # etc.) into FAST_runDirectory.
     writer.execute()
     return deck_dir
+
+
+# ---------------------------------------------------------------------
+# Morison drag toggle (M6 PR3 Option A)
+# ---------------------------------------------------------------------
+
+# Lists of HydroDyn fst_vt keys whose Morison drag coefficients must
+# be zeroed when scenario.morison_drag_disabled is True. Members are
+# kept in place (kinematics still computed; member buoyancy via
+# PropPot=True still routes through the BEM); only the quadratic
+# Cd-based viscous drag is removed.
+_DRAG_LIST_KEYS: tuple[str, ...] = (
+    "CylMemberCd1",
+    "CylMemberCd2",
+    "CylMemberCdMG1",
+    "CylMemberCdMG2",
+    "CylMemberAxCd1",
+    "CylMemberAxCd2",
+    "CylMemberAxCdMG1",
+    "CylMemberAxCdMG2",
+    "AxCd",
+)
+_DRAG_SCALAR_KEYS: tuple[str, ...] = (
+    "CylSimplCd",
+    "CylSimplCdMG",
+    "CylSimplAxCd",
+    "CylSimplAxCdMG",
+)
+
+
+def _zero_morison_drag(hd: dict[str, Any]) -> None:
+    """Mutate the HydroDyn fst_vt sub-dict to zero ALL Cd entries.
+
+    See ``Scenario.morison_drag_disabled`` for the rationale. This
+    runs AFTER ``apply_scenario_edits`` so it has the final say on the
+    drag coefficients regardless of any other edits that touched them.
+    """
+    for key in _DRAG_LIST_KEYS:
+        if key in hd and isinstance(hd[key], list):
+            hd[key] = [0.0] * len(hd[key])
+    for key in _DRAG_SCALAR_KEYS:
+        if key in hd:
+            hd[key] = 0.0
 
 
 # ---------------------------------------------------------------------
@@ -334,6 +380,7 @@ def write_manifest(
             "fst_edits": dict(scenario.fst_edits),
             "elastodyn_edits": dict(scenario.elastodyn_edits),
             "hydrodyn_edits": dict(scenario.hydrodyn_edits),
+            "morison_drag_disabled": scenario.morison_drag_disabled,
         })
     manifest: dict[str, Any] = {
         "openfast_version_required": "v4.1.2",

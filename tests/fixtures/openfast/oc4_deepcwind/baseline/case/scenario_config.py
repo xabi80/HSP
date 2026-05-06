@@ -89,6 +89,15 @@ class Scenario:
     elastodyn_edits: dict[str, float | int | bool | str] = field(default_factory=dict)
     hydrodyn_edits: dict[str, float | int | str] = field(default_factory=dict)
     moordyn_active: bool = False
+    # When True, generate_scenario_decks.py post-processes the HydroDyn
+    # fst_vt to zero ALL Morison drag coefficients (CylMemberCd1/2,
+    # CylMemberCdMG1/2, CylMemberAxCd1/2, CylMemberAxCdMG1/2, AxCd,
+    # CylSimplCd*). The members and joints stay in place (kinematics
+    # still computed; member buoyancy via PropPot still runs through
+    # the BEM), but quadratic drag forces vanish. Used by S2 to
+    # isolate radiation-only physics for the M6 PR3 cross-check
+    # (see docs/diagnostics/m6-pr3-damping-stability.md).
+    morison_drag_disabled: bool = False
     sweep_param: tuple[str, list[float]] | None = None
     output_channels: tuple[str, ...] = ()
 
@@ -147,8 +156,9 @@ SCENARIOS: tuple[Scenario, ...] = (
     Scenario(
         name="s2_pitch_decay",
         purpose=(
-            "Free-decay from 5deg pitch offset, no waves, no mooring. "
-            "Cross-checks pitch natural period and radiation damping."
+            "Free-decay from 5deg pitch offset, no waves, no mooring, "
+            "Morison drag disabled. Cross-checks pitch natural period "
+            "and radiation-only response (M6 PR3, post-Option-A)."
         ),
         fst_edits={
             **_DISABLE_TURBINE_MODULES,
@@ -163,12 +173,28 @@ SCENARIOS: tuple[Scenario, ...] = (
             "PtfmRDOF": True,
             "PtfmPDOF": True,
             "PtfmYDOF": True,
+            # Override the baseline ElastoDyn template (which carries
+            # PtfmSurge=5.0 m as a non-zero default). Surge has zero
+            # hydrostatic stiffness in unmoored OC4, so a non-zero IC
+            # would drift indefinitely and contaminate the pitch
+            # response through cross-coupling. Mod 1 of M6 PR3 plan
+            # locks zero IC on unrestored DOFs in free-decay tests
+            # (analogous to Item 14 for static eq).
+            "PtfmSurge": 0.0,
             "PtfmPitch": 5.0,  # initial pitch offset, degrees
         },
         hydrodyn_edits={
             "WaveMod": 0,
             **_DISABLE_QTFS,
         },
+        # Morison drag disabled: Mod 2 of the M6 PR3 plan classified
+        # S2's quadratic-drag damping as amplitude-dependent (hyperbolic
+        # envelope; docs/diagnostics/m6-pr3-damping-stability.md),
+        # invalidating a tight zeta cross-check against FloatSim's
+        # radiation-only setup. Disabling drag here makes S2 a clean
+        # radiation-only cross-check on both sides. Quantitative drag
+        # damping cross-check moves to S5 (M6 PR6).
+        morison_drag_disabled=True,
         moordyn_active=False,
         output_channels=_BASE_CHANNELS,
     ),
