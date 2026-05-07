@@ -784,6 +784,195 @@ sanity check.
 
 ---
 
+## Item 18 -- Wave-mode value must match intent
+
+**Source.** M6 PR4 Pre-2 audit (`docs/diagnostics/m6-pr4-pre2-steady-state-check.md`); fix landed on the `fix-s3-wavemod` branch.
+
+**Rule.** Wave-mode value must match intent.
+``WaveMod = 1`` is regular Airy (deterministic monochromatic wave at
+`WaveTp`); ``WaveMod = 2`` is JONSWAP / Pierson-Moskowitz irregular
+spectrum (random sea state with `WaveTp` interpreted as the spectral
+peak). RAO cross-checks require ``WaveMod = 1``; spectral cross-checks
+require ``WaveMod = 2``. **Misconfiguration is silent at deck
+generation time** (OpenFAST happily accepts either value with the
+same `WaveTp` field) and only surfaces in scenario response analysis
+— typically when an FFT or per-cycle-amplitude diagnostic shows the
+labelled wave period is not the dominant frequency in the wave-elev
+channel. Pinned by the deck-generation regression test in
+`openfast_setup/tests/test_scenario_decks.py` which asserts that the
+generated `*_SeaState.dat` `WaveMod` value matches what
+`seastate_edits` declared for every scenario.
+
+**Failure mode that masked the original bug**: in S3 the comment
+read `# regular Airy` while the value was `2` (JONSWAP). The deck
+generated cleanly; OpenFAST ran cleanly; CSVs extracted cleanly.
+The first place the misconfiguration would have surfaced was the
+RAO assertion at PR4 — by which time we'd have committed the
+fixtures, the test, the report. Pre-2's FFT diagnostic caught it
+upstream.
+
+---
+
+## Item 19 -- The code-path exercise principle
+
+**Source.** Generalisation of the M6 audit pattern across four
+findings: hydrostatic-gravity (M5), asymmetric-CoG factor
+(convention-audit), radiation-kernel (M6 PR3 pre), WaveMod (M6 PR4
+Pre-2). All four share the same structural shape: a code path that
+was correct in synthetic / unit / partial-scenario tests, but
+silently wrong under production-quality inputs and full-scenario
+activation.
+
+**Rule.** A code path correct in synthetic, unit, or
+partial-scenario tests is NOT validated to be correct under
+production-quality inputs and full-scenario activation. Therefore:
+any code path that consumes external data (BEM databases, deck
+files, time-history fixtures) or that activates conditionally on
+configuration values must have at least one cross-check or
+production-data test in the suite. Synthetic-only validation is
+necessary but not sufficient.
+
+**PR-scoping implication.** When scoping a PR, ask:
+*what code paths does this PR newly activate?* — and ensure each
+gets a real-data test. Examples from the four findings:
+
+- **Hydrostatic-gravity (M5)**: BEM readers shipped buoyancy-only
+  `C` with a docstring caveat that the gravity contribution must
+  be added downstream. The `assemble_cummins_lhs` path was
+  unit-tested with synthetic full-`C` HDBs (which already had the
+  gravity contribution baked in by hand). The bug surfaced at
+  M6 PR1's audit when the code path "real BEM `C` flows through
+  the unwritten-but-promised `Body` assembly" was first
+  exercised.
+- **Asymmetric-CoG factor**: a sign / factor-of-2 ambiguity in
+  the gravity-restoring decomposition was invisible while all
+  test fixtures had on-axis CoG (where the asymmetric term
+  vanishes). Surfaced when the audit pattern (CLAUDE.md §14)
+  required a discriminator test with off-axis CoG.
+- **Radiation kernel (M6 PR3 pre)**: trapezoidal-cosine sum was
+  unit-tested with constant-`B` synthetics (which masks both the
+  truncation and Nyquist pathologies). The bug surfaced when
+  the kernel code path was first exercised with realistic
+  marin_semi.1 BEM data on a free-decay extraction at variable
+  `t_max`.
+- **WaveMod (M6 PR4 Pre-2)**: S1 / S2 ran `WaveMod = 0` (still
+  water), bypassing wave generation entirely. S3 was the first
+  PR to need wave forcing; the misconfig sat latent for two
+  scenario PRs.
+
+**Test-suite implication.** Cross-check tests at the
+production-data level (M6 PR2 → PR6) are necessary; the
+synthetic/unit suite alone has demonstrated four classes of
+silent failure across this codebase. Conversely, the cross-check
+pattern is uneconomical for every code path — the right
+discipline is the one captured here: at PR-scoping time,
+enumerate newly-activated code paths and ensure each has at
+least one real-data exerciser somewhere in the suite (cross-check
+PR, validation-tier test, or property-based test against a
+non-trivial fixture).
+
+---
+
+## Item 20 -- RAO extraction from finite-time regular-wave runs requires frequency-selective filtering
+
+**Source.** M6 PR4 Pre-2 step 4 smoke test (WaveTp = 10 s on
+post-WaveMod=1-fix S3 reference). With wave generation now clean,
+the pitch response showed a residual ~ 8 % secondary peak at
+T ≈ 28.6 s — the OC4 pitch natural-period transient — even after
+1000 s of simulation.
+
+**Rule.** RAO extraction from finite-time regular-wave simulations
+must use frequency-selective filtering at the wave frequency to
+reject persistent natural-frequency transients ("ringing").
+Extending simulation time is not a remediation: the transient
+persists for many natural-period decay constants in lightly-damped
+DOFs (OC4 pitch radiation damping at the natural frequency is
+~ 10⁻⁹ in regime 3 per Item 16; with small-amplitude Morison drag
+included it remains O(0.001) for the pitch responses S3 produces).
+This is the standard practice in production RAO tools (OrcaFlex
+post-processing, AQWA's `RAOSPECTRA`, WAMIT's harmonic post-
+processors), and is documented in offshore-engineering literature
+(Faltinsen 1990 §4 on transient responses; ITTC procedures for
+regular-wave seakeeping tests).
+
+**Implementation choice (M6 PR4)**: sinusoidal least-squares fit
+at the wave frequency over the steady-state window. NOT a
+band-pass filter. Reasoning: band-pass filters have
+design-dependent phase shifts that bias the RAO phase output;
+lstsq is unambiguous, one line of NumPy, and produces a useful
+fit-residual diagnostic that flags frequencies where the wave-
+frequency fit fails to capture most of the response variance
+(typical signature: low-amplitude DOF responses where the
+natural-frequency transient and the wave-driven response are
+comparable in magnitude).
+
+**Verification status.** Implemented in
+`tests/validation/test_m6_openfast_regular_wave.py` (M6 PR4) for
+every (DOF, wave frequency) pair. Per-pair fit residual recorded
+as a diagnostic-only output; pairs with residual > 0.10 are
+treated as advisory (logged but not asserted-on).
+
+---
+
+## Item 21 -- OpenFAST quantises WaveTp to the nearest IFFT bin
+
+**Source.** M6 PR4 Pre-2 step 6 (post-WaveMod=1 fix verification).
+
+**Rule.** OpenFAST's regular-wave generator constructs the wave
+train via IFFT on a frequency grid with spacing
+``WaveDOmega = 2 * pi / WaveTMax``. The requested ``WaveTp`` is
+silently snapped to the nearest grid bin
+``omega_k = k * WaveDOmega``, with ``k = round(WaveTMax / WaveTp)``.
+For ``WaveTp`` values that don't evenly divide ``WaveTMax``, the
+actual generated wave period differs from the labelled one by up
+to half a bin-width ratio.
+
+For the M6 S3 sweep with ``WaveTMax = 600 s`` the quantised periods
+are:
+
+| WaveTp [s] | k | T_actual [s] | rel-err |
+|-----------:|--:|-------------:|--------:|
+|  4 | 150 |  4.000 | 0     |
+|  5 | 120 |  5.000 | 0     |
+|  6 | 100 |  6.000 | 0     |
+|  7 |  86 |  6.977 | -0.33 % |
+|  8 |  75 |  8.000 | 0     |
+| 10 |  60 | 10.000 | 0     |
+| 12 |  50 | 12.000 | 0     |
+| 14 |  43 | 13.953 | -0.33 % |
+| 16 |  38 | 15.789 | -1.32 % |
+| 18 |  33 | 18.182 | +1.01 % |
+| 20 |  30 | 20.000 | 0     |
+| 22 |  27 | 22.222 | +1.01 % |
+| 25 |  24 | 25.000 | 0     |
+| 30 |  20 | 30.000 | 0     |
+
+**Implication for RAO extraction (Item 20).** The lstsq fit basis
+at the body-response wave frequency MUST use the quantised
+``omega = 2 * pi / T_actual``, NOT ``2 * pi / T_label``. Fitting at
+the labelled frequency on a non-divisor-of-WaveTMax scenario
+produces basis-frequency mismatch that inflates the fit residual
+by O(few %) -- enough to fail a 5 % residual gate that the
+underlying signal would otherwise pass cleanly. Pre-2's first
+pass on the regenerated S3 reference flagged WaveTp = 16, 18, 22
+as FAIL on the residual gate; switching to the quantised
+frequency reduced residuals to < 0.0002 on all 14 scenarios.
+
+**Implementation in PR4.** `tests/validation/test_m6_openfast_regular_wave.py`
+computes the quantised period from the per-scenario SeaState
+``WaveTMax`` at fit time. The same helper is used by
+`scripts/m6_pr4_pre2_steady_state.py`. Pinned by the per-scenario
+amplitude assertion: each scenario's wave_elev fitted at its
+quantised omega must match WaveHs/2 to within rtol = 2e-2 (as
+verified by Pre-2 step 6).
+
+**Workaround (not used)**: setting WaveTMax to a multiple of every
+labelled WaveTp would eliminate the quantisation, but the
+required value (LCM of all labels) is impractically long. The
+fit-at-quantised-omega convention is the standard remediation.
+
+---
+
 ## Verification status summary (PR2)
 
 | Item | Status |
@@ -805,6 +994,10 @@ sanity check.
 | 15. Static equilibrium under Cummins linearisation | ✅ verified at PR2 (S1) |
 | 16. Damping tolerance depends on dissipation regime | ✅ verified at PR3 (S2 regime 3); 🟡 PR6 (S5 regime 1) |
 | 17. z_G consistency with mass M and stiffness C | ✅ verified at fix-pr2-cmzt (PR4 Pre-1 audit) |
+| 18. Wave-mode value must match intent | ✅ verified at fix-s3-wavemod (PR4 Pre-2); pinned by deck-gen regression test in openfast_setup/tests/ |
+| 19. Code-path exercise principle | ✅ documented; implication captured in PR-scoping guidance |
+| 20. RAO extraction requires frequency-selective filtering | 🟡 PR4 (lstsq fit in test_m6_openfast_regular_wave.py) |
+| 21. OpenFAST quantises WaveTp to nearest IFFT bin | ✅ verified at fix-s3-wavemod (PR4 Pre-2); fit at quantised omega closes the residual gate on all 14 S3 scenarios |
 
 **Items not allowed past PR1 without both columns filled:** none.
 Every item above carries (a) a written assertion + source citation

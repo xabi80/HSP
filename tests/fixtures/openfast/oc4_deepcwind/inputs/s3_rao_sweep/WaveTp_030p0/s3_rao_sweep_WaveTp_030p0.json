@@ -12,7 +12,7 @@
   "n_samples": 24001,
   "unit_system": "SI_canonical",
   "extracted_by": "scripts/extract_openfast_fixtures.py --mode read-only --scenario s3_rao_sweep --sweep 30.0",
-  "extracted_at": "2026-05-04T00:49:45Z",
+  "extracted_at": "2026-05-06T23:05:17Z",
   "channels_canonical": [
     "time_s",
     "surge_m",

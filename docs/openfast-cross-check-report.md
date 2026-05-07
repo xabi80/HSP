@@ -8,9 +8,9 @@ game; this report is the play-by-play.
 
 | Scenario | PR | Status | Date |
 | -------- | -- | ------ | ---- |
-| S1 -- unmoored static equilibrium | PR2 | ✅ landed | 2026-05-04 |
+| S1 -- unmoored static equilibrium | PR2 | ✅ landed (post-fix-pr2-cmzt audit) | 2026-05-05 |
 | S2 -- pitch free decay (radiation-only, post-Option-A) | PR3 | ✅ landed (period xfail-strict under F1-residual) | 2026-05-05 |
-| S3 -- regular-wave RAO sweep | PR4 | ⏭ pending | -- |
+| S3 -- regular-wave RAO sweep | PR4 | 🟡 in flight (Pre-2 WaveMod fix landing on fix-s3-wavemod) | -- |
 | S4 -- moored static equilibrium | PR5 | ⏭ pending | -- |
 | S5 -- drag-on heave free decay | PR6 | ⏭ pending | -- |
 
@@ -366,6 +366,103 @@ dominant mechanism doesn't match.
   per-DOF cross-checks).
 - No drag-on damping cross-check (deferred to S5 / PR6 by
   design).
+
+---
+
+## PR4 -- S3 RAO sweep (in flight, post-fix-s3-wavemod)
+
+### Pre-2 WaveMod misconfiguration (closed 2026-05-06 on `fix-s3-wavemod`)
+
+Before any PR4 RAO test code lands, the Pre-2 audit caught a
+misconfiguration that had been latent across S1-S3 commits: the
+S3 scenario carried `seastate_edits = {"WaveMod": 2, ...}` with a
+comment `# regular Airy`. `WaveMod = 2` is JONSWAP irregular
+spectrum; `WaveMod = 1` is regular Airy. All 14 S3 scenarios had
+been generating irregular waves; the long-period scenarios
+(WaveTp ≥ 20 s) had their JONSWAP peak entirely below
+`WvLowCOff = 0.314 rad/s` and produced wave trains with **no
+spectral content at the labeled frequency at all**.
+
+Disposition (`fix-s3-wavemod` branch off main, merged before
+PR4 starts):
+
+1. **Vendored generator removal**: the duplicate generator at
+   `tests/fixtures/openfast/oc4_deepcwind/baseline/case/`
+   (`scenario_config.py`, `generate_scenario_decks.py`,
+   `run_scenarios.py`) had drifted to a non-functional state
+   (still on the OpenFAST v3 schema with `WaveMod` in
+   `hydrodyn_edits` while the authoritative
+   `openfast_setup/scenario_config.py` migrated to v4+ with
+   `seastate_edits`). The vendored copy would have raised
+   `KeyError` if anyone had run it. Removed in this branch
+   rather than re-synced — maintaining two copies is a
+   perpetual drift risk for no benefit since the
+   contributor-machine generator is the only one that runs.
+   `CLAUDE.md` §14 updated with the "deck regeneration is a
+   contributor-machine task; no in-tree generator" note;
+   `tests/fixtures/openfast/oc4_deepcwind/baseline/case/README.md`
+   rewritten to say so.
+2. **WaveMod fix**: one-line change in
+   `openfast_setup/scenario_config.py`:
+   `WaveMod: 2 → WaveMod: 1`. Comment corrected.
+3. **Smoke test on WaveTp = 10 s** (regenerate one, run, FFT):
+   wave-elevation FFT showed clean monochromatic peak at exactly
+   10 s (secondaries < 0.03 % of main); the pitch response showed
+   the main peak at 10 s plus an 8.2 % secondary at T ≈ 28.6 s
+   (the OC4 pitch natural-period transient — regime 3 per
+   Item 16). The pitch contamination is a known consequence of
+   the OC4 pitch's low effective damping at small amplitude; it
+   is handled in PR4's RAO extractor by sinusoidal lstsq fit
+   at the wave frequency, not by extending TMax.
+4. **Full S3 regeneration**: all 14 sweep variants regenerated
+   with `WaveMod = 1`. CSVs re-extracted.
+5. **Deck-generation regression test** in
+   `openfast_setup/tests/test_scenario_decks.py` asserts that
+   the generated `*_SeaState.dat` `WaveMod` value matches what
+   `seastate_edits` declared for every scenario. This is the
+   regression gate that catches the bug at deck-generation time
+   rather than at PR4 RAO-extraction time. Same precedent as
+   PR4 Pre-1's `test_F_residual_invariant_to_platform_cog_z`.
+6. **Conventions doc Items 18, 19, 20, 21**:
+   - Item 18: wave-mode value must match intent.
+   - Item 19: code-path exercise principle (generalised across
+     four findings).
+   - Item 20: RAO extraction requires frequency-selective
+     filtering (sinusoidal lstsq over band-pass; phase-shift-
+     free, residual-diagnostic-friendly).
+   - Item 21: OpenFAST quantises ``WaveTp`` to the nearest IFFT
+     bin (``WaveDOmega = 2π / WaveTMax``); RAO fits must use
+     the quantised period, not the labelled one. Surfaced when
+     the post-fix Pre-2 gate flagged elevated residuals on
+     WaveTp = 16/18/22 (non-divisors of WaveTMax = 600 s) and
+     was traced via inter-zero-crossing measurements showing
+     the actual wave was at the IFFT-snapped bin.
+7. **CLAUDE.md §13 updated** with the four-bug pattern lock.
+
+### Pre-2 closure quantitative summary
+
+After fix + regen + IFFT-bin-quantisation fit correction, all 14
+wave-elevation channels produce clean monochromatic content at
+the configured frequency. Worst case: WaveTp = 4 s with
+amp rel-err = -0.31 % and fit-residual / signal = 0.0017. Both
+gates (rel-err < 2 %, residual < 5 %) pass with ≥ 6× margin on
+every scenario. Full table in
+`docs/diagnostics/m6-pr4-pre2-steady-state-check.md`.
+
+### Pre-flight diagnostics archived
+
+- `docs/diagnostics/m6-pr4-pre1-cmzt-audit.md` — `PtfmCMzt`
+  convention audit (fix landed on `fix-pr2-cmzt`, see PR2
+  retrospective addendum).
+- `docs/diagnostics/m6-pr4-pre2-steady-state-check.md` — original
+  pre-fix WaveMod=2 finding plus post-fix wave-generation
+  verification table.
+- `scripts/m6_pr4_pre2_smoke_wavetp_10.py` — single-frequency
+  smoke test confirming WaveMod=1 generates clean Airy waves.
+- `scripts/m6_pr4_pre2_steady_state.py` — full 14-frequency
+  wave-generation verification (lstsq amp + residual).
+
+PR4 implementation pending Pre-3 (RAO definition lock-down).
 
 ---
 

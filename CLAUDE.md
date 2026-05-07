@@ -171,11 +171,26 @@ When Claude Code opens this repo for the first time:
 
 ## 13. Lessons Learned from Phase 1 Latent Bugs
 
-Two latent bugs surfaced during the M6 OpenFAST cross-check that none
-of the M1-M5 tests caught. Both fit the same anti-pattern:
-**a downstream module silently consumed an upstream output without
-gating the assumptions it depended on.** Future code reviews should
-look hard for this shape.
+**Pattern lock — four bugs, same shape.** Across the M1-M5 build-up
+and the first three M6 cross-check PRs we have surfaced four
+latent bugs that all share the same structural shape: **a code
+path correct in synthetic / unit / partial-scenario tests was
+silently wrong under production-quality inputs and full-scenario
+activation**. The four findings are the
+hydrostatic-gravity bug (M5), the asymmetric-CoG factor
+ambiguity (convention audit), the radiation-kernel
+truncation+Nyquist bug (M6 PR3 pre), and the WaveMod misconfig
+(M6 PR4 Pre-2). Generalised in conventions doc Item 19 ("the
+code-path exercise principle"); the operational implication is
+that **synthetic-only validation is necessary but not
+sufficient** — code paths that consume external data or activate
+on configuration values need a real-data exerciser somewhere in
+the suite.
+
+The two original motivating examples below are preserved for
+historical context; the four-finding count appears at the head
+of this section because it is now the operative anti-pattern,
+not a hypothesis.
 
 ### Example 1 — missing `m·g·z_G` gravity contribution to ``C``
 
@@ -238,6 +253,66 @@ Both bugs lasted because:
 documents a precondition on its input, that precondition belongs
 in code as a `ValueError` gate, not as prose.
 
+### Examples 3 and 4 — added 2026-05-06 with the M6 PR4 Pre-2 finding
+
+**Example 3 — asymmetric-CoG gravity-restoring factor (convention audit):**
+a sign / factor-of-2 ambiguity in the gravity-restoring decomposition
+was invisible while every test fixture had on-axis CoG (where the
+asymmetric term vanishes). The convention audit (CLAUDE.md §14
+pattern) added a discriminator test with off-axis CoG that surfaced
+the issue at lock-down time, before any cross-check fired.
+
+**Example 4 — `WaveMod` misconfiguration (M6 PR4 Pre-2):**
+the S3 RAO sweep was configured with `WaveMod = 2` (JONSWAP
+irregular spectrum) but commented as "regular Airy" (which would
+be `WaveMod = 1`). The misconfiguration is silent at deck
+generation: OpenFAST happily accepts `WaveMod = 2` with the same
+`WaveTp` field. Surfaced when the M6 PR4 Pre-2 FFT diagnostic
+analysed the wave-elevation channel and found the labelled wave
+period was not present in the spectrum — instead the response was
+a broadband JONSWAP envelope (or, for the long-period scenarios,
+nothing at all because `WvLowCOff` zeroed the entire spectral
+peak).
+
+S1 and S2 ran `WaveMod = 0` (still water), so the wave-generation
+code path was not exercised through M6 PR2 or PR3. The
+misconfiguration sat latent for two scenario PRs.
+
+### Generalisation — the recurring shape (sharpened across four findings)
+
+Each bug fits the same anti-pattern at a slightly different
+level of the stack:
+
+| Bug | Latent because |
+|-----|----------------|
+| Hydrostatic-gravity (M5) | Reader docstring caveat ("downstream must add gravity") was prose, not code; downstream was never written; on-axis fixtures masked the missing term |
+| Asymmetric-CoG (audit) | All fixtures had on-axis CoG; the asymmetric term vanished by construction |
+| Radiation kernel (M6 PR3 pre) | Constant-`B` synthetic happened to mask both the truncation and Nyquist pathologies; `t_max`-stable assertions on smooth fixtures didn't probe the regime where the bugs surface |
+| WaveMod (M6 PR4 Pre-2) | S1 and S2 used `WaveMod = 0` (still water) so wave generation was never exercised through cross-check; integer enum values are silently mis-typeable |
+
+Common features:
+
+1. **Caveats lived only in docstrings, not in code gates.**
+   Where applicable: reader docstrings, kernel preconditions,
+   convention assumptions in scenario_config comments.
+2. **No test exercised the cross-module / cross-scenario
+   combination** under production-quality inputs.
+3. **The metric that would have caught the bug** (damping for
+   the kernel; pitch period for hydrostatic-gravity; FFT for
+   WaveMod; off-axis CoG for asymmetric factor) **wasn't the
+   metric the existing tests were asserting on** until the
+   relevant cross-check PR scoped it explicitly.
+
+**For all future Phase 1 + Phase 2 work:** at PR-scoping time,
+ask **"what code paths does this PR newly activate?"** and
+ensure each newly-activated path has at least one real-data
+exerciser somewhere in the suite. Synthetic-only validation
+has now produced four classes of silent failure on this
+codebase; it is necessary but not sufficient.
+
+This is conventions doc Item 19, codified at the working-
+agreement level here.
+
 ---
 
 ## 14. OpenFAST execution access
@@ -254,6 +329,19 @@ and may run it as part of M6 cross-check work without handoff.
   `openfast-toolbox` which doesn't exist on PyPI)
 - Generator scripts:
   `C:\Users\xlama\OneDrive\Documents\buoy\openfast_setup\`
+
+The generator scripts are NOT in the HSP repo. Deck regeneration
+is a contributor-machine task. The committed fixtures (OpenFAST
+inputs under `tests/fixtures/openfast/oc4_deepcwind/inputs/`,
+extracted CSVs, vendored baseline under
+`tests/fixtures/openfast/oc4_deepcwind/baseline/`) are the repo's
+authoritative artifact; the tooling that produced them lives in
+`openfast_setup/`. A previous version of the repo carried a
+duplicate copy of the generator under
+`tests/fixtures/openfast/oc4_deepcwind/baseline/case/`; that copy
+drifted to a non-functional state (OpenFAST v3 schema while the
+authoritative copy migrated to v4+) and was removed in
+`fix-s3-wavemod`. Do not re-introduce a vendored generator copy.
 
 **In-scope actions:**
 - Edit `scenario_config.py` to modify scenario definitions
