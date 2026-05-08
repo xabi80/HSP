@@ -171,21 +171,41 @@ When Claude Code opens this repo for the first time:
 
 ## 13. Lessons Learned from Phase 1 Latent Bugs
 
-**Pattern lock — four bugs, same shape.** Across the M1-M5 build-up
-and the first three M6 cross-check PRs we have surfaced four
-latent bugs that all share the same structural shape: **a code
-path correct in synthetic / unit / partial-scenario tests was
-silently wrong under production-quality inputs and full-scenario
-activation**. The four findings are the
-hydrostatic-gravity bug (M5), the asymmetric-CoG factor
-ambiguity (convention audit), the radiation-kernel
-truncation+Nyquist bug (M6 PR3 pre), and the WaveMod misconfig
-(M6 PR4 Pre-2). Generalised in conventions doc Item 19 ("the
-code-path exercise principle"); the operational implication is
-that **synthetic-only validation is necessary but not
-sufficient** — code paths that consume external data or activate
-on configuration values need a real-data exerciser somewhere in
+**Pattern lock — five bugs, same shape.** Across the M1-M5 build-up
+and the first four M6 cross-check PRs (counting Pre-step audits)
+we have surfaced **five** latent bugs that all share the same
+structural shape: **a code path correct in synthetic / unit /
+partial-scenario tests was silently wrong under production-quality
+inputs and full-scenario activation**. The five findings:
+
+1. **Hydrostatic-gravity bug** (M5). Reader docstring caveat
+   "downstream must add gravity" never honoured by code.
+2. **Asymmetric-CoG factor** (convention audit). On-axis
+   fixtures masked the asymmetric term.
+3. **Radiation-kernel truncation+Nyquist** (M6 PR3 pre).
+   Constant-`B` synthetic masked both pathologies.
+4. **`WaveMod` misconfig** (M6 PR4 Pre-2). S1/S2 ran still
+   water; wave-generation code path was unexercised.
+5. **WAMIT dimensionalisation** (M6 PR4 Pre-3). Non-dim BEM
+   values were used as dimensional; latent because free-decay
+   is dominated by rigid-body M+C, not BEM A. Surfaced when
+   PR4 first exercised the F_exc-dominated regime.
+
+Generalised in conventions doc Item 19 ("the code-path exercise
+principle"); the operational implication is that
+**synthetic-only validation is necessary but not sufficient** —
+code paths that consume external data or activate on
+configuration values need a real-data exerciser somewhere in
 the suite.
+
+**Item 19 in action.** Finding #5 (WAMIT dim) was *predicted*
+by the framing: a known latent bug, documented in a code
+comment from M5 PR1 onward but lacking a tracked follow-up
+entry. Five PRs after the comment was written, the latent code
+path was first exercised. The pattern locked at finding #4
+(M6 PR4 Pre-2) holds at finding #5. Item 23 codifies the
+"comments rot; track explicitly" rule that would have surfaced
+finding #5 sooner.
 
 The two original motivating examples below are preserved for
 historical context; the four-finding count appears at the head
@@ -253,7 +273,7 @@ Both bugs lasted because:
 documents a precondition on its input, that precondition belongs
 in code as a `ValueError` gate, not as prose.
 
-### Examples 3 and 4 — added 2026-05-06 with the M6 PR4 Pre-2 finding
+### Examples 3, 4 and 5 — added with the M6 PR4 Pre-step findings
 
 **Example 3 — asymmetric-CoG gravity-restoring factor (convention audit):**
 a sign / factor-of-2 ambiguity in the gravity-restoring decomposition
@@ -278,6 +298,28 @@ S1 and S2 ran `WaveMod = 0` (still water), so the wave-generation
 code path was not exercised through M6 PR2 or PR3. The
 misconfiguration sat latent for two scenario PRs.
 
+**Example 5 — WAMIT dimensionalisation (M6 PR4 Pre-3):**
+the FloatSim WAMIT reader returned the public-format
+non-dimensional `.1` / `.3` / `.hst` values verbatim, as if they
+were dimensional. The bug was **explicitly documented in a code
+comment from M5 PR1 onward** ("the WAMIT reader does NOT
+currently apply ULEN-based dimensional rescaling — that's a
+separate latent bug, out of scope for this fix") but lacked a
+tracked follow-up entry. Five subsequent PRs (M5 PR2, M6 PR1,
+M6 PR2, M6 PR3, fix-pr2-cmzt, fix-radiation-kernel,
+fix-s3-wavemod) all built on the broken reader. The bug stayed
+latent because free-decay periods are dominated by rigid-body
+`M` and Robertson `C` (both dimensional); BEM-derived
+frequency-dependent `A(ω_n)` is ≤ 0.1 % of `M` for OC4 in the
+natural-period band, so the missing 1000× factor on `A` doesn't
+perturb the period assertion measurably. The bug surfaced at
+M6 PR4 Pre-3 — the first PR exercising RAO extraction, where
+`F_exc` is the entire RHS of the linearised impedance equation.
+Heave RAO at the long-wave limit came out 10⁴× too small via
+the FloatSim impedance path versus the OpenFAST time-series
+path. See conventions doc Items 22 (the rescaling rule) and 23
+(the "track-don't-comment" rule, codified by this finding).
+
 ### Generalisation — the recurring shape (sharpened across four findings)
 
 Each bug fits the same anti-pattern at a slightly different
@@ -289,6 +331,7 @@ level of the stack:
 | Asymmetric-CoG (audit) | All fixtures had on-axis CoG; the asymmetric term vanished by construction |
 | Radiation kernel (M6 PR3 pre) | Constant-`B` synthetic happened to mask both the truncation and Nyquist pathologies; `t_max`-stable assertions on smooth fixtures didn't probe the regime where the bugs surface |
 | WaveMod (M6 PR4 Pre-2) | S1 and S2 used `WaveMod = 0` (still water) so wave generation was never exercised through cross-check; integer enum values are silently mis-typeable |
+| WAMIT dimensionalisation (M6 PR4 Pre-3) | Free-decay is M+C-dominated; non-dim `A(ω)` is ≤ 0.1 % of dim M for OC4 so the missing 1000× factor was invisible to period assertions; bug was *known* (M5 PR1 docstring) but not tracked, so it persisted across five PRs |
 
 Common features:
 

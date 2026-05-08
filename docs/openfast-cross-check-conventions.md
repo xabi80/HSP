@@ -973,6 +973,263 @@ fit-at-quantised-omega convention is the standard remediation.
 
 ---
 
+## Item 22 -- WAMIT files are non-dimensional by default; readers must apply ``rho * g * ULEN^k`` rescaling
+
+**Source.** M6 PR4 Pre-3 finding
+(`docs/diagnostics/m6-pr4-pre3-rao-verification.md`); fix landed
+on the `fix-wamit-dimensionalisation` branch. Pre-3 surfaced the
+bug via dual-path RAO verification (FloatSim WAMIT-impedance
+versus OpenFAST time-series-lstsq); the impedance-path heave RAO
+came out ~10⁴× too small at WaveTp = 25 s.
+
+**Rule.** WAMIT public-format text files are **non-dimensional by
+default** (WAMIT v7 manual §4.2; HydroDyn user guide §6 follows
+the same scheme). Any reader consuming `.1` / `.3` / `.hst` must
+apply the per-DOF dimensional rescaling factors:
+
+| File | Coefficient | Non-dim → dim factor (mode i, mode j) |
+|------|-------------|----------------------------------------|
+| `.1` | `A_ij(omega)`, `A_inf_ij` | ``rho * ULEN^k_ij`` |
+| `.1` | `B_ij(omega)` | ``rho * omega * ULEN^k_ij`` |
+| `.3` | `F_exc_i` (per unit wave amp) | ``rho * g * ULEN^l_i`` |
+| `.hst` | `C_ij` | ``rho * g * ULEN^k_ij'`` |
+
+with the integer powers:
+
+- `k_ij = 3 + (1 if i in {4,5,6}) + (1 if j in {4,5,6})` for
+  `.1` (added mass / damping).
+- `l_i = 2 + (1 if i in {4,5,6})` for `.3` (excitation).
+- `k_ij' = 2 + (1 if i in {4,5,6}) + (1 if j in {4,5,6})` for
+  `.hst` (hydrostatic stiffness).
+
+OC4 marin_semi: `rho = 1025 kg/m^3`, `g = 9.80665 m/s^2`,
+`ULEN = 1.0 m`. With `ULEN = 1`, the only factors that matter are
+`rho` (= 1025) and `g` (= 9.80665).
+
+**FloatSim implementation**: ``floatsim.hydro.readers.wamit``
+exposes ``assume_dimensional`` (default ``False``),
+``rho_water_kg_m3``, ``g_m_s2``, ``ulen_m`` kwargs on the four
+public readers (``read_wamit``, ``read_added_mass_and_damping``,
+``read_excitation_force``, ``read_hydrostatic_stiffness``).
+Callers reading actual WAMIT files use the defaults; callers
+reading hand-crafted dimensional fixtures (e.g.
+`tests/fixtures/bem/wamit/synthetic_simple.*`) pass
+``assume_dimensional=True``.
+
+**Strengthened heuristic.** The pre-fix
+``_maybe_warn_nondimensional`` used a single magnitude threshold
+(``max|A| < 10``) which missed the marin_semi case (surge `A_inf
+= 8527` non-dim is above 10). Post-fix uses a *rotational* added-
+mass threshold (`A_inf[3:, 3:]` < `1e8 kg*m^2`) — semi-submersible
+pitch added mass is O(1e9) dim, so 100× below that is
+unambiguously non-dim. Fires loudly if the caller asserts
+``assume_dimensional=True`` on data that doesn't pass the
+rotational test.
+
+**Verification status.** Pinned by:
+
+- `tests/unit/test_wamit_reader.py::test_dot1_marin_semi_dimensional_A_inf_heave_matches_robertson`
+  asserts dimensional A_inf_heave matches Robertson 2014
+  Table 3-1 published 1.45 × 10⁷ kg to within 5 %.
+- `test_dot1_marin_semi_dimensional_A_inf_pitch_matches_robertson`
+  asserts dimensional A_inf_pitch matches the published value
+  to within 5 %.
+- `test_dimensionality_heuristic_catches_high_amplitude_nondim`
+  asserts the strengthened heuristic catches the marin_semi
+  pattern that the pre-fix threshold missed.
+
+---
+
+## Item 23 -- Deferred-known-bugs must be tracked, not just commented
+
+**Source.** M6 PR4 Pre-3 retrospective.
+
+**Rule.** When a code comment of the form "this is a separate
+bug, out of scope" is written, it must be paired with a **named,
+tracked Phase-N follow-up entry** in the project's report
+document or equivalent tracker. Comments rot; tracked items
+force decisions.
+
+**Failure mode this captures.** The WAMIT dimensionalisation bug
+was known and explicitly documented in
+`tests/validation/test_oc4_pitch_period_buoyancy_only_c.py`'s
+docstring from M5 PR1 onward:
+
+> "the WAMIT reader does NOT currently apply ULEN-based dimensional
+>  rescaling — that's a separate latent bug, out of scope for this
+>  fix."
+
+The comment was correct, the diagnosis was right, but no tracked
+follow-up entry was created. Subsequent PRs (M5 PR2, M6 PR1,
+M6 PR2, M6 PR3, fix-pr2-cmzt, fix-radiation-kernel,
+fix-s3-wavemod) all built on the broken reader. The bug surfaced
+at M6 PR4 — five PRs later — when RAO extraction first
+exercised the F_exc-dominated regime.
+
+**Standing rule going forward.** Any code comment of the form
+"this is a separate bug, out of scope for this PR" must be
+accompanied by:
+
+1. A named entry in `docs/openfast-cross-check-report.md`'s
+   Named follow-ups section (or the analogous tracker for non-M6
+   work), with a unique identifier (e.g., `F2-foo`, `KD-N`).
+2. A short description of the symptom and the deferred fix.
+3. The PR-scoping implication: which downstream PRs are blocked
+   on this fix landing.
+
+This pairs with Item 19 (code-path exercise principle): the
+*reason* deferred bugs persist is that the latent code path
+isn't exercised until a much later PR; the tracker forces the
+question "what does this comment defer to?" at the moment the
+comment is written.
+
+**Verification status.** The four known-but-deferred items as of
+2026-05-06 (F1-residual, KD-2, KD-3, and this WAMIT-dim bug
+itself) are tracked in `docs/openfast-cross-check-report.md`.
+Future deferred-bug comments must be paired with an entry there.
+
+---
+
+## Item 24 -- LEAD vs LAG: phase reporting between impedance and lstsq paths
+
+**Source.** M6 PR4 Pre-3 phase-residual diagnosis,
+``docs/diagnostics/m6-pr4-pre3-phase-residual-diagnosis.md``.
+
+**Rule.** When comparing an impedance-domain RAO phase against a
+time-domain ``cos + sin`` lstsq fit (as Pre-3's dual-path
+verification does), the two reporting conventions differ by a
+sign:
+
+- **Impedance path** (Path A): ``arg(xi_hat)`` under the ``+i``
+  convention is the LEAD of the response (negative-of-lag).
+- **lstsq path** (Path B): ``atan2(B, A)`` on the
+  ``A cos(omega t) + B sin(omega t)`` basis is the LAG of the
+  signal.
+
+For the same physical motion under the ``+i`` convention they
+satisfy ``Path A = -Path B``. To compare them at a 1° phase
+gate, **negate exactly one** before subtracting. The Pre-3
+verification script negates Path A's ``arg(xi_hat)`` so both
+paths report LAG.
+
+**Failure mode this captures.** Pre-3 dual-path verification on
+M6 PR4 Pre-3, post-WAMIT-dim-fix, showed a 12.7° phase gap at
+WaveTp = 10 s (Path A −6.17°, Path B +6.55° — mirror reflection
+around 0°). Initial diagnosis attributed this to a WAMIT
+``exp(-i omega t)`` vs FloatSim ``exp(+i omega t)`` time-
+convention mismatch; conjugating F_exc on read narrowed the
+gap (12.7° → 2.7° at 10 s) but did not close it, *and* widened
+the 25 s gap (0.42° → 0.92°). The conjugation hypothesis is
+falsified by the asymmetric move at the two frequencies.
+
+The actual residual is a phase-reporting convention: under the
+``+i`` convention,
+
+- ``x(t) = Re[x_hat * exp(+i omega t)] = Re(x_hat) * cos - Im(x_hat) * sin``
+- ``= |x_hat| * cos(omega t + arg(x_hat))``
+
+so ``arg(x_hat)`` is the LEAD. A ``cos + sin`` fit returns
+``atan2(B, A)`` — equivalent to writing
+``R cos(omega t - atan2(B, A))`` — which is the LAG.
+
+For the same physical motion: ``LAG = -LEAD``. Negating Path A
+collapses 12.7° → 0.38° at 10 s and 0.42° → 0.39° at 25 s —
+both within the 1° gate.
+
+**Standing rule going forward.** Any phase comparison between
+an impedance-domain complex amplitude and a time-domain cos+sin
+fit must explicitly state the reporting convention (LEAD or
+LAG) and negate exactly one side. Mixing conventions silently
+produces sign-flipped phase residuals that scale with the
+magnitude of the imaginary part of the impedance solution —
+small near LF / HF asymptotes (where Im(xi) is small) and
+large in resonant or diffraction-dominated regimes.
+
+**Verification status.** Pre-3 dual-path verification at
+WaveTp = 10 s and 25 s passes with Path A LAG = −arg(xi_hat).
+Future RAO consumers (M6 PR4's 84-assertion sweep, future
+multi-body PRs) inherit this discipline via the shared
+``tests/support/rao_extraction.py`` module — Path A consumers
+must negate at the call site or wrap the impedance solver to
+return LAG by default.
+
+---
+
+## Item 25 -- Retardation-kernel three-check gate structure (post-fix-wamit-dim refactor)
+
+**Source.** M6 PR4 Pre-3 / fix-wamit-dimensionalisation Decision E
+(2026-05-07). The pre-fix gate was a single hard error on the
+input proxy ``|B_ii(omega_max)| / max|B_ii| > 1 %``. Post-WAMIT-
+dim-fix the marin_semi BEM is dimensional and the surge / sway /
+yaw entries land at ~ 1.7 % of peak — below the asymptote-regime
+threshold but well above 1 %. The pre-fix gate would have blocked
+these DOFs at fixture construction even though their kernels
+decay cleanly. Decision E refactored the gate into three separate
+checks, each testing something different.
+
+**Rule.** ``floatsim.hydro.retardation.compute_retardation_kernel``
+runs three independent checks on every retardation-kernel
+construction:
+
+1. **Check 1 — input proxy (advisory)**: computes
+   ``|B_ii(omega_max)| / max|B_ii|`` per diagonal. **Soft warning**
+   if any diagonal exceeds ``5 %``. Indicates the BEM grid is
+   under-resolved relative to the typical asymptotic-regime
+   cutoff. Does NOT raise — the post-extension check below is
+   authoritative.
+2. **Check 2 — asymptote consistency (hard error)**: computes
+   ``std(B*omega^4) / mean(B*omega^4)`` over the last 10 grid
+   samples per entry. Raises ``ValueError`` if any diagonal entry
+   exceeds ``0.10`` (the per-entry ``1/omega^4`` tail fit is
+   unreliable otherwise). Off-diagonal failures fall back to
+   zero-tail-contribution rather than raising.
+3. **Check 3 — post-extension kernel decay (hard error)**: after
+   the kernel is built (Filon-trapezoidal cosine quadrature on
+   the BEM grid + ``1/omega^4`` tail extension on
+   ``[omega_max, 5*omega_max]``), computes
+   ``|K_ii(t_max)| / max|K_ii(t)|`` per diagonal. Raises
+   ``ValueError`` if any exceeds ``0.001`` (= 0.1 %). This is the
+   authoritative gate: an un-decayed kernel produces sustained
+   oscillation in the Cummins convolution and corrupts the
+   simulation.
+
+**Calibration.** The marin_semi reference passes all three
+checks with margin: heave/roll/pitch < 1 % at omega_max (Check 1
+silent); surge/sway/yaw at ~ 1.7 % (Check 1 silent at the 5 %
+threshold); std/mean ratios well under 0.10 across all diagonals
+(Check 2 silent); post-extension decay to < 6e-5 of peak by
+t = 200 s (Check 3 ~ 50× margin from the 0.1 % gate). See
+``docs/diagnostics/m6-pr4-pre3-surge-kernel-quality.png``.
+
+**Standing rule going forward.** Every kernel construction
+inherits the three-check discipline automatically. Tests that
+need to bypass Check 3 (e.g., synthetic narrow-Gaussian B(omega)
+that decays slowly) must use a t_max large enough to clear the
+gate, or accept the ``ValueError`` as the test's expected
+outcome. Pinned by:
+
+- ``tests/unit/test_retardation_kernel.py::test_kernel_check1_warns_on_high_b_at_omega_max_but_does_not_raise``
+- ``tests/unit/test_retardation_kernel.py::test_kernel_raises_check_3_when_decay_is_too_slow``
+- ``tests/unit/test_retardation_kernel.py::test_marin_semi_passes_all_three_checks_cleanly``
+
+**Why the refactor.** The pre-fix single-check structure
+conflated three different concerns into one gate: "does the BEM
+grid extend into the asymptotic regime" (Check 1's question),
+"is the per-entry tail fit well-defined" (Check 2's question),
+and "does the resulting kernel actually decay" (Check 3's
+question). Different DOFs can satisfy different subsets at
+different threshold values, and the right answer is the
+intersection of all three rather than a single proxy. The
+refactor also documents which check should fire on which
+pathology, so future contributors know whether the right fix is
+"widen the BEM grid" (Check 1 + Check 3 both fire), "the BEM
+data is corrupt or sub-asymptotic" (Check 2 fires), or "increase
+t_max" (only Check 3 fires).
+
+**Verification status.** Pinned by the three unit tests above.
+
+---
+
 ## Verification status summary (PR2)
 
 | Item | Status |
@@ -998,6 +1255,10 @@ fit-at-quantised-omega convention is the standard remediation.
 | 19. Code-path exercise principle | ✅ documented; implication captured in PR-scoping guidance |
 | 20. RAO extraction requires frequency-selective filtering | 🟡 PR4 (lstsq fit in test_m6_openfast_regular_wave.py) |
 | 21. OpenFAST quantises WaveTp to nearest IFFT bin | ✅ verified at fix-s3-wavemod (PR4 Pre-2); fit at quantised omega closes the residual gate on all 14 S3 scenarios |
+| 22. WAMIT files are non-dimensional; readers must rescale | ✅ verified at fix-wamit-dimensionalisation (PR4 Pre-3) |
+| 23. Deferred-known-bugs must be tracked, not just commented | ✅ codified at fix-wamit-dimensionalisation; backfilled tracker entries for F1-residual, KD-2/3, this fix |
+| 24. LEAD vs LAG -- phase reporting between impedance and lstsq paths | ✅ verified at fix-wamit-dimensionalisation Pre-3 (Path A negated) |
+| 25. Retardation-kernel three-check gate structure | ✅ verified at fix-wamit-dimensionalisation Decision E (3 unit tests) |
 
 **Items not allowed past PR1 without both columns filled:** none.
 Every item above carries (a) a written assertion + source citation

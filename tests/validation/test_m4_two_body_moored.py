@@ -204,7 +204,14 @@ def _assemble_system() -> tuple[object, object, Callable, list]:
     """
     hdb = _single_body_hdb()
     lhs_single = assemble_cummins_lhs(rigid_body_mass=_single_body_rigid_mass(), hdb=hdb)
-    kernel_single = compute_retardation_kernel(hdb, t_max=60.0, dt=_DT)
+    # t_max = 120 s (bumped from 60 s at fix-wamit-dimensionalisation):
+    # the three-check kernel gate added Check 3 (post-extension kernel
+    # decay < 0.1 %) which the M4 single-body fixture's B(omega) fails
+    # at t_max = 60 s (0.2 % of peak). 120 s clears it; we deliberately
+    # keep this near the gate to limit the M4 suite's runtime cost
+    # (kernel size scales linearly with t_max, and the convolution sum
+    # in dynamic-run tests dominates overall test time).
+    kernel_single = compute_retardation_kernel(hdb, t_max=120.0, dt=_DT)
 
     lhs_global = assemble_global_lhs([lhs_single, lhs_single])
     kernel_global = assemble_global_kernel([kernel_single, kernel_single])

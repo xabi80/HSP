@@ -228,7 +228,11 @@ def test_marin_semi_heave_damping_is_non_negative_at_all_t_max() -> None:
     hdb = _make_hdb_marin_semi_with_oc4_C()
     M = _oc4_rigid_body_mass_matrix()
     lhs = assemble_cummins_lhs(rigid_body_mass=M, hdb=hdb)
-    for t_max in (60.0, 120.0, 200.0, 400.0):
+    # Post-fix-wamit-dimensionalisation: marin_semi heave kernel needs
+    # ~200 s to drop below Check 3's 0.1 % gate (vs ~30 s pre-fix when
+    # A was undersized 1000x). 200 / 400 / 800 s span "comfortably
+    # converged" through "very converged" without tripping Check 3.
+    for t_max in (200.0, 400.0, 800.0):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             kernel = compute_retardation_kernel(hdb, t_max=t_max, dt=0.05)
@@ -257,13 +261,19 @@ def test_marin_semi_heave_damping_is_non_negative_at_all_t_max() -> None:
     ],
 )
 def test_synthetic_kernel_value_is_independent_of_t_max(name: str, b_func) -> None:
-    """K(t) at fixed t is a function of B(ω) only -- not of t_max truncation."""
+    """K(t) at fixed t is a function of B(ω) only -- not of t_max truncation.
+
+    All chosen t_max values must clear Check 3 (post-extension kernel
+    decay < 0.1 % of peak). The Lorentzian (a = 1/τ = 0.5) decays as
+    1/t² and only reaches 0.1 % of peak around t ~ 32 s; t_max = 240 s
+    is the smallest comfortable value here.
+    """
     dt = 0.05
     t_query = 1.0
     idx = round(t_query / dt)
 
     K_values = []
-    for t_max in (60.0, 240.0, 480.0):
+    for t_max in (240.0, 480.0, 720.0):
         K = _kernel_dof_for(b_func, t_max=t_max, dt=dt)
         K_values.append(float(K[idx]))
 
@@ -293,14 +303,22 @@ def test_m2_oc4_heave_period_unchanged_after_fix() -> None:
     lhs = assemble_cummins_lhs(rigid_body_mass=M, hdb=hdb)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        kernel = compute_retardation_kernel(hdb, t_max=120.0, dt=0.05)
+        kernel = compute_retardation_kernel(hdb, t_max=400.0, dt=0.05)
     xi0 = np.zeros(6)
     xi0[2] = 0.5
     res = integrate_cummins(lhs=lhs, kernel=kernel, xi0=xi0, xi_dot0=np.zeros(6), duration=200.0)
     T = _fit_period(res.t, res.xi[:, 2])
-    assert 9.0 <= T <= 14.0, (
-        f"Heave period {T:.3f} s outside expected 9-14 s band for "
-        "(marin_semi.A_inf, OC4 mass, synthetic OC4 C_33=3.836e6 N/m)."
+    # Post-fix-wamit-dimensionalisation: heave A_inf is now correctly
+    # dimensional (~ 1.5e7 kg vs the pre-fix 1.5e4 kg). The fixed-point
+    # period equation
+    #     omega_n^2 (M_33 + A_full(omega_n)) = C_33
+    # gives T_n ~ 17.3 s for OC4 (Robertson Table 3-1 published value).
+    # The 14-20 s band brackets this with the typical Phase 1 tolerance
+    # (Kramers-Kronig drift + heave-frequency interpolation noise).
+    assert 14.0 <= T <= 20.0, (
+        f"Heave period {T:.3f} s outside expected 14-20 s band for "
+        "(marin_semi.A_inf dimensional, OC4 mass, synthetic OC4 "
+        "C_33=3.836e6 N/m)."
     )
 
 
@@ -319,8 +337,13 @@ def test_marin_semi_convergence_rate_pins_at_t_max_400() -> None:
     M = _oc4_rigid_body_mass_matrix()
     lhs = assemble_cummins_lhs(rigid_body_mass=M, hdb=hdb)
 
+    # All t_max values must clear Check 3 (post-extension kernel decay
+    # < 0.1 % of peak). Post-fix-wamit-dimensionalisation, marin_semi
+    # heave kernel reaches the 0.1 % gate around t ~ 200 s; the smaller
+    # t_max values are dropped here (they were a pre-fix relic when
+    # the under-sized non-dim A made the kernel decay much faster).
     results: dict[float, tuple[float, float]] = {}
-    for t_max in (60.0, 120.0, 200.0, 400.0, 800.0):
+    for t_max in (200.0, 400.0, 800.0):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             kernel = compute_retardation_kernel(hdb, t_max=t_max, dt=0.05)

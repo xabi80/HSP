@@ -195,10 +195,20 @@ def _run_time_domain(
     *,
     dt: float,
     duration: float,
-    t_max_kernel: float = 50.0,
+    t_max_kernel: float = 100.0,
     ramp_duration: float = 20.0,
 ) -> tuple[np.ndarray, np.ndarray, RetardationKernel]:
-    """Integrate Cummins with the given wave forcing; return (t, xi, kernel)."""
+    """Integrate Cummins with the given wave forcing; return (t, xi, kernel).
+
+    Default ``t_max_kernel = 100 s`` was bumped from 50 s at
+    fix-wamit-dimensionalisation: the three-check kernel-gate refactor
+    added Check 3 (post-extension kernel decay < 0.1 %), which the
+    narrow-band synthetic B(omega) fixtures used here cannot clear at
+    t_max = 50 s (the worst case fails at ~0.12 %, just over the
+    gate). 100 s clears it; we deliberately keep this near the gate
+    to bound the M3 suite's runtime (kernel size scales linearly with
+    t_max).
+    """
     lhs = assemble_cummins_lhs(rigid_body_mass=_rigid_body_mass_matrix(), hdb=hdb)
     kernel = compute_retardation_kernel(hdb, t_max=t_max_kernel, dt=dt)
     ramp = HalfCosineRamp(duration=ramp_duration)

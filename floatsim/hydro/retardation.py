@@ -49,13 +49,54 @@ from floatsim.hydro.database import HydroDatabase
 _SLOW_DECAY_RATIO: Final[float] = 0.01
 _FLOAT_EPS: Final[float] = 1.0e-12
 
-# M6 PR3 fix: input gates per the locked review (2026-05-04).
-# Both apply to diagonal entries of B; only Check 2 applies to non-trivial
-# off-diagonals (where max|B_ij| > _OFFDIAG_REL_THRESHOLD * max(diag |B|)).
-_GATE_AMPLITUDE_RATIO: Final[float] = 0.01  # |B_ii(omega_max)| / max|B_ii|
+# Three-check gate structure (M6 PR4 Pre-3 / fix-wamit-dimensionalisation,
+# locked 2026-05-07). Each check tests something different:
+#
+#   Check 1 -- input proxy: is the BEM grid wide enough?
+#       Computes |B_ii(omega_max)| / max|B_ii|. SOFT WARNING at >5%.
+#       Below 5%: "fine but worth noting"; above: BEM is genuinely
+#       under-resolved -- but the 1/omega^4 tail extension may still
+#       compensate. The post-extension Check 3 is what determines
+#       whether the kernel is usable; Check 1 is an early heads-up.
+#       (Pre-fix this was a hard error at 1%; per Option E disposition
+#       it became advisory because the Pre-3 diagnostic showed the
+#       tail extension cleanly recovered marin_semi's surge/sway/yaw
+#       kernels even at ~1.7% B(omega_max)/peak.)
+#
+#   Check 2 -- asymptote consistency: is the tail fit well-defined?
+#       std/mean of B*omega^4 over the last GATE_TAIL_FIT_POINTS
+#       samples must be < 0.10 on diagonals (HARD ERROR; the per-entry
+#       1/omega^4 fit is unreliable otherwise). Off-diagonal failures
+#       fall back to zero-tail-contribution -- their kernel impact is
+#       small relative to the diagonal-driven sum.
+#
+#   Check 3 -- post-extension kernel decay: does the resulting K(t)
+#       decay? |K_ii(t_max)| / max|K_ii(t)| must be < 0.001 on each
+#       diagonal (HARD ERROR). Threshold rationale: 0.1% is 20x the
+#       measured marin_semi ratio (~0.005%); conservative for future
+#       fixtures with potentially worse decay properties. This is the
+#       check that actually matters dynamically -- a kernel that
+#       doesn't decay produces sustained oscillation in the
+#       convolution sum and corrupts the simulation.
+#
+# Calibration evidence:
+#   docs/diagnostics/m6-pr4-pre3-surge-kernel-quality.png shows that
+#   marin_semi's blocked-by-pre-fix-Check-1 DOFs (surge, sway, yaw at
+#   ~1.7% B/peak) all decay cleanly post-extension to <6e-5 of peak
+#   by t=200 s.
+
+# Check 1 (advisory).
+_GATE_AMPLITUDE_RATIO_WARN: Final[float] = 0.05  # 5% B(omega_max)/peak
+
+# Check 2 (hard error).
 _GATE_ASYMPTOTE_STD_OVER_MEAN: Final[float] = 0.10  # std/mean of B*omega^4 over last 10
 _GATE_TAIL_FIT_POINTS: Final[int] = 10
 _OFFDIAG_REL_THRESHOLD: Final[float] = 1.0e-6
+
+# Check 3 (post-extension, hard error).
+_GATE_KERNEL_DECAY_RATIO: Final[float] = 1.0e-3  # |K(t_max)| / max|K| < 0.1%
+
+# Tail extension upper bound (independent of the gates).
 _TAIL_UPPER_BOUND_FACTOR: Final[float] = 5.0
 
 
@@ -183,32 +224,45 @@ def compute_retardation_kernel(
     ------
     ValueError
         - If ``t_max`` or ``dt`` are non-positive or if ``dt > t_max``.
-        - **Refinement-2 input gate (Check 1)**: if any diagonal entry of
-          ``B`` has ``|B_ii(omega_max)| > 0.01 * max|B_ii|``, the BEM grid
-          has not reached the asymptotic regime and the tail extrapolation
-          is unreliable. Resample the BEM database to a wider frequency
-          range; do not silently soften this gate.
-        - **Refinement-2 input gate (Check 2)**: if the asymptotic constant
-          ``C_ij = mean(B_ij · omega^4)`` over the last 10 grid points has
-          ``std/mean > 0.10`` for any diagonal (or any non-trivial
-          off-diagonal), the ``omega^-4`` asymptote is not clean enough
-          for tail extrapolation. Same remediation.
+        - **Check 2** (asymptote consistency): if the asymptotic
+          constant ``C_ij = mean(B_ij · omega^4)`` over the last 10
+          grid points has ``std/mean > 0.10`` for any diagonal entry
+          (or any non-trivial off-diagonal), the ``omega^-4`` asymptote
+          is not clean enough for tail extrapolation. Resample the BEM
+          database with a wider frequency range.
+        - **Check 3** (post-extension kernel decay): if any diagonal
+          ``|K_ii(t_max)| / max|K_ii(t)| > 0.001``, the kernel fails to
+          decay -- sustained kernel oscillation would corrupt the
+          convolution sum. Increase ``t_max``, OR widen the BEM grid
+          if Check 1 also warned.
 
     Warnings
     --------
     UserWarning
-        Emitted when ``|K_ii(t_max)| > 0.01 * max_t |K_ii(t)|`` on any DOF
-        (ARCHITECTURE.md §9.1 diagnostic). Distinct from the input gates
-        above -- this fires post-computation when the *truncated* kernel
-        hasn't decayed inside the requested window even though the inputs
-        passed validation.
+        - **Check 1** (BEM amplitude proxy): if any diagonal has
+          ``|B_ii(omega_max)| / max|B_ii| > 0.05``, the BEM grid is
+          under-resolved relative to a "comfortably decayed" target
+          (~ 1 %). The 1/omega^4 tail extension typically compensates;
+          Check 3 is the authoritative gate. The warning is an early
+          heads-up that a future contributor may want to widen the BEM
+          grid for tighter cross-check tolerances.
 
     Notes
     -----
+    Three-check gate structure (see module-level constants ``_GATE_*``):
+
+    - Check 1 is an advisory input proxy ("is the grid wide enough?").
+    - Check 2 is a hard input gate ("is the tail fit well-defined?").
+    - Check 3 is a hard post-computation gate ("does the kernel
+      actually decay?") and is authoritative.
+
     See ``docs/post-mortems/m6-pr3-radiation-kernel-bug.md`` for the
-    audit that motivated this implementation, and
+    audit that motivated the original implementation,
     ``docs/diagnostics/m6-pr3-filon-formula-check.md`` for the
-    machine-precision verification of the Filon-trapezoidal closed form.
+    machine-precision verification of the Filon-trapezoidal closed
+    form, and ``docs/post-mortems/m6-pr4-wamit-dim-bug.md`` /
+    ``docs/diagnostics/m6-pr4-pre3-surge-kernel-quality.png`` for the
+    Option E gate refactor (locked at fix-wamit-dimensionalisation).
     """
     if t_max <= 0.0:
         raise ValueError(f"t_max must be positive; got {t_max}")
@@ -249,56 +303,67 @@ def compute_retardation_kernel(
 
     K = (2.0 / np.pi) * (K_in + K_tail)
 
-    _emit_decay_diagnostic(K)
+    # Check 3 (post-extension hard error). Authoritative gate -- the
+    # BEM input proxies in _validate_input_gates only screen for likely
+    # problems; this measures the actual decay we care about.
+    _validate_kernel_decay(K)
 
     return RetardationKernel(K=K, t=t_arr, dt=float(dt))
 
 
 def _validate_input_gates(omega: NDArray[np.float64], B: NDArray[np.float64]) -> NDArray[np.bool_]:
-    """Refinement-2 gates: amplitude (Check 1) + asymptote consistency (Check 2).
+    """Pre-computation gates: Check 1 (advisory) + Check 2 (hard).
 
-    Raises ``ValueError`` for **diagonal** entries that fail either check
-    -- diagonals dominate the kernel and their high-frequency
-    extrapolation must be clean. No ``allow_under_resolved`` escape
-    hatch -- fix bad fixtures, don't soften validation.
-
-    For **off-diagonal** entries, Check 2 failures are not errors: the
-    tail contribution from noisy off-diagonals would itself be noisy,
-    but its magnitude relative to the kernel sum is small (off-diagonals
-    are typically << diagonals). Returns a boolean mask
-    ``(6, 6)`` flagging entries whose tail contribution should be
-    zeroed. This is a pragmatic deviation from the locked Call 3 spec,
-    calibrated against marin_semi.1 where surge-pitch and sway-roll
-    coupling tails fall to the BEM solver's noise floor at the highest
-    frequencies (std/mean of B*omega^4 reaches ~1.5-1.8 -- physically
-    reasonable, and indicates the noise floor has been reached, not
-    that the data is bad).
+    See module-level constants ``_GATE_*`` for the rationale and
+    threshold values. Three-check structure locked at fix-wamit-
+    dimensionalisation; this function carries Checks 1 and 2.
+    Check 3 (post-extension kernel decay) runs separately on the
+    computed kernel via :func:`_validate_kernel_decay`.
 
     Returns
     -------
     NDArray[bool]
         Shape ``(6, 6)``: True where the entry's tail extension should
-        be zeroed (failed Check 2 OR is below the
+        be zeroed (Check 2 failed OR entry is below the
         ``_OFFDIAG_REL_THRESHOLD`` of max diagonal). Diagonals are
-        always False (Check 2 failure raises before returning).
+        always False (Check 2 failure on a diagonal raises).
     """
     omega_max = float(omega[-1])
     diag_max = np.array([np.max(np.abs(B[i, i, :])) for i in range(6)], dtype=np.float64)
 
-    # Check 1 (diagonals): |B_ii(omega_max)| / max|B_ii| < 0.01.
+    # Check 1 (advisory): |B_ii(omega_max)| / max|B_ii| > 5% warns that
+    # the BEM grid is under-resolved. The 1/omega^4 tail extension may
+    # still recover a clean kernel -- Check 3 is the authoritative
+    # gate -- but values this high are worth flagging early so a future
+    # contributor knows to widen the BEM grid if they need a tighter
+    # cross-check tolerance.
+    check1_offenders: list[tuple[int, float]] = []
     for i in range(6):
         if diag_max[i] < _FLOAT_EPS:
             continue
         ratio = abs(B[i, i, -1]) / diag_max[i]
-        if ratio >= _GATE_AMPLITUDE_RATIO:
-            raise ValueError(
-                f"BEM grid does not reach the asymptotic regime on DOF {i}: "
-                f"|B[{i},{i}](omega_max={omega_max:.3f})| = {abs(B[i,i,-1]):.3e} "
-                f"is {ratio*100:.1f}% of peak |B[{i},{i}]| = {diag_max[i]:.3e}, "
-                f"exceeding the {_GATE_AMPLITUDE_RATIO*100:.0f}% gate. "
-                "Resample the BEM database to a wider frequency range so "
-                "B(omega_max) decays below 1% of peak."
-            )
+        if ratio >= _GATE_AMPLITUDE_RATIO_WARN:
+            check1_offenders.append((i, ratio))
+    if check1_offenders:
+        offender_lines = "\n".join(
+            f"  DOF {i}: |B[{i},{i}](omega_max={omega_max:.3f})|/peak = " f"{ratio * 100:.1f}%"
+            for i, ratio in check1_offenders
+        )
+        warnings.warn(
+            "Check 1 (BEM grid amplitude proxy): high B(omega_max)/peak "
+            f"on diagonal entries:\n{offender_lines}\n"
+            f"The {_GATE_AMPLITUDE_RATIO_WARN * 100:.0f}% advisory threshold is "
+            "for early heads-up; the 1/omega^4 tail extension on "
+            "[omega_max, 5*omega_max] typically compensates and the "
+            "post-extension kernel-decay check (Check 3) is authoritative. "
+            "However, values this high suggest the BEM grid would benefit "
+            "from being widened (re-run WAMIT with a higher omega_max or "
+            "larger PER list). See "
+            "docs/diagnostics/m6-pr4-pre3-surge-kernel-quality.png for the "
+            "marin_semi reference (1.7%/peak passes Check 3 cleanly).",
+            UserWarning,
+            stacklevel=2,
+        )
 
     # Check 2: std/mean of B_ij(omega) * omega^4 over last 10 grid points
     # must be < 0.10. Diagonals: hard error. Off-diagonals: zero the
@@ -346,26 +411,56 @@ def _validate_input_gates(omega: NDArray[np.float64], B: NDArray[np.float64]) ->
     return skip_tail_mask
 
 
-def _emit_decay_diagnostic(K: NDArray[np.float64]) -> None:
-    """Warn if any diagonal ``K_ii`` fails to decay below 1% inside the window."""
+def _validate_kernel_decay(K: NDArray[np.float64]) -> None:
+    """Check 3 (post-extension hard error): ``|K_ii(t_max)| / max|K_ii(t)|``
+    must be < ``_GATE_KERNEL_DECAY_RATIO`` (= 0.001) on every diagonal.
+
+    Threshold rationale: 0.1 % is 20x the measured marin_semi ratio
+    (~ 0.005 %); conservative for future fixtures with potentially
+    worse decay properties. Beyond that, the un-decayed kernel
+    produces sustained oscillation in the convolution sum and
+    corrupts the simulation -- not a heuristic, a real failure mode.
+
+    This is the authoritative gate: the BEM input proxies (Check 1
+    advisory, Check 2 hard) screen for likely pathologies, but the
+    actual condition we care about is whether the resulting K(t)
+    decays. Check 3 measures that directly.
+
+    See ``docs/diagnostics/m6-pr4-pre3-surge-kernel-quality.png`` for
+    the marin_semi reference: surge / sway / yaw decay to < 6e-5 of
+    peak by t = 200 s even with B(omega_max)/peak ~ 1.7 % (above the
+    Check 1 advisory threshold).
+    """
     peak = np.max(np.abs(K), axis=2)
     end = np.abs(K[:, :, -1])
-    # Guard against a zero diagonal (e.g. DOF with no radiation damping).
     diag_peak = np.diag(peak)
     diag_end = np.diag(end)
-    offenders = []
+    offenders: list[tuple[int, float, float]] = []
     for i in range(6):
         if diag_peak[i] <= _FLOAT_EPS:
             continue
-        if diag_end[i] > _SLOW_DECAY_RATIO * diag_peak[i]:
-            offenders.append(i)
+        ratio = float(diag_end[i] / diag_peak[i])
+        if ratio > _GATE_KERNEL_DECAY_RATIO:
+            offenders.append((i, ratio, float(diag_peak[i])))
     if offenders:
-        warnings.warn(
-            "retardation kernel decay is too slow on DOF indices "
-            f"{offenders}: |K(t_max)| exceeds {_SLOW_DECAY_RATIO:.0%} of "
-            "max|K(t)| — increase t_max or check B(omega) coverage.",
-            UserWarning,
-            stacklevel=2,
+        offender_lines = "\n".join(
+            f"  DOF {i}: |K[{i},{i}](t_max)|/peak = {ratio * 100:.4f}%, "
+            f"max|K[{i},{i}]| = {peak_val:.3e}"
+            for i, ratio, peak_val in offenders
+        )
+        raise ValueError(
+            "Check 3 (post-extension kernel decay): the radiation kernel "
+            "fails to decay below the "
+            f"{_GATE_KERNEL_DECAY_RATIO * 100:.2f}% threshold on the "
+            f"following diagonal entries:\n{offender_lines}\n"
+            "An un-decayed kernel produces sustained oscillation in the "
+            "Cummins convolution and corrupts the simulation. Likely "
+            "remedies: increase t_max so the kernel has more room to "
+            "decay, OR widen the BEM grid (re-run WAMIT with higher "
+            "omega_max) -- if Check 1 also warned, the second is the "
+            "more reliable fix. See "
+            "docs/diagnostics/m6-pr4-pre3-surge-kernel-quality.png for "
+            "the marin_semi reference (passes at ~5e-5)."
         )
 
 

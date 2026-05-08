@@ -26,11 +26,19 @@ Per Option A of the locked re-scope (`docs/diagnostics/m6-pr3-damping-stability.
   energy; this is the kernel-fix validation at the cross-check
   level).
 - The Pre-step period gap diagnostic
-  (`docs/diagnostics/m6-pr3-period-gap-diagnostic.md`) classified
-  the period mismatch as F1-mostly-explains: combined-deck
-  (platform + tower + RNA) FloatSim setup gives 25.67 s vs
-  OpenFAST's 26.83 s, rel-err 4.29 % (within 5e-2, beyond 2e-2).
-  Period assertion fires xfail-strict under "F1-residual".
+  (`docs/diagnostics/m6-pr3-period-gap-diagnostic.md`) originally
+  classified the period mismatch as F1-mostly-explains:
+  combined-deck (platform + tower + RNA) FloatSim setup gives
+  25.67 s vs OpenFAST's 26.83 s, rel-err 4.29 % (within 5e-2,
+  beyond 2e-2). The fix-wamit-dimensionalisation branch
+  **falsified** that classification: the pre-fix WAMIT reader
+  was returning non-dimensional A(omega) values verbatim, so
+  ``A_55(omega_n)`` was ~1000x smaller than the physical value.
+  Post-fix, the FloatSim period jumps to 32.34 s (rel-err
+  +20.54 %) — an unexplained residual in the OPPOSITE direction.
+  Tracked as **F1-revised / KD-2-revised** in
+  `docs/openfast-cross-check-report.md`. Period assertion fires
+  xfail-strict under that revised classification.
 
 What this PR does and doesn't validate
 --------------------------------------
@@ -48,16 +56,19 @@ What this PR does and doesn't validate
   noise. The damping cross-check that *does* discriminate physics
   belongs to S5 (drag-on heave decay; M6 PR6) where the dominant
   dissipation mechanism is matched in both tools.
-- Tight period match (the 4.29 % residual is documented
-  follow-up F1-residual in the cross-check report).
+- Tight period match (the original 4.29 % residual was
+  falsified by the WAMIT-dim fix; the revised +20.54 % residual
+  is tracked as F1-revised / KD-2-revised in
+  `docs/openfast-cross-check-report.md`).
 
 Tolerances per Q4
 -----------------
 - Period: ``rtol = 2e-2`` per the M6 plan v2 Q4. Asserted with
-  ``@pytest.mark.xfail(strict=True)`` because the F1-residual
-  pre-step result (4.29 %) sits outside this gate. Strict-xfail
-  catches the day F1-residual is closed and the test starts
-  passing — the marker should come off then.
+  ``@pytest.mark.xfail(strict=True)`` because the F1-revised
+  post-fix-wamit-dimensionalisation result (+20.54 %) sits well
+  outside this gate. Strict-xfail catches the day F1-revised is
+  closed and the test starts passing — the marker should come
+  off then.
 - Damping non-negativity: ``ζ ≥ -1e-6`` (allow numerical noise
   but no systematic energy injection).
 
@@ -445,12 +456,14 @@ def test_initial_pitch_velocity_is_zero(floatsim_run: dict[str, object]) -> None
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "F1-residual: combined-deck FloatSim period 25.67 s vs OpenFAST "
-        "26.83 s = -4.29% rel-err. Beyond rtol=2e-2; within rtol=5e-2. "
-        "Pre-step diagnostic classified as F1-mostly-explains "
-        "(docs/diagnostics/m6-pr3-period-gap-diagnostic.md). Closing "
-        "F1-residual requires distributed-inertia integration of platform "
-        "ballast and tower/RNA components; out of PR3 scope."
+        "F1-revised: post-WAMIT-fix combined-deck FloatSim period 32.34 s "
+        "vs OpenFAST 26.83 s = +20.54% rel-err. Pre-fix gap was mostly the "
+        "WAMIT dimensionalisation bug (latent A(omega_n) ~1000x smaller "
+        "than physical) which masked a real residual in the OPPOSITE "
+        "direction. F1-revised investigation (mass bookkeeping vs BEM/"
+        "integration vs reference-point at M+A(omega_n) vs C) is tracked "
+        "as KD-2-revised in docs/openfast-cross-check-report.md and is "
+        "out of scope for fix-wamit-dimensionalisation."
     ),
 )
 def test_pitch_period_matches_openfast(

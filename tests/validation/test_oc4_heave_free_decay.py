@@ -183,7 +183,11 @@ def _run_heave_free_decay():
     hdb = _build_oc4_marin_semi_hdb()
     lhs = assemble_cummins_lhs(rigid_body_mass=_oc4_rigid_body_mass_matrix(), hdb=hdb)
     dt = 0.05
-    kernel = compute_retardation_kernel(hdb, t_max=60.0, dt=dt)
+    # Post-fix-wamit-dimensionalisation: marin_semi heave kernel needs
+    # ~200 s to drop below Check 3's 0.1 % gate. The integration
+    # duration (150 s, ~ 8-9 heave periods) is independent of the
+    # kernel's decay window.
+    kernel = compute_retardation_kernel(hdb, t_max=200.0, dt=dt)
 
     xi0 = np.zeros(6)
     xi0[2] = 0.5  # 0.5 m heave displacement from equilibrium

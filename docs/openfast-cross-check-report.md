@@ -9,7 +9,7 @@ game; this report is the play-by-play.
 | Scenario | PR | Status | Date |
 | -------- | -- | ------ | ---- |
 | S1 -- unmoored static equilibrium | PR2 | ✅ landed (post-fix-pr2-cmzt audit) | 2026-05-05 |
-| S2 -- pitch free decay (radiation-only, post-Option-A) | PR3 | ✅ landed (period xfail-strict under F1-residual) | 2026-05-05 |
+| S2 -- pitch free decay (radiation-only, post-Option-A) | PR3 | ✅ landed (period xfail-strict under F1-revised post-fix-wamit-dim) | 2026-05-05 |
 | S3 -- regular-wave RAO sweep | PR4 | 🟡 in flight (Pre-2 WaveMod fix landing on fix-s3-wavemod) | -- |
 | S4 -- moored static equilibrium | PR5 | ⏭ pending | -- |
 | S5 -- drag-on heave free decay | PR6 | ⏭ pending | -- |
@@ -323,22 +323,76 @@ FloatSim Setup B (combined deck on marin_semi.1, post-fix kernel):
 
 | Quantity | FloatSim | Δ vs OpenFAST | Tolerance | Result |
 |----------|---------:|--------------:|----------:|--------|
-| Pitch period | 25.67 s | -4.29 % | rtol = 2e-2 | **xfail-strict** (F1-residual) |
+| Pitch period (pre-fix-wamit-dim) | 25.67 s | -4.29 % | rtol = 2e-2 | **xfail-strict** (F1-residual, FALSIFIED — see KD-2-revised) |
+| Pitch period (post-fix-wamit-dim, locked) | 32.34 s | +20.54 % | rtol = 2e-2 | **xfail-strict** (F1-revised / KD-2-revised) |
 | Pitch ζ (first 5 cycles) | ~1 × 10⁻⁹ | n/a | ζ ≥ -1e-6 | **PASS** (kernel-fix validation) |
 | Envelope trend (any growth) | none | n/a | ≤ 1 % per triple | **PASS** |
 | IC application | exact | n/a | abs = 1e-6° | **PASS** |
 
 ### Known discrepancies
 
-**KD-2: F1-residual.** Combined-deck FloatSim period is 4.29 %
-short of OpenFAST. The dominant hypothesis (per the Pre-step
-diagnostic doc) is the platform-with-ballast distributed-inertia
-treatment: Setup B uses a single point-mass at Robertson's
-CoG of -13.46 m, but the actual ballast water is distributed in
-column-fill members with their own volume distribution. A
-proper F1-residual fix would parse HydroDyn's `FillGroups` and
-member geometry to compute the actual ballast inertia. Out of
-PR3 scope; xfail-strict will catch the day this is closed.
+**KD-2: F1-residual (FALSIFIED at fix-wamit-dimensionalisation).**
+At PR3 land time the combined-deck FloatSim period was 4.29 %
+short of OpenFAST. The dominant hypothesis was the platform-
+with-ballast distributed-inertia treatment: Setup B uses a single
+point-mass at Robertson's CoG of -13.46 m, but the actual ballast
+water is distributed in column-fill members with their own volume
+distribution. A proper F1-residual fix would parse HydroDyn's
+`FillGroups` and member geometry to compute the actual ballast
+inertia.
+
+**This classification was falsified by the
+fix-wamit-dimensionalisation branch (2026-05-07).** The pre-fix
+WAMIT reader returned non-dimensional ``A(omega)`` values
+verbatim, so ``A_55(omega_n)`` was ~1000x smaller than the
+physical value. With ``M >> A`` for the rigid platform mass,
+the period assertion was insensitive to the missing factor and
+the small residual coincidentally landed near rtol=5e-2. After
+the dim-fix, ``A_55(omega_n)`` is correctly ~7.7e9 kg·m² and
+the FloatSim period jumps to 32.34 s — a +20.54 % residual in
+the OPPOSITE direction. **The original distributed-inertia
+hypothesis cannot be the dominant explanation** because
+distributed inertia would shorten the period by adding
+rotational mass, not lengthen it. The post-fix gap is genuinely
+unexplained. Tracked as **KD-2-revised** below; xfail-strict
+under "F1-revised" in the test reason string.
+
+**KD-2-revised: F1-revised — post-fix-wamit-dim period gap.**
+Post-WAMIT-dim-fix combined-deck FloatSim pitch period is
+32.34 s vs OpenFAST 26.83 s = **+20.54 % rel-err**. Possible
+causes (none yet confirmed):
+
+1. **Mass bookkeeping**: Setup B's combined-CoG aggregation may
+   double-count or under-count the platform-with-ballast moment
+   of inertia. The Robertson values for ``I_55_CoG`` are at the
+   platform-only CoG; combined-deck moves the reference to the
+   system CoG via parallel-axis. A sign or factor error here
+   would leave M+A oversized by ~ 50 % at omega_n, producing a
+   ~ 25 % period overshoot — close to the observed +20 %.
+2. **BEM frequency interpolation**: ``A_55(omega_n=0.194 rad/s)``
+   is interpolated linearly in the marin_semi grid. At low
+   omega the grid is dense (Δω = 0.01) and interpolation is
+   not the dominant error. Likely small (< 1 % period effect).
+3. **Cummins reference-point**: ``M+A(omega_n)`` and ``C`` are
+   computed at different reference points; if the parallel-axis
+   transform of A is incorrect, the period shifts. Worth
+   investigating but less likely the dominant term.
+4. **Hydrostatic stiffness sign / factor on the asymmetric
+   off-diagonals** (e.g., ``C_15``, ``C_24``, ``C_46``).
+   Robertson 2014 publishes only the diagonals; FloatSim's
+   ``platform_small.yml`` zeroes the off-diagonals. If
+   OpenFAST's ``HstFile`` has non-zero off-diagonals that
+   contribute at omega_n, the period shifts. Check the marin_semi
+   .hst file.
+
+The investigation needs its own audit (per the M6 PR2-style
+Pre-step pattern) before it can be scoped as a PR. Tracked for
+M6 epilogue or post-M6.
+
+**This is the dominant Phase 2 follow-up out of M6.** Once the
++20.54 % gap is closed, the radiation-only pitch free-decay
+test will start passing rtol=2e-2; the xfail-strict marker
+must come off when that happens.
 
 **KD-3: Radiation-only OC4 pitch ζ is too small to test
 tightly.** Both tools report ζ at the numerical noise floor
@@ -358,7 +412,10 @@ dominant mechanism doesn't match.
 
 ### What this PR did NOT do
 
-- No F1 / F1-residual fix (Phase 2 follow-up).
+- No F1 / F1-residual fix (Phase 2 follow-up). Note: the
+  F1-residual classification was falsified at
+  fix-wamit-dimensionalisation; see KD-2-revised above for the
+  post-fix-wamit-dim story.
 - No tolerance widening to mask the period mismatch (xfail-strict
   is the disposition; ``rtol = 2e-2`` stays as the M6 plan
   target).

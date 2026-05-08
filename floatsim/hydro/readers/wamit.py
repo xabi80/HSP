@@ -24,6 +24,13 @@ Conventions
   stored such that ``F_exc(t) = Re[X * A_wave * exp(i * omega * t)]``,
   matching the OrcaFlex VesselType YAML reader. Phase angles in ``.3`` and
   ``.4`` are degrees.
+- IMPORTANT — phase **reporting** discipline for downstream consumers:
+  under the +i convention, ``arg(x_hat)`` is the LEAD (negative-of-lag).
+  ``cos+sin`` lstsq fits (e.g., ``tests/support/rao_extraction.py``)
+  return ``atan2(B, A)`` which is the LAG. To compare an impedance-
+  computed RAO phase against a time-domain lstsq fit, negate one of
+  them. Surfaced at M6 PR4 Pre-3 — see
+  ``docs/diagnostics/m6-pr4-pre3-phase-residual-diagnosis.md``.
 - Periods are seconds, ``omega = 2*pi/PER``.
 
   * ``PER == -1``  →  infinite frequency. The corresponding row carries
@@ -77,15 +84,87 @@ _PER_SENTINEL_ATOL: Final[float] = 1.0e-9
 # we warn and use the average.
 _SYM_RTOL: Final[float] = 1.0e-6
 
-# Dimensionality sniffer: typical platform-scale dimensional A on diagonal
-# is >= 1e3 kg. If max |A| is well below 1, the file is almost certainly
-# nondimensional and the user has misconfigured WAMIT.
-_DIMENSIONAL_THRESHOLD: Final[float] = 10.0
+# M6 PR4 Pre-3 finding (locked 2026-05-06): the WAMIT public-format
+# convention is **non-dimensional output** by default (WAMIT v7
+# manual §4.2 / HydroDyn user guide §6 reference the same scheme).
+# Readers must apply ``rho * ULEN^k`` / ``rho * g * ULEN^k``
+# rescaling per DOF to recover SI units. The pre-fix reader returned
+# raw non-dim values; the bug was latent through M5-M6 PR3 because
+# free-decay periods are dominated by dimensional ``M`` and ``C``.
+# See conventions doc Items 22, 23 and
+# ``docs/post-mortems/m6-pr4-wamit-dim-bug.md``.
+#
+# WAMIT default sea-water properties (overridable per call):
+_DEFAULT_RHO_KG_M3: Final[float] = 1025.0  # OpenFAST WtrDens
+_DEFAULT_G_M_S2: Final[float] = 9.80665  # OpenFAST Gravity
+_DEFAULT_ULEN_M: Final[float] = 1.0  # OC4 marin_semi (HydroDyn WAMITULEN)
+
+# Dimensionality detection: when ``assume_dimensional=True`` is passed
+# but the values look non-dim, fire a warning. We use a per-DOF
+# expectation: dimensional rotational A on a typical floating platform
+# is O(1e9) kg·m²; if it's O(1e7) the file is almost certainly the
+# non-dim version with rho·ULEN^5 missing. The previous threshold
+# (max|A| < 10) failed on marin_semi where surge A = 8527 non-dim.
+_NONDIM_PITCH_THRESHOLD_KG_M2: Final[float] = 1.0e8
+_DIMENSIONAL_THRESHOLD: Final[float] = 10.0  # kept as a backstop sanity
 
 # Re/Im vs Mod/Pha consistency tolerance in .3 / .4. Either representation
 # can be used — they should round-trip to within this tolerance.
 _COMPLEX_REPR_RTOL: Final[float] = 1.0e-3
 _COMPLEX_REPR_ATOL: Final[float] = 1.0e-3
+
+
+# ---------------------------------------------------------------------------
+# Dimensional rescaling per WAMIT v7 manual §4.2 (and HydroDyn UG §6)
+# ---------------------------------------------------------------------------
+#
+# WAMIT's default output is non-dimensional, with the dimensionalisation
+# factor depending on the DOF coupling:
+#
+#   .1 added mass / damping ``A_ij``, ``B_ij``:
+#       k_ij = 3 + (1 if i in {4,5,6}) + (1 if j in {4,5,6})
+#       A_ij_dim = rho * ULEN^k_ij * A_ij_nondim
+#       B_ij_dim = rho * omega * ULEN^k_ij * B_ij_nondim
+#
+#   .3 excitation force / moment ``X_i`` (per unit wave amplitude):
+#       k_i = 2 + (1 if i in {4,5,6})
+#       X_i_dim = rho * g * ULEN^k_i * X_i_nondim
+#
+#   .hst hydrostatic stiffness ``C_ij``:
+#       k_ij = 2 + (1 if i in {4,5,6}) + (1 if j in {4,5,6})
+#       C_ij_dim = rho * g * ULEN^k_ij * C_ij_nondim
+#
+# Translation modes are 1, 2, 3 (surge, sway, heave); rotation modes are
+# 4, 5, 6 (roll, pitch, yaw). Internally we use 0-indexed: i in {0,1,2}
+# is translation; i in {3,4,5} is rotation.
+
+
+def _is_rotation_dof(i_zero: int) -> bool:
+    """Internal 0-indexed DOF: True for roll/pitch/yaw."""
+    return 3 <= i_zero <= 5
+
+
+def _added_mass_factor(i: int, j: int, *, rho: float, ulen: float) -> float:
+    """rho * ULEN^k for added-mass index pair (i, j) (0-indexed)."""
+    k = 3 + (1 if _is_rotation_dof(i) else 0) + (1 if _is_rotation_dof(j) else 0)
+    return rho * ulen**k
+
+
+def _damping_factor(i: int, j: int, *, rho: float, ulen: float, omega: float) -> float:
+    """rho * omega * ULEN^k for damping index pair (i, j) (0-indexed)."""
+    return _added_mass_factor(i, j, rho=rho, ulen=ulen) * omega
+
+
+def _excitation_factor(i: int, *, rho: float, g: float, ulen: float) -> float:
+    """rho * g * ULEN^k for excitation force on mode i (0-indexed)."""
+    k = 2 + (1 if _is_rotation_dof(i) else 0)
+    return rho * g * ulen**k
+
+
+def _hydrostatic_factor(i: int, j: int, *, rho: float, g: float, ulen: float) -> float:
+    """rho * g * ULEN^k for hydrostatic stiffness pair (i, j) (0-indexed)."""
+    k = 2 + (1 if _is_rotation_dof(i) else 0) + (1 if _is_rotation_dof(j) else 0)
+    return rho * g * ulen**k
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +176,10 @@ def read_wamit(
     stem: _PathLike,
     *,
     reference_point: tuple[float, float, float] | None = None,
+    assume_dimensional: bool = False,
+    rho_water_kg_m3: float = _DEFAULT_RHO_KG_M3,
+    g_m_s2: float = _DEFAULT_G_M_S2,
+    ulen_m: float = _DEFAULT_ULEN_M,
 ) -> HydroDatabase:
     """Read a WAMIT case (``.1`` + ``.3`` + ``.hst``) into a HydroDatabase.
 
@@ -132,9 +215,15 @@ def read_wamit(
     if s.suffix in {".1", ".3", ".hst", ".4"}:
         s = s.with_suffix("")
 
-    omega, A, B, A_inf = read_added_mass_and_damping(s.with_suffix(".1"))
-    heading_deg, F_exc = read_excitation_force(s.with_suffix(".3"), omega=omega)
-    C = read_hydrostatic_stiffness(s.with_suffix(".hst"))
+    rescale_kwargs = dict(
+        assume_dimensional=assume_dimensional,
+        rho_water_kg_m3=rho_water_kg_m3,
+        ulen_m=ulen_m,
+    )
+    excit_kwargs = {**rescale_kwargs, "g_m_s2": g_m_s2}
+    omega, A, B, A_inf = read_added_mass_and_damping(s.with_suffix(".1"), **rescale_kwargs)
+    heading_deg, F_exc = read_excitation_force(s.with_suffix(".3"), omega=omega, **excit_kwargs)
+    C = read_hydrostatic_stiffness(s.with_suffix(".hst"), **excit_kwargs)
 
     ref = (
         np.zeros(3, dtype=np.float64)
@@ -166,24 +255,52 @@ def read_wamit(
 
 def read_added_mass_and_damping(
     path: _PathLike,
+    *,
+    assume_dimensional: bool = False,
+    rho_water_kg_m3: float = _DEFAULT_RHO_KG_M3,
+    ulen_m: float = _DEFAULT_ULEN_M,
 ) -> tuple[
     NDArray[np.float64],
     NDArray[np.float64],
     NDArray[np.float64],
     NDArray[np.float64],
 ]:
-    """Parse a WAMIT ``.1`` file.
+    """Parse a WAMIT ``.1`` file and return SI-dimensional coefficients.
+
+    Parameters
+    ----------
+    path
+        Path to the WAMIT ``.1`` file.
+    assume_dimensional
+        If ``True``, the file is assumed to already carry SI units (kg,
+        kg·m, kg·m²) and the reader returns values verbatim. The
+        dimensionality heuristic still fires (informationally) if the
+        magnitudes look non-dim. Default ``False``: per the WAMIT v7
+        manual §4.2 convention, the file is non-dimensional and the
+        reader applies ``rho * ULEN^k`` rescaling per DOF (k = 3 / 4 / 5
+        for trans-trans / trans-rot / rot-rot couplings). For OC4
+        marin_semi: ``rho = 1025 kg/m^3``, ``ULEN = 1.0 m``, ``g = 9.81 m/s^2``.
+    rho_water_kg_m3
+        Sea-water density used in the dimensionalisation (ignored if
+        ``assume_dimensional=True``). Defaults to OpenFAST's WtrDens.
+    ulen_m
+        WAMIT characteristic body length (the ``ULEN`` parameter from
+        the WAMIT input or HydroDyn ``WAMITULEN``). Defaults to 1.0,
+        the OC4 marin_semi value.
 
     Returns
     -------
     omega : (n_w,) float64
         Angular frequencies (rad/s), strictly increasing.
     A : (6, 6, n_w) float64
-        Added mass at each finite frequency. Symmetric per slice.
+        Added mass at each finite frequency in SI units (kg, kg·m, kg·m²).
+        Symmetric per slice.
     B : (6, 6, n_w) float64
-        Radiation damping at each finite frequency. Symmetric per slice.
+        Radiation damping at each finite frequency in SI units
+        (kg/s, kg·m/s, kg·m²/s). Symmetric per slice.
     A_inf : (6, 6) float64
-        Infinite-frequency added mass (from the ``PER == -1`` row).
+        Infinite-frequency added mass (from the ``PER == -1`` row),
+        same units as ``A``.
 
     Raises
     ------
@@ -248,7 +365,20 @@ def read_added_mass_and_damping(
 
     A_inf = _resolve_6x6_from_dict(A_inf_dict, label="A_inf")
 
-    _maybe_warn_nondimensional(A_inf, A, label=p.name)
+    if not assume_dimensional:
+        # Apply rho * ULEN^k rescaling (WAMIT v7 manual §4.2).
+        for i in range(6):
+            for j in range(6):
+                fac = _added_mass_factor(i, j, rho=rho_water_kg_m3, ulen=ulen_m)
+                A[i, j, :] *= fac
+                A_inf[i, j] *= fac
+                # Damping factor includes ω, applied per-frequency.
+                for k, w in enumerate(omega):
+                    B[i, j, k] *= _damping_factor(
+                        i, j, rho=rho_water_kg_m3, ulen=ulen_m, omega=float(w)
+                    )
+
+    _maybe_warn_nondimensional(A_inf, A, label=p.name, assume_dimensional=assume_dimensional)
     return omega, A, B, A_inf
 
 
@@ -256,8 +386,12 @@ def read_excitation_force(
     path: _PathLike,
     *,
     omega: NDArray[np.float64],
+    assume_dimensional: bool = False,
+    rho_water_kg_m3: float = _DEFAULT_RHO_KG_M3,
+    g_m_s2: float = _DEFAULT_G_M_S2,
+    ulen_m: float = _DEFAULT_ULEN_M,
 ) -> tuple[NDArray[np.float64], NDArray[np.complex128]]:
-    """Parse a WAMIT ``.3`` excitation-force file.
+    """Parse a WAMIT ``.3`` excitation-force file (SI-dimensional output).
 
     Parameters
     ----------
@@ -267,20 +401,37 @@ def read_excitation_force(
         Frequency grid this excitation is to be aligned with — usually the
         result of :func:`read_added_mass_and_damping`. Each row in the file
         must match a frequency in this grid to better than 1e-9 rad/s.
+    assume_dimensional
+        If ``True``, the file is assumed to already carry SI units and the
+        reader returns values verbatim. Default ``False``: apply
+        ``rho * g * ULEN^k`` rescaling per WAMIT v7 manual §4.2 (k = 2 for
+        translational modes 1-3, N/m wave amplitude; k = 3 for rotational
+        modes 4-6, N·m/m wave amplitude). For OC4 marin_semi: ``rho = 1025``,
+        ``g = 9.80665``, ``ULEN = 1.0``.
+    rho_water_kg_m3, g_m_s2, ulen_m
+        Sea-water density, gravity, and characteristic body length for
+        the dimensionalisation. Defaults match OpenFAST WtrDens / Gravity
+        and the OC4 marin_semi WAMITULEN.
 
     Returns
     -------
     heading_deg : (n_h,) float64
         Wave headings (degrees), sorted ascending.
     F_exc : (6, n_w, n_h) complex128
-        Complex first-order excitation force per unit wave amplitude. Phase
+        Complex first-order excitation force per unit wave amplitude in
+        SI units (N/m for translational modes, N·m/m for rotational). Phase
         convention: ``F_exc(t) = Re[F_exc * A_wave * exp(i * omega * t)]``.
     """
-    return _read_complex_per_dof(
+    heading_deg, F_exc = _read_complex_per_dof(
         path,
         omega=omega,
         label="excitation",
     )
+    if not assume_dimensional:
+        for i in range(6):
+            fac = _excitation_factor(i, rho=rho_water_kg_m3, g=g_m_s2, ulen=ulen_m)
+            F_exc[i, :, :] *= fac
+    return heading_deg, F_exc
 
 
 def read_motion_rao(
@@ -313,13 +464,30 @@ def read_motion_rao(
     )
 
 
-def read_hydrostatic_stiffness(path: _PathLike) -> NDArray[np.float64]:
-    """Parse a WAMIT ``.hst`` hydrostatic-stiffness file.
+def read_hydrostatic_stiffness(
+    path: _PathLike,
+    *,
+    assume_dimensional: bool = False,
+    rho_water_kg_m3: float = _DEFAULT_RHO_KG_M3,
+    g_m_s2: float = _DEFAULT_G_M_S2,
+    ulen_m: float = _DEFAULT_ULEN_M,
+) -> NDArray[np.float64]:
+    """Parse a WAMIT ``.hst`` hydrostatic-stiffness file (SI-dimensional output).
+
+    Parameters
+    ----------
+    path
+        Path to the ``.hst`` file.
+    assume_dimensional
+        If ``True``, return values verbatim. Default ``False``: apply
+        ``rho * g * ULEN^k`` rescaling per WAMIT v7 manual §4.2
+        (k = 2 / 3 / 4 for trans-trans / trans-rot / rot-rot pairs).
 
     Returns
     -------
     C : (6, 6) float64
-        Hydrostatic restoring matrix. Symmetric.
+        Hydrostatic restoring matrix in SI units (N/m for trans-trans,
+        N·m/m for trans-rot, N·m/rad for rot-rot). Symmetric.
     """
     p = Path(path)
     if not p.is_file():
@@ -339,7 +507,13 @@ def read_hydrostatic_stiffness(path: _PathLike) -> NDArray[np.float64]:
         _check_dof_index(j, p.name)
         by_pair.setdefault((i - 1, j - 1), []).append(c_val)
 
-    return _resolve_6x6_from_dict(by_pair, label="C")
+    C = _resolve_6x6_from_dict(by_pair, label="C")
+
+    if not assume_dimensional:
+        for i in range(6):
+            for j in range(6):
+                C[i, j] *= _hydrostatic_factor(i, j, rho=rho_water_kg_m3, g=g_m_s2, ulen=ulen_m)
+    return C
 
 
 # ---------------------------------------------------------------------------
@@ -443,14 +617,69 @@ def _maybe_warn_nondimensional(
     A: NDArray[np.float64],
     *,
     label: str,
+    assume_dimensional: bool,
 ) -> None:
-    a_max = max(float(np.max(np.abs(A_inf))), float(np.max(np.abs(A))))
-    if a_max < _DIMENSIONAL_THRESHOLD:
+    """Strengthened post-fix heuristic (M6 PR4 Pre-3).
+
+    The pre-fix check used a single ``max|A| < 10`` magnitude threshold,
+    which missed the marin_semi case where surge ``A_inf = 8527`` non-dim
+    (above the threshold) but rotational ``A_inf_pitch = 7.4e6`` non-dim
+    (a typical OC4 dimensional pitch added mass is O(1e9), so this is
+    100x too small).
+
+    Post-fix logic:
+
+    - Path 1 (``assume_dimensional=True``): the caller asserted
+      dimensional. We sanity-check the *rotational* added masses --
+      a real floating platform's pitch / yaw added mass is ≥ 1e8
+      kg·m². If we see < 1e8 with ``assume_dimensional=True``, warn:
+      the file is almost certainly the WAMIT non-dim default and the
+      caller should either set ``assume_dimensional=False`` or
+      pre-rescale the file.
+    - Path 2 (``assume_dimensional=False`` -- the default): the reader
+      already applied ``rho * ULEN^k``. We check that the post-rescale
+      values look reasonable; if not, warn that the rescaling factors
+      may be wrong (e.g. a non-OC4 deck with a different ULEN).
+
+    Either way the warning is informational; behaviour is the same
+    (rescale or pass-through) per the caller's request. The warning
+    is the surface-level alarm that prevents the M6 PR4 Pre-3 class
+    of latent bug from recurring.
+    """
+    a_rot_max = float(np.max(np.abs(A_inf[3:, 3:])))
+
+    if assume_dimensional:
+        # The reader returned values verbatim; the caller asserted
+        # dimensional. Check rotational scale.
+        if a_rot_max < _NONDIM_PITCH_THRESHOLD_KG_M2:
+            warnings.warn(
+                f"WAMIT .1 file {label} was read with assume_dimensional=True "
+                f"but its rotational A_inf max = {a_rot_max:.3e} kg*m^2 is below "
+                f"{_NONDIM_PITCH_THRESHOLD_KG_M2:.0e} -- this is the "
+                "magnitude expected of a non-dimensional WAMIT file. The "
+                "WAMIT default output convention is non-dimensional (manual "
+                "v7 §4.2). Pass assume_dimensional=False (the default) so "
+                "the reader applies rho * ULEN^k rescaling, OR confirm the "
+                "file is genuinely dimensional and update this heuristic. "
+                "See conventions doc Item 22.",
+                stacklevel=3,
+            )
+        return
+
+    # assume_dimensional=False: post-rescale sanity. Real platforms
+    # have rotational A_inf in the 1e9-1e11 range; below 1e8 means
+    # ULEN is probably wrong, or the file was already dimensional and
+    # got over-rescaled.
+    if a_rot_max < _NONDIM_PITCH_THRESHOLD_KG_M2:
         warnings.warn(
-            f"WAMIT .1 file {label} appears to be nondimensional "
-            f"(max |A| = {a_max:.3e} < {_DIMENSIONAL_THRESHOLD}). FloatSim "
-            f"requires dimensional output (kg, kg*m, kg*m^2). Re-run WAMIT "
-            f"with IPLTDAT=15 and the appropriate IFORCE / IPER flags.",
+            f"WAMIT .1 file {label}: post-rescale rotational A_inf max = "
+            f"{a_rot_max:.3e} kg*m^2 is below the {_NONDIM_PITCH_THRESHOLD_KG_M2:.0e} "
+            "expected for a real floating platform. Possible causes: "
+            "(a) the file was already dimensional and you should pass "
+            "assume_dimensional=True; (b) the ULEN passed to the reader "
+            "is wrong (default 1.0 m matches OC4 marin_semi; other decks "
+            "may differ -- check WAMIT's ULEN input or HydroDyn's WAMITULEN). "
+            "See conventions doc Item 22.",
             stacklevel=3,
         )
 
