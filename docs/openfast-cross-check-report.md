@@ -10,7 +10,7 @@ game; this report is the play-by-play.
 | -------- | -- | ------ | ---- |
 | S1 -- unmoored static equilibrium | PR2 | ✅ landed (post-fix-pr2-cmzt audit) | 2026-05-05 |
 | S2 -- pitch free decay (radiation-only, post-Option-A) | PR3 | ✅ landed (period xfail-strict under F1-revised post-fix-wamit-dim) | 2026-05-05 |
-| S3 -- regular-wave RAO sweep | PR4 | 🟡 in flight (Pre-2 WaveMod fix landing on fix-s3-wavemod) | -- |
+| S3 -- regular-wave RAO sweep | PR4 | ✅ landed (impedance-only path; time-domain xfail-strict pending F-WAVE-FORCE-CONV + F-DAMP-MATCH) | 2026-05-09 |
 | S4 -- moored static equilibrium | PR5 | ⏭ pending | -- |
 | S5 -- drag-on heave free decay | PR6 | ⏭ pending | -- |
 
@@ -520,6 +520,107 @@ every scenario. Full table in
   wave-generation verification (lstsq amp + residual).
 
 PR4 implementation pending Pre-3 (RAO definition lock-down).
+
+### PR4 implementation (closed 2026-05-09 with G3 narrowing + H1 marker refinement)
+
+**Scope landed**: `tests/validation/test_m6_openfast_regular_wave.py`
+validates FloatSim's **impedance-domain** RAO computation against
+OpenFAST across 14 wave periods × 3 DOFs (heave, roll, pitch) ×
+2 metrics (amp, phase) = 84 assertions. Time-domain Path A
+preserved as xfail-strict pending two named follow-ups
+(F-WAVE-FORCE-CONV + F-DAMP-MATCH; see below).
+
+**Narrowing path**: PR4 was originally planned as time-domain
+validation (Decision A locked at PR4 scoping). The Decision A
+structural sub-check (time-domain ≅ impedance at WaveTp = 10 s,
+25 s) revealed two distinct issues at first run:
+
+1. Pitch phase mirrored vs OpenFAST (`FS_lag ≈ -OF_lag`,
+   ~163° rotation) — sign-flip signature on Im(F_exc).
+2. Heave amp/phase contamination from un-decayed free-decay
+   transient (ζ_heave_radiation_only = 0.057 %; e-folding time
+   81 min; OpenFAST's clean fit traced to MoorDyn dynamic
+   damping that FloatSim's analytic catenary does not capture).
+
+After confirming the heave damping ratio from first principles
+and verifying the convention mechanism via
+`scripts/m6_pr4_im_ratio_diagnostic.py`, PR4 was narrowed to
+impedance-only Path A (G3) and time-domain split per metric (H1).
+
+### Quantitative results (impedance Path A)
+
+| outcome | count | comment |
+|---|---:|---|
+| passed | 23 | clean cross-check (heave 5/7/8/10/12/20/22/25/30 s; pitch 8/10/12/22 s amp + 8/10/12/14/18/22 s phase) |
+| skipped (heading 0 not-excited) | 28 | roll at all 14 periods × 2 metrics |
+| skipped (F-LOW-SNR, resp_resid > 0.10) | 22 | heave 4/5/6 s, pitch 4-8 s + 30 s |
+| xfailed (F1-revised) | 12 | pitch amp at 14/16/18/20/22/25 s, pitch phase at 16/20/22/25 s |
+| xfailed (F-RESONANCE-PEAK-FRAGILITY) | 5 | heave amp at 16/18 s, heave phase at 14/16/18 s |
+| xfailed (F-WAVE-FORCE-CONV + F-DAMP-MATCH, time-domain) | 4 | TD pitch amp at 10/25 s, TD pitch phase + heave phase at 10/25 s |
+| xpassed (TD heave amp at Pre-3 freqs, non-strict expected) | 2 | heave amp passes accidentally at WaveTp = 10/25 s (small Im/F + transient orthogonality); marker is non-strict |
+
+Full per-period diagnostic table at
+`docs/diagnostics/m6-pr4-rao-sweep-results.md`.
+
+### Named follow-ups added at PR4
+
+**F-WAVE-FORCE-CONV** -- `make_regular_wave_force` consumes its
+F_exc input under `exp(-i*omega*t)` convention while the WAMIT
+reader stores F_exc under `exp(+i*omega*t)` (Item 24). Result:
+the time-domain force has the wrong sign on its sin component,
+producing a conjugated motion. Phase prediction `2 * |arg(F_exc)|`
+matches the empirical pattern (`scripts/m6_pr4_im_ratio_diagnostic.py`).
+Investigation will land on `fix-make-regular-wave-force-convention`
+branch off main after PR4 merges. The fix is well-scoped: either
+(a) conjugate Im(F_exc) on read in the WAMIT reader, OR
+(b) change `make_regular_wave_force` to use `+i` convention and
+update M3/M5 callers. Choice depends on which side fewer downstream
+consumers are touched. Synthetic unit test pinning
+`make_regular_wave_force`'s convention by predicting the
+time-domain force from first principles will land with the fix.
+
+**F-DAMP-MATCH** -- forced-response time-domain cross-checks of
+lightly-damped DOFs require the dominant damping mechanism to be
+matched in both tools. OC4 unmoored (PR4's setup) has
+ζ_heave_radiation_only = 0.057 %; OpenFAST gets a clean fit only
+because MoorDyn provides dynamic mooring damping. Future
+forced-response time-domain validation should be moved to S5
+(drag-on heave decay; Morison drag dominates radiation in both
+tools), or wait until FloatSim's analytic catenary is augmented
+with MoorDyn-equivalent dynamic damping (out of Phase 1 scope).
+
+**KD-2-revised** -- already tracked from fix-wamit-dimensionalisation;
+PR4 confirmed empirically: pitch RAO disagrees in the resonance band
+(WaveTp 14-30 s) consistent with the +20.54 % T_n_pitch shift.
+
+**TODO-FRAGILITY-BAND-CRITERION** -- the empirical ±25 % omega_n
+F-RESONANCE-PEAK-FRAGILITY band (Item 28) should be replaced by a
+principled impedance-magnitude criterion (`|Z(omega)| < K * |Z(omega_n)|`
+for chosen K) when a future cross-check at a different platform
+makes the empirical band miscalibrated.
+
+### Convention adds at PR4
+
+- Item 26: MoorDyn dynamic damping vs analytic catenary
+- Item 27: Free-decay vs forced-response damping tolerance
+- Item 28: F-RESONANCE-PEAK-FRAGILITY (±25 % omega_n band, empirical)
+- Item 29: F-LOW-SNR skip threshold (resp_resid > 0.10)
+
+### Pre-step diagnostics archived
+
+- `scripts/m6_pr4_resonance_fragility.py` -- 9.3 % interpolation-
+  scheme span at omega_n_heave (Item 28 calibration)
+- `scripts/m6_pr4_im_ratio_diagnostic.py` -- |Im/F| ratio sweep
+  predicting F-WAVE-FORCE-CONV phase pattern; matches empirical
+
+### What this PR did NOT do
+
+- No time-domain forced-response validation (deferred per
+  F-WAVE-FORCE-CONV + F-DAMP-MATCH). Time-domain pipeline
+  remains exercised by M3 (synthetic) + M5 (drag) + M6 PR3
+  (free decay) + the xfail-strict dual-path test in PR4.
+- No KD-2-revised fix (deferred).
+- No fix to `make_regular_wave_force` (deferred).
 
 ---
 

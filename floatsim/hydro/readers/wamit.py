@@ -108,8 +108,12 @@ _DEFAULT_ULEN_M: Final[float] = 1.0  # OC4 marin_semi (HydroDyn WAMITULEN)
 _NONDIM_PITCH_THRESHOLD_KG_M2: Final[float] = 1.0e8
 _DIMENSIONAL_THRESHOLD: Final[float] = 10.0  # kept as a backstop sanity
 
-# Re/Im vs Mod/Pha consistency tolerance in .3 / .4. Either representation
-# can be used — they should round-trip to within this tolerance.
+# Re/Im vs Mod/Pha consistency tolerance in .3 / .4. The check is
+# magnitude-scaled (|a - b| <= rtol * max(|a|, |b|) + atol), not
+# per-component, so entries with small Im compared to Re (long-period
+# excitation, where the force is nearly in phase with the wave) are
+# not falsely rejected by the file's 6-sig-fig printed precision.
+# See _complex_close docstring for the M6 PR4 surfacing rationale.
 _COMPLEX_REPR_RTOL: Final[float] = 1.0e-3
 _COMPLEX_REPR_ATOL: Final[float] = 1.0e-3
 
@@ -748,7 +752,10 @@ def _read_complex_per_dof(
         if not _complex_close(z_re_im, z_mod_pha):
             raise ValueError(
                 f"{label} row in {p.name}: Re/Im={z_re_im} disagrees with "
-                f"Mod*exp(i*Pha)={z_mod_pha} beyond rtol={_COMPLEX_REPR_RTOL}"
+                f"Mod*exp(i*Pha)={z_mod_pha}; |diff|={abs(z_re_im - z_mod_pha):.3e} "
+                f"exceeds rtol*max(|a|,|b|) + atol "
+                f"({_COMPLEX_REPR_RTOL}*{max(abs(z_re_im), abs(z_mod_pha)):.3e} + "
+                f"{_COMPLEX_REPR_ATOL})"
             )
         if filled[i - 1, w_idx, h_idx]:
             existing = out[i - 1, w_idx, h_idx]
@@ -788,7 +795,22 @@ def _match_index(
 
 
 def _complex_close(a: complex, b: complex) -> bool:
-    return bool(
-        np.isclose(a.real, b.real, rtol=_COMPLEX_REPR_RTOL, atol=_COMPLEX_REPR_ATOL)
-        and np.isclose(a.imag, b.imag, rtol=_COMPLEX_REPR_RTOL, atol=_COMPLEX_REPR_ATOL)
-    )
+    """Magnitude-scaled closeness check for the .3 / .4 file-level
+    Re/Im vs Mod·exp(i·Pha) cross-check.
+
+    The file's printed precision (typically 6 significant figures)
+    bounds the round-trip error in absolute, not per-component
+    relative. For an entry with ``|Im| << |Re|`` (e.g. marin_semi.3
+    heave at long T: Re ~ 220, Im ~ 0.9), the rounding error in Im
+    is bounded by ~``1e-6 * Mod``, which is comparable to the value
+    of Im itself -- a per-component rtol-on-Im check is too strict.
+    The scale-aware check compares ``|a - b|`` to the larger of the
+    two magnitudes plus an absolute floor.
+
+    Surfaced at M6 PR4 implementation (2026-05-08): pre-fix
+    rtol=atol=1e-3 per-component check rejected marin_semi.3 at
+    file load time on perfectly valid printed values.
+    """
+    diff = abs(a - b)
+    scale = max(abs(a), abs(b))
+    return bool(diff <= _COMPLEX_REPR_RTOL * scale + _COMPLEX_REPR_ATOL)

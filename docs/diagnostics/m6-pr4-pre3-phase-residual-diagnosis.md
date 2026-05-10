@@ -32,7 +32,7 @@ Two effects are present:
 1. **Theory (a) — transient bleed (real, but small)**: phase
    drifts from +11.53° (early, transient-contaminated) to
    +6.54° (late, transient-decayed). Drift = 5°. Caused by the
-   heave free-decay mode at T_n = 17 s, ζ ≈ 1.2 %, which has
+   heave free-decay mode at T_n = 17 s, ζ ≈ 0.057 % radiation-only (the original 1.2 % estimate was wrong; verified at M6 PR4 implementation by computing ``B_33(omega_n) / (2 sqrt((M+A_33(omega_n))*C_33))`` from marin_semi.1; e-folding time ~ 81 min, 1 % decay time ~ 6.2 h), which has
    not fully damped out by t = 85 s but is essentially gone
    by t = 1135 s. Late-window (last 50 s of 1200 s sim) is
    the right place to fit RAO.
