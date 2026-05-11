@@ -12,7 +12,7 @@ game; this report is the play-by-play.
 | S2 -- pitch free decay (radiation-only, post-Option-A) | PR3 | ✅ landed (period xfail-strict under F1-revised post-fix-wamit-dim) | 2026-05-05 |
 | S3 -- regular-wave RAO sweep | PR4 | ✅ landed (impedance-only path; time-domain xfail-strict pending F-WAVE-FORCE-CONV + F-DAMP-MATCH) | 2026-05-09 |
 | S4 -- moored static equilibrium | PR5 | ⏭ pending | -- |
-| S5 -- drag-on heave free decay | PR6 | ⏭ pending | -- |
+| S5 -- drag-on heave free decay | PR6 | ✅ landed (P2 narrowing: equivalent Morison aggregate; hyperbolic-envelope regime classification + δ rel-err 3.88 %) | 2026-05-10 |
 
 ---
 
@@ -621,6 +621,115 @@ makes the empirical band miscalibrated.
   (free decay) + the xfail-strict dual-path test in PR4.
 - No KD-2-revised fix (deferred).
 - No fix to `make_regular_wave_force` (deferred).
+
+---
+
+## PR6 -- S5 heave drag decay (closed 2026-05-10)
+
+### Scope at PR6 (P2 narrowing per the locked plan)
+
+Validates FloatSim's Morison-drag time-domain pipeline against
+OpenFAST's S5 heave free-decay reference using the **hyperbolic-
+envelope** signature characteristic of drag-dominated quadratic
+damping (Faltinsen 1990, Ch. 4 + Item 16 regime classification).
+
+Three options were on the table at PR6 scoping. **P2** (equivalent
+Morison aggregate) was locked: rather than wire 25 Morison elements
++ 3 axial-drag joints + 3 MoorDyn catenary lines into FloatSim, use
+a single calibrated equivalent Morison element whose lumped
+``Cd · D · L`` matches the aggregated heave drag from the full OC4
+deck. The full deck-identity test is deferred to a future PR.
+
+### Pre-flight diagnostics + factor-of-2 finding
+
+`scripts/m6_pr6_drag_aggregation.py` parses the S5 HydroDyn deck
+and aggregates the per-member cylindrical Morison + per-joint
+axial drag with appropriate heave-direction projections (sin³θ for
+cylindrical, cos³θ for axial). First-principles hyperbolic-decay
+derivation gives ``δ = (8/3) · R / m_eff``.
+
+First pass: predicted δ = 0.620 1/m vs OpenFAST measured 0.309 1/m
+(2.005× off, suspiciously clean factor of 2). Investigated per
+the locked Q2 protocol (Outcome (a), Phase 1):
+
+Source read of `OpenFAST/modules/hydrodyn/src/Morison.f90` lines
+3085 + 4742 confirmed that HydroDyn's joint axial drag formula
+applies the coefficient with a **1/4 factor**, not the standard
+Morison 1/2:
+
+```
+F_z = -(1/4) · ρ · A_x · JAxCd · v_z · |v_z|       (HydroDyn)
+F_z = -(1/2) · ρ · A_x · Cd_axial · v_z · |v_z|    (standard Morison)
+```
+
+`JAxCd` is implicitly a "two-face combined disc" coefficient;
+per-face Morison-equivalent is `JAxCd / 2`. The HydroDyn User's
+Guide does NOT state this — only the source does. Codified as
+**Item 30** in conventions doc.
+
+After applying the 1/4 correction, the aggregated prediction is:
+
+```
+δ_predicted = 0.3130 1/m  (1.28 % rel-err vs OpenFAST 0.3090)
+```
+
+### Equivalent Morison element (calibrated aggregate)
+
+```
+R_total = 3.4073e+06 kg/m
+  cylindrical contribution: 6.87e+04 (2 %)
+  axial contribution:       3.34e+06 (98 %, from 3 heave plates)
+
+Equivalent: D = 24 m, L = 24 m, Cd = 11.54  (Cd·D·L = 6648 m²)
+```
+
+The high Cd reflects 3 heave plates with HydroDyn AxCd = 9.6
+each aggregated into a single Morison-equivalent element.
+
+### Implementation
+
+`tests/validation/test_m6_openfast_drag_decay.py` builds a single
+horizontal Morison element at the body reference, runs FloatSim's
+Cummins + Morison pipeline at 600 s, and extracts the heave
+hyperbolic envelope over peaks 0-15 (drag-dominated regime; below
+~0.14 m the envelope flattens as radiation + mooring linear damping
+take over — F-DAMP-MATCH regime crossover).
+
+### Quantitative results
+
+| metric | FloatSim | OpenFAST | rel-err | gate | status |
+|---|---:|---:|---:|---:|---|
+| Hyperbolic δ (peaks 0-1) | 0.3213 1/m | 0.3093 1/m | +3.88 % | rtol=5e-2 | **PASS** |
+| Hyperbolic envelope RMS (peaks 0-15) | < 5 % | < 5 % | — | < 5 % | **PASS** (both) |
+| Exponential RMS vs hyperbolic RMS | > 5x | > 5x | — | ≥ 5x discrim | **PASS** (both) |
+
+Per the test architecture, three assertions land:
+
+- `test_openfast_envelope_is_hyperbolic_drag_dominated` — pins OF
+  reference regime classification (Item 16).
+- `test_floatsim_delta_matches_openfast` — primary cross-check
+  assertion.
+- `test_floatsim_envelope_is_hyperbolic_not_exponential` — pins FS
+  regime classification on the OC4-equivalent setup (M5 PR5's
+  discriminator extended from synthetic to real-deck-aggregate).
+
+### Convention adds at PR6
+
+- **Item 30**: HydroDyn joint axial drag uses 1/4 factor, not
+  standard Morison 1/2. Pinned by `scripts/m6_pr6_drag_aggregation.py`
+  + this report.
+
+### What this PR did NOT do
+
+- No full 25-Morison + 3-joint + 3-MoorDyn deck-identity test.
+  PR6 validates the drag MECHANISM via the equivalent aggregate;
+  the deck-identity exercise is a future PR if PR6's regime-level
+  agreement is judged insufficient for downstream needs.
+- No mooring (test isolates the drag; equilibrium offset matched
+  by IC, see test docstring).
+- No coupling with waves or surge/pitch DOF (heave-only).
+- No new named follow-ups required: the factor-of-2 mystery
+  resolved cleanly within the Q2 budget (Outcome (a)).
 
 ---
 

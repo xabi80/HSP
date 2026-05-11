@@ -1396,6 +1396,81 @@ limit + small body excitation produces low pitch RAO).
 
 ---
 
+## Item 30 -- HydroDyn joint axial drag uses 1/4 factor, not standard Morison 1/2
+
+**Source.** M6 PR6 Step A/B/C investigation (Outcome (a)) — read of
+`OpenFAST/modules/hydrodyn/src/Morison.f90` lines 3085 (init) and 4742
+(runtime) plus first-principles verification against the S5 OC4
+hyperbolic-envelope measurement.
+
+**HydroDyn's axial drag formula at a joint** (verified from Morison.f90):
+
+```fortran
+! init (line 3079-3085):
+p%An_End(:,i) = An_drag      ! Σ_members sgn · k · π · R²  (full disc area vector)
+Amag_drag = Dot_Product(An_drag, An_drag)
+p%DragConst_End(i) = JAxCd · ρ / (4 · Amag_drag)
+
+! runtime (line 4729 + 4742):
+vmag = vrel · An_End                                 ! scalar
+F_D_End(i, j) = An_End(i) · DragConst_End(j) · |vmag| · vmag
+```
+
+Algebraic reduction at a joint with a single attached vertical
+member of diameter `D` (`An_End = ±π R² ẑ`, `A_x = πR² = πD²/4`):
+
+```
+F_z = -(1/4) · ρ · A_x · JAxCd · v_z · |v_z|
+```
+
+**Compare to "standard Morison" axial drag**:
+
+```
+F_z_naive = -(1/2) · ρ · A_x · Cd_axial · v_z · |v_z|
+```
+
+So HydroDyn's `JAxCd` is **implicitly a "two-face combined" disc
+coefficient**: HydroDyn applies it with a 1/4 factor instead of the
+standard Morison 1/2. Per-face equivalent (for matching against
+single-face heave-plate Cd tables): `Cd_per_face = JAxCd / 2`. To
+reproduce HydroDyn's drag in a FloatSim Morison-equivalent
+aggregation:
+
+```
+R_axial_joint = 0.25 · ρ · A_x · JAxCd · cos³(θ_axis_from_vertical)
+```
+
+**Verification status.** Pinned by:
+
+- `scripts/m6_pr6_drag_aggregation.py` — aggregates OC4 marin_semi 25
+  cylindrical members + 3 axial-drag joints with the 1/4 factor;
+  predicts δ_hyperbolic = 0.3130 1/m vs OpenFAST S5 measured 0.3090
+  1/m (1.28 % rel-err, within 5 % gate).
+- `docs/diagnostics/m6-pr6-drag-aggregation.md` — derivation and
+  per-member contribution table.
+- `tests/validation/test_m6_openfast_drag_decay.py` (PR6) — full
+  FloatSim Morison run with the aggregate, hyperbolic-envelope
+  log-decrement assertion against OpenFAST.
+
+**Standing rule going forward.** Any FloatSim simulation that needs
+to reproduce HydroDyn axial-drag effects must use the 1/4 factor
+(or equivalently, halve the HydroDyn `JAxCd` before passing to
+FloatSim's standard Morison module). The FloatSim Morison module
+itself uses the standard 1/2 factor (per `floatsim/hydro/morison.py`
+docstring); the conversion lives at the test / driver layer.
+
+**Lessons learned.** The factor-of-2 disagreement was suspiciously
+clean and traced cleanly to the HydroDyn source within a 30-minute
+budget. The "AxCd is a two-face combined coefficient" interpretation
+is the most physically sensible read but is not documented in the
+HydroDyn User's Guide (which gives input-file syntax but does not
+state the formula's factor). Reading the source was the only way
+to confirm. Future HydroDyn-equivalence work should default to
+reading `Morison.f90` for any quantitative match — the User's Guide
+gives the inputs, not the formula.
+
+---
+
 ## Verification status summary (PR2)
 
 | Item | Status |
@@ -1429,6 +1504,7 @@ limit + small body excitation produces low pitch RAO).
 | 27. Free-decay vs forced-response damping tolerance | ✅ codified at M6 PR4 G3 narrowing |
 | 28. F-RESONANCE-PEAK-FRAGILITY (±25% omega_n band, empirical) | ✅ verified at M6 PR4 H1 (scripts/m6_pr4_resonance_fragility.py + per-metric xfail markers); TODO-FRAGILITY-BAND-CRITERION tracks principled refinement |
 | 29. F-LOW-SNR skip threshold (resp_resid > 0.10) | ✅ verified at M6 PR4 H1 (_maybe_skip_low_signal in test_m6_openfast_regular_wave.py) |
+| 30. HydroDyn joint axial drag uses 1/4 factor (not standard Morison 1/2) | ✅ verified at M6 PR6 Step A/B/C from Morison.f90 source + first-principles check |
 
 **Items not allowed past PR1 without both columns filled:** none.
 Every item above carries (a) a written assertion + source citation
