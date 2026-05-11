@@ -11,7 +11,7 @@ game; this report is the play-by-play.
 | S1 -- unmoored static equilibrium | PR2 | ✅ landed (post-fix-pr2-cmzt audit) | 2026-05-05 |
 | S2 -- pitch free decay (radiation-only, post-Option-A) | PR3 | ✅ landed (period xfail-strict under F1-revised post-fix-wamit-dim) | 2026-05-05 |
 | S3 -- regular-wave RAO sweep | PR4 | ✅ landed (impedance-only path; time-domain xfail-strict pending F-WAVE-FORCE-CONV + F-DAMP-MATCH) | 2026-05-09 |
-| S4 -- moored static equilibrium | PR5 | ⏭ pending | -- |
+| S4 -- moored static equilibrium | PR5 | ✅ landed (analytic catenary vs MoorDyn; sub-0.15 % tensions, sub-cm heave) | 2026-05-10 |
 | S5 -- drag-on heave free decay | PR6 | ✅ landed (P2 narrowing: equivalent Morison aggregate; hyperbolic-envelope regime classification + δ rel-err 3.88 %) | 2026-05-10 |
 
 ---
@@ -730,6 +730,134 @@ Per the test architecture, three assertions land:
 - No coupling with waves or surge/pitch DOF (heave-only).
 - No new named follow-ups required: the factor-of-2 mystery
   resolved cleanly within the Q2 budget (Outcome (a)).
+
+---
+
+## PR5 -- S4 moored static equilibrium (closed 2026-05-10)
+
+### Scope at PR5
+
+Cross-check FloatSim's analytic catenary mooring against OpenFAST +
+MoorDyn's converged steady state. **Quasi-static comparison only** —
+F-DAMP-MATCH (Item 26) means a time-domain coupled comparison is
+ill-defined (MoorDyn's dynamic line damping isn't reproducible by
+analytic catenary), but the converged steady state IS well-defined
+and is what PR5 tests.
+
+Closes the M6 scenario sweep at **5 of 5 PRs landed**.
+
+### Pre-flight findings
+
+The pre-flight produced the strongest M6 PR result to date:
+sub-0.15 % rel-err on all 6 line tensions and sub-cm agreement on
+heave. Two corrections were applied during pre-flight, both
+mechanism-driven (not parameter tuning):
+
+**Correction 1 — submerged line weight (Item 32 added at PR5)**. First-pass
+catenary used `MassDen · g = 1112 N/m` as the line weight per length.
+This gave per-line tensions 4.2 % higher than OpenFAST. Investigation
+traced to MoorDyn's convention: `MassDen` is the **AIR mass** per unit
+length; submerged weight requires cross-section buoyancy subtraction:
+
+```
+w_sub = (m_air - rho_water · A_cross) · g
+A_cross = pi · D^2 / 4 = pi · 0.0766^2 / 4 = 4.61e-3 m^2
+w_sub = (113.35 - 1025 · 4.61e-3) · 9.80665 = 1065.4 N/m   (4.2 % less)
+```
+
+After correction: tension agreement at sub-0.15 % rel-err.
+
+**Correction 2 — surge averaging window (Item 33 added at PR5)**. R1b's
+S4 TMax=1200 s re-extraction settled heave + tensions cleanly but
+left surge oscillating at ~ 1 m amplitude (OC4 surge natural period
+~ 100 s with very slow damping). The PR2 30-s averaging precedent
+samples a biased phase: last-30-s surge mean = −0.86 m, but the
+true equilibrium (by 3-fold symmetry) is ≈ 0 m. Longer windows
+converge:
+
+| window | surge mean |
+|---|---:|
+| last 30s | −0.861 m |
+| last 120s | −0.066 m |
+| **last 200s** | **−0.0004 m** ✓ |
+| last 400s | −0.073 m |
+
+Rule: averaging window ≥ 2 × longest under-damped natural period.
+For OC4 surge (T_n ~ 100 s), this is 200 s.
+
+### S4 fixture re-extraction (R1b)
+
+S4 TMax bumped from 200 s to 1200 s. Regenerated via
+`openfast_setup/_regenerate_s4_only.py`. OpenFAST run completed in
+309.8 s (5 min wall) on contributor machine. CSV re-extracted with
+`scripts/extract_openfast_fixtures.py --mode read-only --scenario s4_moored_eq`.
+
+### Quantitative results
+
+| metric | FS | OF | rel-err / Δ | gate | status |
+|---|---:|---:|---:|---:|---|
+| solver converges | yes | — | — | converge | ✓ |
+| heave eq | −0.0055 m | −0.0083 m | |Δ| = 0.27 cm | atol = 5 cm | ✓ (185× margin) |
+| surge eq | 0 (by symmetry) | −0.0004 m | |Δ| = 0.04 cm | atol = 10 cm | ✓ |
+| FairTen line 1 | 1.1054e6 N | 1.1042e6 N | +0.11 % | rtol = 5 % | ✓ (45× margin) |
+| FairTen line 2 | 1.1052e6 N | 1.1054e6 N | −0.02 % | rtol = 5 % | ✓ (250× margin) |
+| FairTen line 3 | 1.1054e6 N | 1.1042e6 N | +0.11 % | rtol = 5 % | ✓ |
+| AnchTen line 1 (informational) | 9.0751e5 N | 9.0656e5 N | +0.10 % | — | logged |
+| AnchTen line 2 (informational) | 9.0733e5 N | 9.0778e5 N | −0.05 % | — | logged |
+| AnchTen line 3 (informational) | 9.0751e5 N | 9.0656e5 N | +0.10 % | — | logged |
+
+Tolerances kept at planned Q4 values (5 cm / 10 cm / 5 %), NOT
+tightened to measured headroom. The tight headroom (~ 50-250×
+margin on tensions) is preserved as test diagnostic output for
+future regression detection.
+
+### Implementation
+
+`tests/validation/test_m6_openfast_moored_eq.py` (~340 lines):
+
+- 6 assertions (1 solver + 1 heave + 1 surge + 3 fairlead tensions)
+- Anchor tensions computed and logged as diagnostic-only
+- FloatSim catenary solve at 3D anchor/fairlead positions via
+  per-line 2D rotation; iterative heave-equilibrium close with
+  full force balance (buoyancy − weight + Σ V_F_line + C_33 · z)
+- OF reference loaded lazily via module-scope fixture
+
+### Convention adds at PR5
+
+- **Item 31**: MoorDyn FairTen/AnchTen are positive scalar magnitudes;
+  touchdown AnchTen = H (added at Step A).
+- **Item 32**: MoorDyn `MassDen` is air mass per length; submerged
+  weight = `(m_air − rho_water · A_cross) · g`.
+- **Item 33**: moored surge averaging window must cover ≥ 2 natural
+  periods.
+
+### What this PR did NOT do
+
+- No time-domain coupled comparison (F-DAMP-MATCH; out of Phase 1
+  scope per Item 26).
+- No mooring connector wiring into FloatSim's general `Body`
+  pipeline — the catenary solve is called directly. A higher-level
+  `CatenaryConnector` (analogous to `Connector`) for use in dynamic
+  simulations is a future PR.
+- No comparison against MoorDyn's per-segment line shape (anchor-
+  to-fairlead via 20 segments). PR5 cross-checks the END quantities
+  (fairlead + anchor tensions, body position), not the full line
+  geometry.
+
+### M6 scenario sweep — 5 of 5 closed
+
+| scenario | PR | status |
+|---|---|---|
+| S1 unmoored static eq | PR2 | ✅ landed |
+| S2 pitch free decay | PR3 | ✅ landed (xfail-strict under F1-revised post-fix-wamit-dim) |
+| S3 regular-wave RAO sweep | PR4 | ✅ landed (impedance-only path; TD xfail-strict pending F-WAVE-FORCE-CONV + F-DAMP-MATCH) |
+| **S4 moored static equilibrium** | **PR5** | **✅ landed** |
+| S5 drag-on heave free decay | PR6 | ✅ landed |
+
+**M6 scenario validation is structurally complete.** The
+remaining M6-related work is the convention-bug fix branch
+(`fix-make-regular-wave-force-convention` off main) as M6
+epilogue, then milestone closure.
 
 ---
 

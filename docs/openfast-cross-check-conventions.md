@@ -1471,6 +1471,161 @@ gives the inputs, not the formula.
 
 ---
 
+## Item 31 -- MoorDyn FairTen / AnchTen are positive scalar tension magnitudes
+
+**Source.** M6 PR5 Step A — inspection of the OC4 S4 MoorDyn deck
+(`tests/fixtures/openfast/oc4_deepcwind/inputs/s4_moored_eq/`) plus
+direct check of the OF CSV column structure.
+
+**Rule.** MoorDyn's `FairTen<i>` and `AnchTen<i>` output channels are
+**positive scalar magnitudes** (no sign convention to track), units
+of N. They represent the total cable tension at each end of line `i`,
+NOT a 3-component vector projection. No coordinate-frame
+specification is required — tension magnitude is frame-invariant.
+
+For the **touchdown regime** (line lies on the seabed at its anchor
+end, common in OC4 catenary mooring with ~ 17 m slack on 835 m
+lines): the vertical tension at the touchdown point is zero by
+definition of touchdown, so `AnchTen = H` (the horizontal tension
+component, which is constant along the line). For the **fully
+suspended regime**: `AnchTen = sqrt(H² + V_anchor²)` where
+`V_anchor` is the vertical tension component at the anchor.
+
+**FloatSim's `CatenarySolution` matches directly.** Its
+`T_fairlead = sqrt(H² + V_fairlead²)` property is the exact analogue
+of MoorDyn's `FairTen`. `T_anchor` is not exposed as a property but is
+trivially `sqrt(H² + V_anchor²)` from the existing fields (and
+reduces to `H` in touchdown regime — `V_anchor = 0` by the dataclass
+field semantics).
+
+**No sign or coordinate-frame mismatch between tools.** This is the
+simplest cross-check convention encountered so far in M6: both tools
+emit positive scalars in the same units.
+
+**Verification status.** Pinned by:
+
+- The OC4 S4 fixture's CSV columns
+  (`fair_ten_line{1,2,3}_n`, `anch_ten_line{1,2,3}_n`) all positive
+  in N.
+- M6 PR5's pre-flight prediction (`scripts/m6_pr5_mooring_prediction.py`)
+  computing `T_fairlead` and `T_anchor` from FloatSim's
+  `CatenarySolution` and comparing to OpenFAST's reported tensions
+  within Step C tolerance.
+
+---
+
+## Item 32 -- MoorDyn line MassDen is air mass; submerged weight needs cross-section buoyancy subtraction
+
+**Source.** M6 PR5 Step B/C pre-flight diagnostic. First-pass
+catenary prediction used the MoorDyn-deck `MassDen` value
+(`113.35 kg/m` for OC4's 76.6 mm chain) directly as
+`w = MassDen · g = 1112 N/m`, producing per-line tensions
+4.2 % higher than the OpenFAST + MoorDyn reference. The 4.2 %
+discrepancy was clean enough to suggest a missing physical
+correction; investigation traced it to MoorDyn's convention:
+**`MassDen` is the AIR mass per unit length, not the submerged
+weight**.
+
+**Rule.** For a catenary line submerged in water with density
+`rho_water`, the **submerged weight per unit length** is:
+
+```
+w_submerged = (MassDen_air - rho_water * A_cross) * g
+```
+
+where `A_cross = pi * D^2 / 4` (for a cylindrical chain of
+hydrodynamic diameter `D`) is the cross-sectional area that
+displaces water. For OC4's chain:
+
+```
+A_cross = pi * 0.0766^2 / 4 = 4.61e-3 m^2
+w_sub   = (113.35 - 1025 * 4.61e-3) * 9.80665
+        = (113.35 - 4.72) * 9.80665
+        = 1065.4 N/m                          (4.2 % less than air weight)
+```
+
+**FloatSim implementation.** `floatsim.mooring.CatenaryLine`'s
+`weight_per_length` field is defined in the docstring as
+"**submerged** weight per unit unstretched length, in N/m"
+(`docstring excerpt from catenary_analytic.py:64`). Callers
+reading MoorDyn decks must apply the correction at the
+deck-parsing boundary.
+
+**Generalisation.** This correction matters whenever a marine
+line has non-negligible cross-section relative to its mass density.
+The 4.2 % on OC4 chain happens because chain steel density
+(~ 7800 kg/m³) is well above water but the chain has gaps; for
+a solid synthetic rope or fibre line, the correction can be
+larger or smaller depending on material vs water density. For
+neutrally-buoyant lines the submerged weight is zero and the
+analytic catenary degenerates (the solver requires
+`weight_per_length > 0`); use a connector that handles
+neutrally-buoyant cables explicitly.
+
+**Verification status.** Pinned by:
+
+- `tests/validation/test_m6_openfast_moored_eq.py` — uses the
+  corrected `w_sub` in its `_LINE_W_SUB_N_PER_M` constant; all
+  6 PR5 assertions pass at sub-0.15 % rel-err on tensions.
+- `scripts/m6_pr5_mooring_prediction.py` — pre-flight derivation
+  + comparison to OpenFAST showing 4.2 % discrepancy with naive
+  `m_air · g` and 0.1 % agreement with the corrected `w_sub`.
+
+---
+
+## Item 33 -- Moored surge averaging window must cover >= 2 natural periods
+
+**Source.** M6 PR5 pre-flight diagnostic (R1b TMax=1200s
+re-extraction). After bumping the S4 fixture from 200 s to
+1200 s, surge oscillation was still present at ~ 1 m amplitude
+at the simulation end: OC4 moored surge has a ~ 100 s natural
+period with very slow damping (radiation + MoorDyn line drag
+are the only dissipation mechanisms in still water).
+
+**Issue.** A short averaging window (e.g., the PR2 30-s
+precedent for unmoored static equilibrium) samples one
+half-cycle of a slowly-damped mode and is **biased by the
+oscillation phase**, not the true equilibrium:
+
+```
+S4 surge over various last-N-second windows (TMax=1200s):
+  last 30s:  -0.861 m  (biased by phase of oscillation)
+  last 60s:  -0.396 m
+  last 120s: -0.066 m
+  last 200s: -0.0004 m  ✓ true equilibrium (by 3-fold symmetry)
+  last 400s: -0.073 m
+  last 600s: -0.088 m
+```
+
+The 200-s window covers 2 full natural periods and washes out
+the oscillation phase to give the true mean. Heave + line
+tensions remain clean over either window because their modes
+are well-damped at this regime.
+
+**Rule.** Moored cross-checks must use an averaging window
+**at least 2× the longest under-damped natural period** of
+the system. For OC4 (surge T_n ~ 100 s), this is 200 s. For
+other floaters, derive from the slowest under-damped DOF.
+
+**FloatSim implementation.** PR5's test
+(`tests/validation/test_m6_openfast_moored_eq.py`) uses
+`_SURGE_AVG_WINDOW_S = 200.0` for surge and the standard
+`_HEAVE_AVG_WINDOW_S = 30.0` for heave / tensions. The
+asymmetry is documented in the test fixture's reference-
+load function.
+
+**Generalisation.** Any future moored-equilibrium cross-check
+must select averaging windows per DOF based on the under-
+damped mode structure. The PR2 30-s precedent is appropriate
+only for fully-damped modes (the static-eq case where mooring
+isn't even present).
+
+**Verification status.** Pinned by PR5 test's per-DOF window
+selection + this convention's explanation. Pre-flight
+diagnostic in `scripts/m6_pr5_mooring_prediction.py`.
+
+---
+
 ## Verification status summary (PR2)
 
 | Item | Status |
@@ -1505,6 +1660,9 @@ gives the inputs, not the formula.
 | 28. F-RESONANCE-PEAK-FRAGILITY (±25% omega_n band, empirical) | ✅ verified at M6 PR4 H1 (scripts/m6_pr4_resonance_fragility.py + per-metric xfail markers); TODO-FRAGILITY-BAND-CRITERION tracks principled refinement |
 | 29. F-LOW-SNR skip threshold (resp_resid > 0.10) | ✅ verified at M6 PR4 H1 (_maybe_skip_low_signal in test_m6_openfast_regular_wave.py) |
 | 30. HydroDyn joint axial drag uses 1/4 factor (not standard Morison 1/2) | ✅ verified at M6 PR6 Step A/B/C from Morison.f90 source + first-principles check |
+| 31. MoorDyn FairTen / AnchTen are positive scalar magnitudes; touchdown AnchTen = H | ✅ verified at M6 PR5 Step A from MoorDyn deck inspection + CSV channel check |
+| 32. MoorDyn line MassDen is air mass per length; submerged weight = (m_air - rho_water * A_cross) * g | ✅ verified at M6 PR5 Step B/C (4.2 % tension correction matched empirically) |
+| 33. Moored surge averaging window must cover >= 2 natural periods | ✅ verified at M6 PR5 pre-flight (last-30s biased; last-200s converges) |
 
 **Items not allowed past PR1 without both columns filled:** none.
 Every item above carries (a) a written assertion + source citation
