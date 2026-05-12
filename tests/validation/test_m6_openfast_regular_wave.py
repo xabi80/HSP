@@ -1,11 +1,22 @@
 """M6 PR4 -- S3 regular-wave RAO sweep (FloatSim impedance vs OpenFAST).
 
+**Post-epilogue status (F-WAVE-FORCE-CONV closed):**
+``fix-make-regular-wave-force-convention`` corrected the time-domain
+wave-force phase convention. The two WaveTp = 10 s dual-path phase
+assertions now pass; the WaveTp = 25 s phase + pitch amp assertions
+remain xfail-strict under F-DAMP-MATCH (the structural follow-up).
+The historical F-WAVE-FORCE-CONV discussion below is preserved as
+audit trail; the current xfail markers (bottom of file) cite
+F-DAMP-MATCH only.
+
 Sweep
 -----
 14 wave periods x 3 DOFs (heave, roll, pitch) x 2 metrics (amp, phase)
-= **84 assertions**, plus a structurally-preserved time-domain dual-
-path comparison at WaveTp = 10 s and 25 s (the Pre-3 frequencies),
-xfail-strict pending two named follow-ups (see below).
+= **84 assertions**, plus a time-domain dual-path comparison at
+WaveTp = 10 s and 25 s (the Pre-3 frequencies). 4 of 6 dual-path
+combinations are expected-pass post-epilogue; the 4 still xfail (heave
+phase 25s, pitch phase 25s, pitch amp 10s, pitch amp 25s) are
+F-DAMP-MATCH-attributed.
 
 Scope at PR4 (post-G3 narrowing)
 --------------------------------
@@ -129,7 +140,7 @@ from __future__ import annotations
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import numpy as np
 import pytest
@@ -561,56 +572,109 @@ def _emit_diagnostic_table(
 
 
 # ---------------------------------------------------------------------------
-# Time-domain dual-path comparison (xfail-strict pending two named follow-ups)
+# Time-domain dual-path comparison
+#
+# Post fix-make-regular-wave-force-convention (the M6 epilogue):
+# F-WAVE-FORCE-CONV is closed (the -i / +i wave-force convention bug
+# was patched in floatsim/hydro/excitation.py with the convention pin
+# at tests/unit/test_excitation_wamit_convention.py). The remaining
+# Pre-3-threshold xfail markers are attributed to **F-DAMP-MATCH only**:
+# the radiation-only OC4 heave damping ratio is zeta = 0.057 % and the
+# 1200-s simulation cannot reach a clean steady state on lightly-damped
+# DOFs, so the lstsq fit at omega_q is contaminated by the un-decayed
+# free-decay-mode transient (resp_resid > 0.1).
+#
+# Pre-fix empirical signature (from M6 PR4 commit message):
+#   pitch 10/25 s : TD lag vs Imp lag rotated by ~163 deg (F-WAVE-FORCE-CONV)
+#   heave 10/25 s : TD lag vs Imp lag off by ~1/16 deg (F-WAVE-FORCE-CONV
+#                   + F-DAMP-MATCH)
+#
+# Post-fix empirical results (measured on this branch):
+#   heave 10 s phase err = +0.54 deg (PASS), amp rel-err = +0.23 % (PASS)
+#   heave 25 s phase err = -1.86 deg (FAIL, F-DAMP-MATCH), amp = -0.79 % (PASS)
+#   pitch 10 s phase err = +0.55 deg (PASS), amp rel-err = -1.91 % (FAIL,
+#                   F-DAMP-MATCH transient bias on lightly-damped resonance)
+#   pitch 25 s phase err = +2.37 deg (FAIL), amp rel-err = -4.61 % (FAIL,
+#                   both F-DAMP-MATCH; resp_resid = 0.65 at this WaveTp)
+#
+# Disposition therefore moves from function-level xfail-strict to
+# per-parameter xfail-strict on the specific (DOF, WaveTp) combinations
+# that remain blocked by F-DAMP-MATCH alone. The two WaveTp = 10 s phase
+# cases and the two heave amp cases flip to expected-pass.
 # ---------------------------------------------------------------------------
 
 
-_TD_PHASE_XFAIL_REASON: Final[str] = (
-    "F-WAVE-FORCE-CONV + F-DAMP-MATCH: time-domain Path A phase disagrees "
-    "with impedance phase at Pre-3 thresholds. Predicted phase error magnitude "
-    "is ~ 2 * |arg(F_exc(omega))| under the sign-flip-on-Im hypothesis (see "
-    "scripts/m6_pr4_im_ratio_diagnostic.py): "
-    "  pitch at WaveTp 10/25 s has |Im/F| ~ 1.0 -> predicted ~180 deg, "
-    "    observed ~163 deg (matches; small offset from arg(F) not at exactly "
-    "    +/-pi/2). "
-    "  heave at WaveTp 10/25 s has |Im/F| ~ 0.02 -> predicted ~2-3 deg "
-    "    F-WAVE-FORCE-CONV contribution; observed gap ~16/1.4 deg includes "
-    "    F-DAMP-MATCH transient bias (heave resp_resid ~ 0.4 from un-damped "
-    "    free-decay mode at zeta_heave = 0.057 %). "
-    "Will pass when F-WAVE-FORCE-CONV (fix-make-regular-wave-force-convention "
-    "branch, post-PR4 merge) AND F-DAMP-MATCH (move time-domain check to a "
-    "damping-matched scenario like S5) are both closed."
+_DAMP_MATCH_REASON: Final[str] = (
+    "F-DAMP-MATCH (structural, Phase 2): radiation-only OC4 heave damping "
+    "ratio is zeta = 0.057 % (verified from marin_semi.1 at omega_n_heave = "
+    "0.364 rad/s). The free-decay e-folding time is ~ 81 minutes; reaching "
+    "1 % of initial transient amplitude requires ~ 6.2 hours of simulation. "
+    "OpenFAST runs at TMax = 1200 s and uses MoorDyn dynamic mooring damping "
+    "that FloatSim's analytic catenary does not capture. At Pre-3 thresholds "
+    "the un-decayed free-decay-mode transient contaminates the lstsq fit "
+    "(resp_resid > 0.1). Will pass when this scenario is moved to a damping- "
+    "matched setup (e.g. S5 drag-on heave decay, where Morison drag dominates "
+    "radiation in both tools)."
 )
 
-_TD_AMP_XFAIL_REASON: Final[str] = (
-    "F-WAVE-FORCE-CONV + F-DAMP-MATCH: time-domain Path A amp at Pre-3 "
-    "thresholds. Mechanistically, |conj(F)| = |F| so amp should be preserved "
-    "under the convention bug; in practice F-DAMP-MATCH transient bias "
-    "(resp_resid > 0.1 on lightly-damped DOFs) contaminates the lstsq fit. "
-    "Empirically: heave amp passes accidentally at WaveTp 10/25 s (|Im/F| "
-    "small + transient orthogonality at the wave frequency); pitch amp fails "
-    "by ~ 6 % from transient bias (resp_resid 0.11 / 0.65 at 10s/25s). "
-    "Marked xfail (NOT strict) so accidental passes on heave do not flag as "
-    "XPASS. See _TD_PHASE_XFAIL_REASON for the convention investigation plan."
-)
+
+# Convert function-level xfail markers to per-parameter marks. Post-fix the
+# discriminator is whether F-DAMP-MATCH transient bias dominates at the
+# specific (DOF, WaveTp) combination.
+_DUAL_PATH_AMP_CASES: Final[list[Any]] = [
+    pytest.param("heave", 10.0, id="heave-WaveTp_10s"),
+    pytest.param("heave", 25.0, id="heave-WaveTp_25s"),
+    pytest.param("roll", 10.0, id="roll-WaveTp_10s"),
+    pytest.param("roll", 25.0, id="roll-WaveTp_25s"),
+    pytest.param(
+        "pitch",
+        10.0,
+        id="pitch-WaveTp_10s",
+        marks=pytest.mark.xfail(strict=True, reason=_DAMP_MATCH_REASON),
+    ),
+    pytest.param(
+        "pitch",
+        25.0,
+        id="pitch-WaveTp_25s",
+        marks=pytest.mark.xfail(strict=True, reason=_DAMP_MATCH_REASON),
+    ),
+]
+
+_DUAL_PATH_PHASE_CASES: Final[list[Any]] = [
+    pytest.param("heave", 10.0, id="heave-WaveTp_10s"),
+    pytest.param(
+        "heave",
+        25.0,
+        id="heave-WaveTp_25s",
+        marks=pytest.mark.xfail(strict=True, reason=_DAMP_MATCH_REASON),
+    ),
+    pytest.param("roll", 10.0, id="roll-WaveTp_10s"),
+    pytest.param("roll", 25.0, id="roll-WaveTp_25s"),
+    pytest.param("pitch", 10.0, id="pitch-WaveTp_10s"),
+    pytest.param(
+        "pitch",
+        25.0,
+        id="pitch-WaveTp_25s",
+        marks=pytest.mark.xfail(strict=True, reason=_DAMP_MATCH_REASON),
+    ),
+]
 
 
 @pytest.mark.slow
-@pytest.mark.xfail(strict=False, reason=_TD_AMP_XFAIL_REASON)
-@pytest.mark.parametrize("wave_tp_label", DUAL_PATH_PERIODS_S, ids=lambda v: f"WaveTp_{v:g}s")
-@pytest.mark.parametrize("dof_name", list(DOF_INDICES.keys()))
+@pytest.mark.parametrize(("dof_name", "wave_tp_label"), _DUAL_PATH_AMP_CASES)
 def test_time_domain_amplitude_agrees_with_impedance(
-    wave_tp_label: float,
     dof_name: str,
+    wave_tp_label: float,
     sweep_results: dict[float, _PerPeriodResult],
     time_domain_dual_results: dict[float, dict[str, dict[str, float]]],
 ) -> None:
     """Time-domain Path A amp vs impedance amp at Pre-3 thresholds.
 
-    Marked xfail (NON-strict) because heave amp passes accidentally at
-    Pre-3 frequencies (|conj(F)| = |F| under the convention bug + small
-    Im/F means transient orthogonality holds). Pitch amp fails. Both
-    outcomes are documented; passes are not XPASS-flagged.
+    Post fix-make-regular-wave-force-convention, expected-pass for heave
+    (both periods) and roll (skipped at runtime, no excitation at heading
+    0). Remains xfail-strict for pitch under F-DAMP-MATCH (un-damped
+    free-decay-mode transient contaminates the lstsq fit at resp_resid
+    > 0.1, biasing the amplitude by ~ 2-5 %).
     """
     r = sweep_results[wave_tp_label]
     td = time_domain_dual_results[wave_tp_label][dof_name]
@@ -621,27 +685,26 @@ def test_time_domain_amplitude_agrees_with_impedance(
     assert rel_err < DUAL_AMP_RTOL, (
         f"WaveTp={wave_tp_label}s {dof_name}: time-domain amp {td['rao_amp']:.4e} "
         f"disagrees with impedance amp {imp_amp:.4e} by {rel_err:.4%} "
-        f"(Pre-3 gate {DUAL_AMP_RTOL:.0e}). See xfail reason."
+        f"(Pre-3 gate {DUAL_AMP_RTOL:.0e}). See xfail reason (if marked)."
     )
 
 
 @pytest.mark.slow
-@pytest.mark.xfail(strict=True, reason=_TD_PHASE_XFAIL_REASON)
-@pytest.mark.parametrize("wave_tp_label", DUAL_PATH_PERIODS_S, ids=lambda v: f"WaveTp_{v:g}s")
-@pytest.mark.parametrize("dof_name", list(DOF_INDICES.keys()))
+@pytest.mark.parametrize(("dof_name", "wave_tp_label"), _DUAL_PATH_PHASE_CASES)
 def test_time_domain_phase_agrees_with_impedance(
-    wave_tp_label: float,
     dof_name: str,
+    wave_tp_label: float,
     sweep_results: dict[float, _PerPeriodResult],
     time_domain_dual_results: dict[float, dict[str, dict[str, float]]],
 ) -> None:
     """Time-domain Path A phase vs impedance phase at Pre-3 thresholds.
 
-    xfail-strict because phase consistently fails per the F-WAVE-FORCE-CONV
-    mechanism (predicted ~ 2 * arg(F_exc) phase error). Pitch (large |Im/F|)
-    fails by ~163 deg; heave (small |Im/F|) fails by 1-16 deg from a
-    combination of F-WAVE-FORCE-CONV (~2-3 deg) and F-DAMP-MATCH transient
-    contamination (rest).
+    Post fix-make-regular-wave-force-convention, expected-pass for heave
+    at WaveTp = 10 s (phase err 0.54 deg < 1 deg gate) and pitch at WaveTp
+    = 10 s (0.55 deg). Remains xfail-strict at WaveTp = 25 s (heave 1.86
+    deg, pitch 2.37 deg) under F-DAMP-MATCH: at the longer period the
+    lstsq fit window contains fewer cycles and the transient is less
+    decayed, so the F-DAMP-MATCH bias dominates the residual.
     """
     r = sweep_results[wave_tp_label]
     td = time_domain_dual_results[wave_tp_label][dof_name]
@@ -655,7 +718,7 @@ def test_time_domain_phase_agrees_with_impedance(
         f"WaveTp={wave_tp_label}s {dof_name}: time-domain phase "
         f"{np.rad2deg(td_phase):+.3f} deg vs impedance phase "
         f"{np.rad2deg(imp_phase):+.3f} deg; err {err_deg:+.3f} deg "
-        f"exceeds {DUAL_PHASE_ATOL_DEG:.1f} deg. See xfail reason."
+        f"exceeds {DUAL_PHASE_ATOL_DEG:.1f} deg. See xfail reason (if marked)."
     )
 
 
