@@ -12,10 +12,15 @@ travel toward +X per §3.1), and ``phi`` an arbitrary phase offset.
 Phase convention
 ----------------
 The amplitude above is the real part of a complex phasor under the
-``exp(-i * omega * t)`` convention — the same convention carried by the
-OrcaFlex VesselType YAML reader (ARCHITECTURE.md §M1.5), so a regular
-wave paired with a BEM RAO composes by straight complex multiplication
-in :mod:`floatsim.hydro.excitation`.
+``exp(+i * omega * t)`` convention -- the WAMIT / HydroDyn / OrcaFlex
+ecosystem convention carried by every BEM reader and by
+``HydroDatabase.RAO``. A regular wave paired with a BEM RAO composes by
+straight complex multiplication in :mod:`floatsim.hydro.excitation`;
+see that module's docstring for the +i derivation. Prior to the
+``fix-make-regular-wave-force-convention`` epilogue (post-M6) the
+docstring here claimed -i convention and was inconsistent with both
+the WAMIT reader and the OrcaFlex reader -- see
+``docs/post-mortems/m6-epilogue-wave-force-convention-bug.md``.
 
 Dispersion
 ----------

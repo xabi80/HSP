@@ -1,13 +1,38 @@
 """First-order wave-excitation force from BEM RAOs — ARCHITECTURE.md §2, §M3.
 
-For a regular wave with complex elevation phasor ``eta_hat`` at the body,
-the linear wave-excitation force in the ``exp(-i omega t)`` phasor
-convention is::
+Phase convention (post fix-make-regular-wave-force-convention)
+--------------------------------------------------------------
+FloatSim's central data structure ``HydroDatabase.RAO`` carries the
+WAMIT / HydroDyn / OrcaFlex ecosystem convention: the time-domain
+realisation of a complex RAO ``X`` driven by a complex wave amplitude
+phasor ``A_wave`` is::
 
-    F_hat(omega, beta) = RAO(omega, beta) * eta_hat
+    F(t) = Re{ X * A_wave * exp(+i * omega * t) }
 
-Its time-domain realization is ``F(t) = Re{F_hat * exp(-i omega t)}``
-multiplied by an optional smooth ramp ``r(t)`` (ARCHITECTURE.md §9.3).
+(see ``floatsim/hydro/readers/wamit.py`` module docstring; OrcaFlex
+VesselType reader uses the same +i convention by construction;
+``openfast-cross-check-conventions.md`` Item 24).
+
+For a regular Airy wave the elevation at the body is::
+
+    eta(x_b, y_b, t) = A * cos(omega * t - k * (x_b cos beta + y_b sin beta) - phi)
+
+Matching that to ``Re{ A_wave * exp(+i * omega * t) }`` gives the
++i-convention complex wave amplitude phasor at the body::
+
+    A_wave = A * exp( -i * (k * (x_b cos beta + y_b sin beta) + phi) )
+
+and the time-domain force::
+
+    F(t) = r(t) * Re{ X * A_wave * exp(+i * omega * t) }
+
+where ``r(t)`` is an optional smooth ramp (ARCHITECTURE.md §9.3).
+
+Prior to the F-WAVE-FORCE-CONV fix this function used the
+``exp(-i * omega * t)`` convention, which conjugated the imaginary part
+of every WAMIT-derived RAO and produced mirror-reflected motion (see
+``docs/post-mortems/m6-epilogue-wave-force-convention-bug.md``). The
+convention is now pinned by ``tests/unit/test_excitation_wamit_convention.py``.
 
 RAO interpolation
 -----------------
@@ -20,10 +45,12 @@ for VesselType RAOs in linear mode (ARCHITECTURE.md §M1.5).
 Body location
 -------------
 A body at inertial horizontal position ``(x_b, y_b)`` experiences an
-elevation phasor shifted by ``exp(i k (x_b cos beta + y_b sin beta))``
-relative to the origin. Milestone-3 validation places the body at the
-origin so this factor is unity; the factor is included here for
-completeness (§3.1, §M3 steady-state cases with body offset).
+elevation phasor shifted by ``exp(-i k (x_b cos beta + y_b sin beta))``
+relative to the origin (the sign keeps the underlying physical wave
+travelling in +X for heading 0; see derivation in the docstring above).
+Milestone-3 validation places the body at the origin so this factor is
+unity; the factor is included here for completeness (§3.1, §M3
+steady-state cases with body offset).
 """
 
 from __future__ import annotations
@@ -115,11 +142,12 @@ def make_regular_wave_force(
 
     The returned function evaluates::
 
-        F(t) = r(t) * Re{ RAO(omega, beta) * eta_hat * exp(-i omega t) }
+        F(t) = r(t) * Re{ RAO(omega, beta) * eta_hat * exp(+i omega t) }
 
-    where ``eta_hat = A * exp(i (k * (x_b cos beta + y_b sin beta) + phi))``
-    is the complex elevation phasor at the body, consistent with
-    ``eta(x_b, y_b, t) = Re{ eta_hat * exp(-i omega t) }``.
+    where ``eta_hat = A * exp(-i (k * (x_b cos beta + y_b sin beta) + phi))``
+    is the +i-convention complex elevation phasor at the body, consistent with
+    ``eta(x_b, y_b, t) = Re{ eta_hat * exp(+i omega t) }``. See the module
+    docstring for the convention pin (F-WAVE-FORCE-CONV epilogue).
 
     Parameters
     ----------
@@ -152,14 +180,17 @@ def make_regular_wave_force(
     beta = np.radians(wave.heading_deg)
     k = wave.wavenumber
     k_dot_x = k * (x_b * float(np.cos(beta)) + y_b * float(np.sin(beta)))
-    eta_hat = wave.amplitude * np.exp(1j * (k_dot_x + wave.phase))
+    # +i convention: eta_hat = A * exp(-i * (k_dot_x + phi)) so that
+    # Re{eta_hat * exp(+i*omega*t)} = A * cos(omega*t - k_dot_x - phi)
+    # matches the physical RegularWave.elevation formula.
+    eta_hat = wave.amplitude * np.exp(-1j * (k_dot_x + wave.phase))
     F_hat = rao * eta_hat  # (6,) complex
 
     omega = wave.omega
     captured_ramp = ramp
 
     def force(t: float) -> NDArray[np.float64]:
-        phasor = F_hat * np.exp(-1j * omega * t)
+        phasor = F_hat * np.exp(+1j * omega * t)
         f: NDArray[np.float64] = np.real(phasor).astype(np.float64)
         if captured_ramp is not None:
             f = captured_ramp.value(float(t)) * f

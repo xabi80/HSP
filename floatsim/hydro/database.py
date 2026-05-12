@@ -14,9 +14,27 @@ Shape conventions (single body, Phase 1):
     A_inf          (6, 6)           float64, infinite-frequency added mass (symmetric)
     C              (6, 6)           float64, hydrostatic restoring (symmetric)
     RAO            (6, n_w, n_h)    complex128, first-order wave excitation force
-                                    per unit wave amplitude
+                                    per unit wave amplitude, under the +i phase
+                                    convention (see below)
     reference_point (3,)            float64, point in inertial frame about which
                                     BEM coefficients are given
+
+Phase convention -- the **+i convention** is mandatory for ``RAO``.
+The stored complex coefficient ``X = RAO[dof, omega, heading]`` is such
+that the time-domain wave excitation force at the body is::
+
+    F(t) = Re[ X * A_wave * exp(+i * omega * t) ]
+
+where ``A_wave`` is the complex wave-elevation phasor at the body
+(under the same +i convention). This matches the WAMIT default ("leads"),
+the OrcaFlex VesselType YAML serialisation, and the Capytaine reader
+(which conjugates to translate Capytaine's native -i convention). Every
+reader producing a ``HydroDatabase`` must honour this; downstream
+consumers (``floatsim.hydro.excitation.make_regular_wave_force``, the
+impedance-domain solver, etc.) consume it under +i. Mixing in
+-i-convention RAOs is a silent bug class (F-WAVE-FORCE-CONV, M6 PR4); the
+post-mortem at ``docs/post-mortems/m6-epilogue-wave-force-convention-bug.md``
+records the audit-trail.
 
 DOF order throughout is ``(surge, sway, heave, roll, pitch, yaw)`` — see
 ARCHITECTURE.md §3.3. Multi-body extension (block-diagonal with off-diagonal

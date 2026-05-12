@@ -3,17 +3,18 @@
 ARCHITECTURE.md §8 M3 requires: *"Validate: single body in regular waves
 matches steady-state RAO response."*
 
-Governing equation (frequency domain, ``exp(-i omega t)`` convention)::
+Governing equation (frequency domain, ``exp(+i omega t)`` convention,
+post fix-make-regular-wave-force-convention)::
 
-    [-omega^2 (M + A(omega)) - i omega B(omega) + C] xi_hat = F_hat_wave
+    [-omega^2 (M + A(omega)) + i omega B(omega) + C] xi_hat = F_hat_wave
     F_hat_wave = RAO(omega, beta) * eta_hat(body)
 
-With Ogilvie's relation ``int_0^inf K(tau) exp(+i omega tau) dtau =
-B(omega) + i omega (A_inf - A(omega))``, the Cummins equation's
+With Ogilvie's relation ``int_0^inf K(tau) exp(-i omega tau) dtau =
+B(omega) - i omega (A_inf - A(omega))``, the Cummins equation's
 frequency-domain image at a harmonic drive is equivalently::
 
-    impedance(omega) = -omega^2 (M + A_inf) + (-i omega) I(omega) + C
-    I(omega) = int_0^inf K(tau) exp(+i omega tau) dtau
+    impedance(omega) = -omega^2 (M + A_inf) + (+i omega) I(omega) + C
+    I(omega) = int_0^inf K(tau) exp(-i omega tau) dtau
 
 This is the form the time-domain code realizes. We predict ``xi_hat``
 from the **discrete kernel's own FT at ``omega_wave``** (self-consistent
@@ -133,14 +134,19 @@ def _rigid_body_mass_matrix() -> np.ndarray:
 
 
 def _kernel_ft_at(kernel: RetardationKernel, omega: float) -> np.ndarray:
-    """Evaluate ``I(omega) = int_0^inf K(tau) exp(+i omega tau) dtau`` at a single omega.
+    """Evaluate ``I(omega) = int_0^inf K(tau) exp(-i omega tau) dtau`` at a single omega.
+
+    Under the +i convention this transform yields
+    ``I(omega) = B(omega) - i omega (A_inf - A(omega))`` (Ogilvie),
+    consistent with the impedance form
+    ``Z = -omega^2 (M + A_inf) + (+i omega) I + C = -omega^2 (M + A) + i omega B + C``.
 
     Uses trapezoidal quadrature on the kernel's time grid, returning a
     ``(6, 6)`` complex matrix.
     """
     t = kernel.t
     dt = kernel.dt
-    w = np.exp(1j * omega * t) * dt
+    w = np.exp(-1j * omega * t) * dt
     w[0] *= 0.5
     w[-1] *= 0.5
     return np.einsum("ijn,n->ij", kernel.K, w).astype(np.complex128)
@@ -153,29 +159,39 @@ def _analytical_phasor_from_kernel(
     wave: RegularWave,
     body_position: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> np.ndarray:
-    """Steady-state ``xi_hat`` predicted by the freq-domain image of the discrete kernel."""
+    """Steady-state ``xi_hat`` predicted by the freq-domain image of the discrete kernel
+    under the +i convention (post fix-make-regular-wave-force-convention).
+    """
     omega = wave.omega
     A_inf = hdb.A_inf
     I_w = _kernel_ft_at(kernel, omega)
-    impedance = -(omega**2) * (M_rigid + A_inf) + (-1j * omega) * I_w + hdb.C
+    # +i convention: d/dt -> +i*omega, so the convolution term contributes
+    # +i*omega * I_-(omega). With I_- = B - i*omega*(A_inf-A), the impedance
+    # collapses to -omega^2 (M+A) + i*omega*B + C, the WAMIT/HydroDyn form.
+    impedance = -(omega**2) * (M_rigid + A_inf) + (+1j * omega) * I_w + hdb.C
     H = np.linalg.inv(impedance)
 
     rao = interpolate_rao(hdb, omega, wave.heading_deg)
     beta = np.radians(wave.heading_deg)
     k = wave.wavenumber
     x_b, y_b, _ = body_position
+    # +i convention: eta_hat at body = A * exp(-i*(k_dot_x + phi)) so that
+    # Re{eta_hat * exp(+i*omega*t)} = A cos(omega*t - k_dot_x - phi).
     eta_hat = wave.amplitude * np.exp(
-        1j * (k * (x_b * np.cos(beta) + y_b * np.sin(beta)) + wave.phase)
+        -1j * (k * (x_b * np.cos(beta) + y_b * np.sin(beta)) + wave.phase)
     )
     return H @ (rao * eta_hat)
 
 
 def _fit_complex_amplitude(t: np.ndarray, x: np.ndarray, omega: float) -> complex:
-    """Least-squares fit of ``x(t) ~= Re{z exp(-i omega t)} = a cos + b sin``."""
+    """Least-squares fit of ``x(t) ~= Re{z exp(+i omega t)} = a cos - b sin``,
+    where ``z = a + i b``. Returns ``z = complex(alpha, -beta)`` given the
+    fit ``x = alpha cos + beta sin`` (the basis flip absorbs the sin sign).
+    """
     basis = np.column_stack([np.cos(omega * t), np.sin(omega * t)])
     coeffs, *_ = np.linalg.lstsq(basis, x, rcond=None)
-    a, b = coeffs
-    return complex(a, b)
+    alpha, beta = coeffs
+    return complex(alpha, -beta)
 
 
 def _phase_diff(z1: complex, z2: complex) -> float:

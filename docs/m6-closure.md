@@ -806,5 +806,6 @@ hand-written code.
 
 ---
 
-*Document status: closure draft. Reviewed and approved by Xabier before
-M6 epilogue (F-WAVE-FORCE-CONV) is opened.*
+*Document status: closure landed 2026-05-11. M6 epilogue
+(F-WAVE-FORCE-CONV) in progress on branch
+`fix-make-regular-wave-force-convention`.*

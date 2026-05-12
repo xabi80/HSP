@@ -157,9 +157,12 @@ def test_force_time_series_matches_phasor_formula() -> None:
     ts = np.linspace(0.0, 10.0, 101)
     f_surge = np.array([force(t)[0] for t in ts])
     f_heave = np.array([force(t)[2] for t in ts])
-    eta_hat = A * np.exp(1j * phi)  # body at origin
-    expected_surge = np.real((1.0 + 2.0j) * eta_hat * np.exp(-1j * w * ts))
-    expected_heave = np.real((3.0 - 1.0j) * eta_hat * np.exp(-1j * w * ts))
+    # +i convention (post fix-make-regular-wave-force-convention):
+    # eta_hat at the body has phase ``-phi`` so the physical wave
+    # eta(t) = A * cos(omega*t - phi) is invariant under the convention flip.
+    eta_hat = A * np.exp(-1j * phi)  # body at origin
+    expected_surge = np.real((1.0 + 2.0j) * eta_hat * np.exp(+1j * w * ts))
+    expected_heave = np.real((3.0 - 1.0j) * eta_hat * np.exp(+1j * w * ts))
     np.testing.assert_allclose(f_surge, expected_surge, rtol=1e-12, atol=1e-14)
     np.testing.assert_allclose(f_heave, expected_heave, rtol=1e-12, atol=1e-14)
 
