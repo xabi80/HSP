@@ -295,5 +295,128 @@ the audit did not catch, that finding gets a post-mortem in
 
 ---
 
+## F4 pre-flight addenda
+
+The following items are committed alongside the audit, before
+the F4 red test fires, per the M6 pre-flight discipline.
+
+### (i) Convolution-step structural check (sub-audit)
+
+Five-minute inspection of `floatsim/hydro/retardation.py:544`:
+
+```python
+mu = self._dt * np.einsum("ijk,kj->i", self._K, self._buffer)
+```
+
+The einsum contracts `mu[i] = sum_k sum_j K[i, j, k] * buffer[k, j] * dt`,
+iterating over the **full** `(i, j, k)` index space. It is **not**
+block-aware — at F4's `n_dof = 24`, off-block entries (i.e.,
+`K[i, j, k]` where bodies(i) != bodies(j)) are consumed by the
+sum. Because `assemble_global_kernel` constructs block-diagonal
+K with off-block entries identically zero, the sum is correct
+(zero terms contribute zero) at the cost of ~4× the flops a
+block-aware path would use at N = 4.
+
+Importantly, the path is **structurally general**: when B5 lands
+and the multi-body BEM reader produces non-zero off-block kernel
+entries, `RadiationConvolution.evaluate` consumes them
+transparently — no code change needed. The "silent bug for B5"
+hypothesis the user flagged at Q8 reads in the other direction
+(a path that THINKS the kernel is block-diagonal could strip
+off-block entries); that pathology does not exist here. Finding
+recorded; no action.
+
+### (ii) F4 rank-deficient C breadcrumb
+
+The F4 fixture has `C` of rank 4 out of 24 by construction:
+four bodies × M2's heave-only physics (`C[2, 2] = 1.28e7 N/m`,
+all other diagonal and off-diagonal entries zero). The global
+`C` is therefore rank-deficient in 20 of 24 DOFs. The equilibrium
+solve at `n_dof = 24` relies on the same `lambda_reg * I`
+diagonal regularisation
+([`equilibrium.py:32-46`](../../floatsim/solver/equilibrium.py))
+that this audit's Item 1 verified at `n_dof = 6`. The default
+`lambda_reg = 1e-8 * max(diag(C))` is computed afresh at every
+call from the supplied `lhs.C`; at F4's `max(diag(C)) = 1.28e7`,
+this gives `lambda_reg = 0.128 N/m` — a microscopic perturbation
+on physical surge stiffness, well below any tolerance the test
+cares about.
+
+**Pre-flight breadcrumb for any future F4 equilibrium misbehaviour:**
+if `solve_static_equilibrium` returns `converged = False` or a
+large residual norm at `n_dof = 24`, the `lambda_reg` path is the
+**first** thing to inspect (verify the value is non-zero,
+verify it's applied symmetrically to all DOFs, verify scipy's
+hybr sees the regularised Jacobian). Only after ruling out the
+regularisation path should the investigation expand to assembly
+or solver bugs.
+
+### (iii) Baseline scaling numbers for future coupled-case audits
+
+The Item 1 / Item 2 numbers above are **F4 baselines**, not
+just audit data. Recorded explicitly so that any future
+coupled-case audit (A3 connector-coupled N >= 3, B5 multi-body
+BEM) has well-defined deviation thresholds:
+
+| metric | n_dof=6 | n_dof=12 | n_dof=24 | linearised slope |
+|---|---|---|---|---|
+| `nfev` | 10 | 16 | 28 | sub-linear (linear would give 40) |
+| `cond(M + A_inf)` | 1.00e+02 | 1.00e+02 | 1.00e+02 | constant (block-diagonal preserves) |
+| `cond(A_eff)` | 1.00e+02 | 1.00e+02 | 1.00e+02 | constant |
+
+**Deviation signals for future audits:**
+- `nfev` **super-linear** in `n_dof` on a block-diagonal fixture
+  ⇒ scipy hybr is failing to exploit block structure (or the
+  Jacobian is dense-but-shouldn't-be); investigate the residual
+  closure.
+- `cond(M + A_inf)` **inflating** with N on a block-diagonal
+  stack ⇒ off-block leakage in `assemble_global_lhs` (matrix
+  assembly bug).
+- `cond(A_eff)` **inflating** with N when the per-block input is
+  well-conditioned ⇒ same diagnosis as above for the assembled
+  per-step LHS.
+
+These thresholds become the audit's deviation gates for the
+Phase 2 trackers A3 / B4 / B5.
+
+### (iv) Branching strategy + failure-mode response menu
+
+Decision locked **before** F4 fires (Xabier-approved): fixes go
+on sub-branches `fix-m7-f4-<mechanism>` off
+`milestone-7-foundation`, mirroring the M6 PR4 / epilogue
+pattern (e.g., the `fix-make-regular-wave-force-convention`
+branch off `milestone-6-openfast-cross-check`). When green,
+sub-branches FF-merge back into `milestone-7-foundation`.
+
+Failure-mode response menu (decided NOW, not under red-test
+pressure):
+
+| F4 failure mode | First-action diagnosis |
+|---|---|
+| **(a)** Period (Q5-A) or damping (Q5-B) fails `rtol` | Real physics bug. Post-mortem in `docs/post-mortems/m7-f4-<mechanism>.md`; sub-branch `fix-m7-f4-<mechanism>` opened off `milestone-7-foundation`. |
+| **(b)** Cross-DOF silence (Q5-C) exceeds `atol = 1e-10 m` | Pack/unpack or block-stack assembly bug. Debug focused on `floatsim/solver/state.py` (`pack_state`, `unpack_state`, `_block_diagonal`, `assemble_global_lhs`, `assemble_global_kernel`). |
+| **(c)** IC-scaling ratio (Q5-D) mismatches at `rtol = 5e-3` | Pack/unpack indexing transposition. The distinct ICs (1.0, 0.8, 0.6, 0.4) are doing their job — the affected ratio identifies which slots got swapped. |
+| **(d)** `solve_static_equilibrium` fails to converge | Investigate the `lambda_reg` regularisation path first (per breadcrumb (ii)); ONLY after ruling it out, assume an assembly or solver bug. |
+| **(e)** (Bonus) Assertion (E) `cond(A_eff)` differs across `n_dof` | Block-diagonal stack leaked off-diagonals — assembly bug in `_block_diagonal`. |
+
+### (v) Q5 extension — Assertion (E): condition-number preservation
+
+Per Xabier (this round): F4 gains a fifth assertion at no cost.
+
+> **(E) Condition-number preservation.** `cond(A_eff)` at
+> `n_dof = 24` equals `cond(A_eff)` at the single-body
+> `n_dof = 6` reference to `rtol = 1e-12`. Block-diagonal
+> stacking of identical blocks produces a matrix whose
+> condition number equals the per-block condition number; any
+> deviation indicates off-diagonal leakage in the assembly.
+
+This is **not** a Q5-lock-changing addition (Q5 itself remains
+A/B/C/D as decided). It is a structural-correctness check that
+the audit infrastructure has the numbers to assert at no extra
+runtime cost — added in the F4 test's diagnostic section
+alongside A/B/C/D.
+
+---
+
 *Audit close. F4 red test (`tests/validation/test_m7_n4_block_diagonal.py`)
-is cleared to fire.*
+is cleared to fire under the (i)-(v) pre-flight contract above.*
