@@ -420,3 +420,46 @@ alongside A/B/C/D.
 
 *Audit close. F4 red test (`tests/validation/test_m7_n4_block_diagonal.py`)
 is cleared to fire under the (i)-(v) pre-flight contract above.*
+
+---
+
+## F4 result (post-fire)
+
+**Date.** 2026-05-11.
+
+**Outcome.** 34/34 assertions PASS on first run. Runtime 210.77 s
+(single integration cached via `@lru_cache`, reused across all 34
+parametrised assertions).
+
+| Assertion | Coverage | Result |
+|---|---|---|
+| Q5 (A) period identity | 4 bodies × rtol = 1e-2 | 4/4 ✅ |
+| Q5 (B) damping identity | 4 bodies × rtol = 5e-2 | 4/4 ✅ |
+| Q5 (C) silent-DOF cross-leak | 4 bodies × 5 silent DOFs × atol = 1e-10 m | 20/20 ✅ |
+| Q5 (D) IC-scaling (pack/unpack discriminator) | 3 body ratios × rtol = 5e-3 | 3/3 ✅ |
+| Q5 (E) condition-number preservation | cond(A_eff) n_dof=24 vs 6 × rtol = 1e-12 | 1/1 ✅ |
+| Equilibrium convergence (lambda_reg path) | n_dof = 24 | 1/1 ✅ |
+| Shape sanity | n_dof / n_bodies / xi shape | 1/1 ✅ |
+
+**Item 19 hypothesis: not validated this round.** The plan's
+framing was that F4 *will surface* something in the
+size-agnostic-but-untested code paths at N >= 3. F4 passed cleanly.
+The M4 PR1 design (`assemble_global_lhs`, `assemble_global_kernel`,
+`integrate_cummins`'s n_dof-agnostic step loop, `pack_state`) holds
+up at N = 4 without modification.
+
+**This is significant but not a closure of Item 19 itself.** Item
+19 is a hypothesis-generating discipline, not an oracle. A
+hypothesis that doesn't fire is a hypothesis that doesn't fire —
+the same code paths could still surface at N = 8, 12, 72 (Phase 2);
+at non-trivial connector topology (A3); at multi-body BEM coupling
+(B4 / B5); at heterogeneous bodies (Q5-deferred variant). The
+baseline numbers in pre-flight item (iii) become the deviation
+gates for those future audits.
+
+**No post-mortem.** No sub-branch `fix-m7-f4-<mechanism>`. No
+tracker entries. F4 closes PR1 as the first N >= 3 validation in
+the repo's history. PR2 (F2 attachment transform) is next.
+
+*PR1 close: 34/34 ✅, no findings, integrator + assembly +
+equilibrium code paths verified at n_dof = 24.*
