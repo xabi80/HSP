@@ -358,7 +358,21 @@ deliverable; correctness is the gate.
 **Blocks.** Operational use of Scenario B (12-body). Improves but
 does not block Scenario A.
 
-**Status.** Open. Audit-surfaced 2026-05-11.
+**Empirical baseline (M7-Foundation PR1, commit `b34295e`).** F4
+at `n_dof = 24` measured ~21 ms/step with the current dense
+`np.linalg.solve(A_eff, rhs)` per-step factorisation
+(`210.77 s / 10,000 steps`). Linear extrapolation to `n_dof = 72`
+projects ~600+ ms/step, ~100 min for a comparable 10k-step run.
+(Cubic in `n_dof` for the LU dominates; the einsum convolution
+sum scales `O(n_dof^2 * N_t)` and adds to the same direction.)
+Confirms **B6 is required, not optional, at the 12-buoy scale**.
+Speedup target: 10× at `n_dof = 72` would bring 12-buoy runs into
+the 10-minute range, comparable to current single-body
+production work. This data point turns the "estimated 1700×" in
+the audit reference above into a measured-projects-to baseline.
+
+**Status.** Open. Audit-surfaced 2026-05-11. Baseline numbers
+updated post-F4 (M7-Foundation PR1, 2026-05-11).
 
 ---
 
