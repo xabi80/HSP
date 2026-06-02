@@ -99,6 +99,268 @@ class LinearConnector:
             raise ValueError(f"rest_offset must have shape (6,); got {self.rest_offset.shape}")
 
 
+def _skew_3(r: NDArray[np.floating]) -> NDArray[np.float64]:
+    """3x3 skew-symmetric cross-product matrix of ``r``.
+
+    ``_skew_3(r) @ x == r x x`` for any 3-vector ``x`` (Hamilton's identity
+    on the right-hand cross product). Used by
+    :func:`assemble_attachment_transformed_connector` to build the
+    rotation-to-translation coupling block of the 6x6 transform ``T``.
+    """
+    r3 = np.asarray(r, dtype=np.float64)
+    if r3.shape != (3,):
+        raise ValueError(f"r must have shape (3,); got {r3.shape}")
+    rx, ry, rz = float(r3[0]), float(r3[1]), float(r3[2])
+    return np.array(
+        [[0.0, -rz, ry], [rz, 0.0, -rx], [-ry, rx, 0.0]], dtype=np.float64
+    )
+
+
+def assemble_attachment_transformed_connector(
+    *,
+    body_a: int,
+    body_b: int,
+    K_attach: NDArray[np.floating],
+    B_attach: NDArray[np.floating] | None = None,
+    attach_a_body: NDArray[np.floating] | None = None,
+    attach_b_body: NDArray[np.floating] | None = None,
+    rest_offset_attach: NDArray[np.floating] | None = None,
+) -> LinearConnector:
+    """Build a :class:`LinearConnector` from a 6x6 K specified at an
+    attachment point that is offset from the body reference, applying
+    the small-angle linear pull-back per
+    `docs/m7-foundation-plan.md` Q3.
+
+    Derivation (plan Q3)
+    --------------------
+    For a rigid attachment arm ``r`` (body frame) and small body rotation
+    ``theta`` (the Euler 3-vector in ``xi[3:6]``), the body-fixed
+    attachment point translates by ``delta_attach_trans = delta_ref_trans
+    - r_tilde @ theta``, where ``r_tilde = skew(r)`` and the sign comes
+    from ``theta x r = -r_tilde @ theta``. The attachment-point rotation
+    equals the body rotation. In 6-DOF block form::
+
+        delta_attach_6 = T @ delta_ref_6
+        T = [ I_3   -r_tilde ]
+            [ 0      I_3      ]
+
+    The stiffness pull-back follows by virtual-work duality:
+    ``F_ref = T^T @ F_attach``, so ``K_ref = T^T @ K_attach @ T``. The
+    rest-position transforms inversely:
+    ``rest_offset_ref = T^{-1} @ rest_offset_attach`` where ``T^{-1} =
+    [I_3, +r_tilde; 0, I_3]`` (no matrix inverse needed).
+
+    Validity: the linearisation is exact at ``theta = 0`` and accumulates
+    O(theta^2) error away. For ``|theta| < 0.1 rad`` (~5.7 deg) the
+    error stays < 0.5 %. Larger angles need a full quaternion-driven
+    transform — Phase 2 work tracked as LEVEL2-INTEGRATOR-UNWIRED in
+    ``docs/phase2-followups.md``.
+
+    Locked scope (M7-Foundation PR2)
+    --------------------------------
+    F2 handles two configurations cleanly:
+
+    1. **Both attach offsets zero** (or both ``None``): degenerate to
+       identity; returns a :class:`LinearConnector` equal to the input.
+       Covers the M4 PR3 reference-to-reference body-body case.
+    2. **Body-earth with a single non-zero offset on the real body**
+       (``body_b == -1`` and ``attach_a_body != 0``, or symmetric):
+       the F2 transform applies. Covers the catenary-fairlead and
+       earth-anchored-spring use cases consumed by M7-Foundation PR3
+       (F3) and PR4 (F1).
+
+    **Body-body with any non-zero attachment offset is out of
+    scope.** The ``LinearConnector`` framework assumes symmetric
+    Newton-III at reference points (``F_b = -F_a`` exactly). With a
+    non-zero arm on body A, the moment-arm cross-product gives
+    ``F_a_ref`` a moment block that ``F_b_ref`` (at its reference, no
+    arm) does not see, so the pair is asymmetric at the reference-point
+    level. A clean representation requires per-endpoint K factors —
+    a framework extension out of M7-Foundation scope. F2 raises
+    ``NotImplementedError`` for this case rather than silently
+    returning a connector that drops physics. See PR2's surfacing
+    note for the future tracker entry.
+
+    Parameters
+    ----------
+    body_a, body_b
+        Body indices. ``-1`` designates earth (the fixed inertial point).
+        Both at earth is invalid.
+    K_attach
+        6x6 symmetric stiffness at the attachment point, in the
+        generalised-DOF ordering ``(surge, sway, heave, roll, pitch,
+        yaw)``.
+    B_attach
+        6x6 symmetric damping at the attachment. Defaults to a zero
+        6x6.
+    attach_a_body, attach_b_body
+        Length-3 body-frame offsets from each body's reference to its
+        attachment point. ``None`` is equivalent to a zero offset
+        (attachment coincides with the reference). Exactly one of the
+        two may be non-zero (single-offset scope above).
+    rest_offset_attach
+        Length-6 generalised displacement at which the spring is
+        unstretched, expressed at the attachment-point frame. Defaults
+        to the zero 6-vector. Transforms via ``T^{-1}`` to the
+        reference-point frame.
+
+    Returns
+    -------
+    LinearConnector
+        A new :class:`LinearConnector` whose ``K`` and ``B`` are the
+        reference-point stiffness and damping, and whose ``rest_offset``
+        is the reference-point rest displacement. Consumes unmodified
+        by :func:`make_connector_state_force`.
+
+    Raises
+    ------
+    ValueError
+        On invalid configurations: both endpoints earth, offset on the
+        earth side, ill-shaped inputs.
+    NotImplementedError
+        Body-body with any non-zero attachment offset (framework
+        constraint, see locked-scope discussion above).
+    """
+    K_attach_arr = np.asarray(K_attach, dtype=np.float64)
+    if K_attach_arr.shape != (6, 6):
+        raise ValueError(f"K_attach must have shape (6, 6); got {K_attach_arr.shape}")
+
+    B_attach_arr = (
+        np.zeros((6, 6), dtype=np.float64)
+        if B_attach is None
+        else np.asarray(B_attach, dtype=np.float64)
+    )
+    if B_attach_arr.shape != (6, 6):
+        raise ValueError(f"B_attach must have shape (6, 6); got {B_attach_arr.shape}")
+
+    attach_a = (
+        np.zeros(3, dtype=np.float64)
+        if attach_a_body is None
+        else np.asarray(attach_a_body, dtype=np.float64)
+    )
+    attach_b = (
+        np.zeros(3, dtype=np.float64)
+        if attach_b_body is None
+        else np.asarray(attach_b_body, dtype=np.float64)
+    )
+    if attach_a.shape != (3,):
+        raise ValueError(f"attach_a_body must have shape (3,); got {attach_a.shape}")
+    if attach_b.shape != (3,):
+        raise ValueError(f"attach_b_body must have shape (3,); got {attach_b.shape}")
+
+    a_offset = not bool(np.allclose(attach_a, 0.0))
+    b_offset = not bool(np.allclose(attach_b, 0.0))
+
+    if body_a == _EARTH and body_b == _EARTH:
+        raise ValueError("connector cannot have both endpoints earth")
+    if body_a == _EARTH and a_offset:
+        raise ValueError(
+            "attach_a_body is non-zero but body_a is earth (-1); offsets "
+            "only apply to real-body endpoints"
+        )
+    if body_b == _EARTH and b_offset:
+        raise ValueError(
+            "attach_b_body is non-zero but body_b is earth (-1); offsets "
+            "only apply to real-body endpoints"
+        )
+
+    # Case 1: both offsets zero -> degenerate to identity. Body-body OK.
+    if not a_offset and not b_offset:
+        rest_off = (
+            np.zeros(6, dtype=np.float64)
+            if rest_offset_attach is None
+            else np.asarray(rest_offset_attach, dtype=np.float64)
+        )
+        if rest_off.shape != (6,):
+            raise ValueError(
+                f"rest_offset_attach must have shape (6,); got {rest_off.shape}"
+            )
+        return LinearConnector(
+            body_a=body_a,
+            body_b=body_b,
+            K=K_attach_arr,
+            B=B_attach_arr,
+            rest_offset=rest_off,
+        )
+
+    # Case 2 (out of scope): both offsets non-zero.
+    if a_offset and b_offset:
+        raise NotImplementedError(
+            "assemble_attachment_transformed_connector supports a single "
+            "non-zero attachment offset (the body-earth case at M7-Foundation "
+            "PR2). Both endpoints having non-zero offsets requires a "
+            "framework extension (per-endpoint K factors). Out of M7 scope."
+        )
+
+    # Case 3: single offset; the OTHER endpoint must be earth (Newton-III
+    # asymmetry on the other side would otherwise be unrepresentable).
+    if a_offset:
+        r = attach_a
+        if body_b != _EARTH:
+            raise NotImplementedError(
+                "assemble_attachment_transformed_connector: body-body "
+                "LinearConnector with a non-zero attachment offset on one "
+                "endpoint cannot be represented in the current framework "
+                "(Newton-III asymmetry at reference points). M7-Foundation "
+                "PR2's locked scope is body-earth single-offset; body-body "
+                "needs a framework extension. Pass body_b = -1 (earth), or "
+                "use the both-zero-offset degenerate case for the M4 PR3 "
+                "reference-to-reference body-body setup."
+            )
+    else:  # b_offset
+        r = attach_b
+        if body_a != _EARTH:
+            raise NotImplementedError(
+                "assemble_attachment_transformed_connector: body-body "
+                "LinearConnector with a non-zero attachment offset on one "
+                "endpoint cannot be represented in the current framework "
+                "(Newton-III asymmetry at reference points). M7-Foundation "
+                "PR2's locked scope is body-earth single-offset; body-body "
+                "needs a framework extension. Pass body_a = -1 (earth), or "
+                "use the both-zero-offset degenerate case for the M4 PR3 "
+                "reference-to-reference body-body setup."
+            )
+
+    # Build T = [I_3, -r_tilde; 0, I_3] and T^{-1} = [I_3, +r_tilde; 0, I_3].
+    r_tilde = _skew_3(r)
+    T = np.zeros((6, 6), dtype=np.float64)
+    T[:3, :3] = np.eye(3)
+    T[:3, 3:] = -r_tilde
+    T[3:, 3:] = np.eye(3)
+    T_inv = np.zeros((6, 6), dtype=np.float64)
+    T_inv[:3, :3] = np.eye(3)
+    T_inv[:3, 3:] = +r_tilde
+    T_inv[3:, 3:] = np.eye(3)
+
+    K_ref = T.T @ K_attach_arr @ T
+    B_ref = T.T @ B_attach_arr @ T
+
+    # Symmetrise to numerical noise (T^T @ K @ T is theoretically
+    # symmetric for symmetric K, but float64 round-off can leave
+    # ~1e-15 asymmetries that trip LinearConnector's rtol = 1e-8
+    # symmetry check on borderline cases).
+    K_ref = 0.5 * (K_ref + K_ref.T)
+    B_ref = 0.5 * (B_ref + B_ref.T)
+
+    if rest_offset_attach is None:
+        rest_off_ref = np.zeros(6, dtype=np.float64)
+    else:
+        rest_off_attach_arr = np.asarray(rest_offset_attach, dtype=np.float64)
+        if rest_off_attach_arr.shape != (6,):
+            raise ValueError(
+                f"rest_offset_attach must have shape (6,); got {rest_off_attach_arr.shape}"
+            )
+        rest_off_ref = T_inv @ rest_off_attach_arr
+
+    return LinearConnector(
+        body_a=body_a,
+        body_b=body_b,
+        K=K_ref,
+        B=B_ref,
+        rest_offset=rest_off_ref,
+    )
+
+
 def heave_rigid_link(
     *,
     body_a: int,
