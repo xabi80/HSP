@@ -490,10 +490,44 @@ PR1's close.
 - **B4** — Multi-body BEM cross-coupling ingestion.
 - **B5** — Coupled retardation kernel transform on multi-body BEM.
 - **B6** — Sparsity-aware linear algebra.
+- **BB-OFFSET-CONNECTOR** — Body-body `LinearConnector` with
+  non-zero attachment offset. Surfaced at PR2 (commit `54703b7`)
+  during F2's derivation. See
+  [`phase2-followups.md`](phase2-followups.md) entry.
 
 Each line above gets a tracker entry. Reassessment at M7-Foundation
 close decides which (if any) of these to promote to a successor
 milestone.
+
+**Pinned PR4 (F1) disposition for BB-OFFSET-CONNECTOR
+(Xabier, 2026-06-01).** `build_system` raises
+`NotImplementedError` on a deck `LinearSpring` with body-body
+(neither endpoint earth) AND any non-zero `attach_a_body` or
+`attach_b_body`, with a message citing
+`docs/phase2-followups.md#bb-offset-connector`. Decks where both
+offsets are zero, OR where one endpoint is earth and the other
+has a single offset, are supported (F2's locked scope at PR2).
+
+Rationale recorded for the audit trail:
+
+1. **Schema validation should validate schema.** Framework
+   limits live where the framework lives, which is `build_system`
+   (the consumer of the schema). Pushing them into the deck
+   validator buries the constraint in a "your YAML is wrong"
+   error rather than "this framework path is open work, here's
+   the tracker entry."
+2. **Tracker entries are the institutional response to Item 23.**
+   Option (b) produces one; option (a) (schema-level rejection)
+   does not.
+3. **Reversibility.** When the framework extends (Direct or
+   B2-derived per the tracker entry), option (b) is a one-line
+   removal in `build_system`. Option (a) would require deck
+   schema migration.
+4. **UX parity.** A clear `NotImplementedError` from
+   `build_system` with deck-context in the message gives the
+   same operational signal to the user as a schema rejection;
+   the "catch at earliest point" argument for (a) is mostly
+   cosmetic.
 
 ---
 

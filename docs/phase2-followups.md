@@ -376,6 +376,78 @@ updated post-F4 (M7-Foundation PR1, 2026-05-11).
 
 ---
 
+### BB-OFFSET-CONNECTOR — Body-body LinearConnector with non-zero attachment offset
+
+**Mechanism.** `LinearConnector`
+([`floatsim/bodies/connector.py`](../floatsim/bodies/connector.py))
+assumes symmetric Newton-III at reference points (`F_b = -F_a`
+exactly). When one body has a non-zero attachment arm, the
+moment-arm cross product gives `F_a_ref` a moment block that
+`F_b_ref` (at its reference, no arm) lacks — the pair is
+asymmetric. Body-body connections with any non-zero offset cannot
+be represented in the current framework without per-endpoint K
+factors.
+
+**Audit reference.** Surfaced during M7-Foundation PR2
+(commit `54703b7`) at the derivation of F2's attachment-offset
+transform; see PR2 commit message + the diagnostic doc at
+[`docs/diagnostics/m7-pr2-framework-limit.md`](diagnostics/m7-pr2-framework-limit.md).
+F2's locked scope (body-earth single offset) and all existing
+fixtures (M4 PR3 heave-rigid-link, M6 PR5 OC4 mooring) live in
+the subset where this constraint does not bite — which is why
+M6 did not surface it.
+
+**Why latent.** Invisible at the regimes M2-M6 exercised
+(everything either body-earth or body-body-at-reference-points).
+Becomes a real limit the moment a body-body offset connection
+is needed: fenders, hawsers, fairlead-to-fairlead lines, and
+articulated kinematic links beyond the simplest cases all
+require it.
+
+**Scope.** Two paths:
+
+1. **Direct.** Extend `LinearConnector` to carry per-endpoint
+   K factors (and B / rest_offset), and modify
+   `make_connector_state_force` to apply them asymmetrically.
+   The 6x6 K becomes two 6x6 matrices `K_aa = T_a^T @ K @ T_a`
+   and `K_bb = T_b^T @ K @ T_b` with cross-coupling
+   `K_ab = T_a^T @ K @ T_b` (also Newton-III consistent at the
+   attachment-point level but not at the reference-point level).
+   ~1-2 weeks of framework-level surgery, ripples through
+   `connector_drift` and any other code that reads the existing
+   6x6 K shape.
+2. **Free emergence from B2.** The Lagrange-multiplier DAE
+   formulation handles the asymmetry naturally via the
+   constraint Jacobian — different geometric arms on each side
+   simply contribute different rows to the constraint Jacobian,
+   and the multipliers ensure Newton-III at the attachment in
+   the inertial frame (where it actually holds), not at the
+   reference points.
+
+The B2 path is cleaner **if B2 is going to happen anyway**.
+The Direct path is the pragmatic choice if a real fixture
+demands body-body offset before B2 is scheduled.
+
+**Estimated effort.** Direct: ~1-2 weeks. Free-from-B2: zero
+incremental beyond B2.
+
+**Blocks.** General body-body offset connections; the deck
+schema's `LinearSpring` full expressivity (the schema currently
+accepts both `attach_a_body` and `attach_b_body` but the
+framework can't represent both non-zero). At M7-Foundation PR4
+(F1), `build_system` will raise `NotImplementedError` on
+body-body `LinearSpring` entries with any non-zero offset,
+citing this tracker entry — see
+[`docs/m7-foundation-plan.md`](m7-foundation-plan.md) Q9 for
+the pinned PR4 disposition.
+
+**Status.** Open. Surfaced 2026-06-01 (M7-Foundation PR2).
+Sequencing: pre-empt with the Direct path if a fixture demands
+body-body offset before B2 is scheduled; otherwise emerges
+free from B2.
+
+---
+
 ## Resolved entries
 
 *(none yet)*
