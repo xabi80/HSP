@@ -35,13 +35,15 @@ horizontal direction and handle sign flips themselves.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Final, Literal
 
 import numpy as np
 from numpy.typing import NDArray
 from scipy.optimize import root
+
+_EARTH: Final[int] = -1
 
 _MinAcceptableHorizontalSpan = 1.0e-9  # [m], below which we treat the line as vertical
 
@@ -395,3 +397,212 @@ def solve_catenary(
         top_angle_rad=float(np.arctan2(V_F, H)),
         bottom_angle_rad=float(np.arctan2(V_A, H)),
     )
+
+
+# ---------------------------------------------------------------------------
+# 6-DOF state-force composer (M7-Foundation PR3 / F3)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CatenaryAttachment:
+    """One mooring catenary line attached to a body at one end and earth at the other.
+
+    Locked scope at M7-Foundation PR3 (per
+    ``docs/m7-foundation-plan.md`` Q4): body-to-earth catenaries
+    only. The line hangs in the vertical plane containing the
+    inertial-frame fairlead and the inertial-frame anchor; no
+    current, no lateral force on the line. Body-to-body catenaries
+    are deferred (the inertial-frame anchor side moves with the
+    second body, and the geometry / seabed-contact logic gets
+    non-trivial).
+
+    Attributes
+    ----------
+    body_index
+        Index of the body whose fairlead the line attaches to.
+        Must be ``>= 0`` (no body-to-body, no earth-to-earth).
+    fairlead_body
+        Length-3 body-frame position of the fairlead, relative to
+        the body reference point, in metres.
+    anchor_global
+        Length-3 inertial-frame position of the anchor in metres,
+        with ``z`` typically equal to ``-seabed_depth`` (anchor on
+        the seabed).
+    line
+        Cable physical properties (length, submerged weight per
+        unit length, axial stiffness).
+    seabed_depth
+        Positive depth of the flat horizontal seabed below SWL in
+        metres; identical to the ``seabed_depth`` parameter of
+        :func:`solve_catenary`.
+    """
+
+    body_index: int
+    fairlead_body: NDArray[np.float64]
+    anchor_global: NDArray[np.float64]
+    line: CatenaryLine
+    seabed_depth: float
+
+    def __post_init__(self) -> None:
+        if self.body_index < 0:
+            raise ValueError(
+                f"body_index must be >= 0 (body-to-earth only at M7-Foundation PR3); "
+                f"got {self.body_index}. Body-to-body catenaries are out of scope -- see "
+                f"docs/m7-foundation-plan.md Q4."
+            )
+        if self.fairlead_body.shape != (3,):
+            raise ValueError(
+                f"fairlead_body must have shape (3,); got {self.fairlead_body.shape}"
+            )
+        if self.anchor_global.shape != (3,):
+            raise ValueError(
+                f"anchor_global must have shape (3,); got {self.anchor_global.shape}"
+            )
+        if not (np.isfinite(self.seabed_depth) and self.seabed_depth > 0.0):
+            raise ValueError(
+                f"seabed_depth must be finite and positive; got {self.seabed_depth}"
+            )
+
+
+def _skew_3(r: NDArray[np.floating]) -> NDArray[np.float64]:
+    """3x3 skew-symmetric cross-product matrix of ``r``. ``_skew_3(r) @ x == r x x``."""
+    r3 = np.asarray(r, dtype=np.float64)
+    rx, ry, rz = float(r3[0]), float(r3[1]), float(r3[2])
+    return np.array(
+        [[0.0, -rz, ry], [rz, 0.0, -rx], [-ry, rx, 0.0]], dtype=np.float64
+    )
+
+
+def make_catenary_state_force(
+    attachments: Sequence[CatenaryAttachment],
+    n_dof: int,
+) -> Callable[[float, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]:
+    """Build the ``(t, xi, xi_dot) -> F`` closure consumed by
+    :func:`floatsim.solver.newmark.integrate_cummins`.
+
+    Mirrors :func:`floatsim.bodies.connector.make_connector_state_force`
+    in shape and lag treatment: the integrator evaluates the
+    returned closure at the **previous step's state**
+    ``(t_{n-1}, xi_{n-1}, xi_dot_{n-1})``, identical to the
+    explicit-mu convention of the convolution sum
+    (`floatsim/solver/newmark.py` "State-dependent force"
+    docstring). The returned force enters the RHS of the
+    Cummins step at the same explicit one-step lag as connector
+    forces.
+
+    Geometry per call (per attachment):
+
+    1. Read the body's 6-DOF position from ``xi[6 * body_index :
+       6 * body_index + 6]``.
+    2. Compute the inertial-frame fairlead position via small-
+       angle linear rotation:
+
+           r_fairlead_inertial = body_ref_position + r_arm
+           r_arm = fairlead_body + theta x fairlead_body
+           (where ``theta = xi[6k+3 : 6k+6]``)
+
+       Reduces exactly to ``r_arm = fairlead_body`` at ``theta = 0``,
+       matching the M6 PR5 hand-wired path.
+    3. Project ``(anchor_global - r_fairlead_inertial)`` onto the
+       horizontal plane to get the catenary's local 2D frame.
+    4. Call :func:`solve_catenary` in that 2D frame.
+    5. Map ``(H, V_fairlead)`` back to a 3D force at the fairlead in
+       the inertial frame: ``H`` along the unit horizontal vector
+       toward the anchor, ``-V_fairlead`` in z (V_fairlead is
+       positive-downward in :class:`CatenarySolution`'s convention).
+    6. Translate to a 6-DOF generalised force on the body reference:
+       ``F_translation = F_fairlead_inertial``;
+       ``F_moment = r_arm x F_translation``.
+
+    Parameters
+    ----------
+    attachments
+        Sequence of :class:`CatenaryAttachment` instances. Each is
+        body-to-earth (body_index >= 0); body-to-body raises at
+        construction. All ``body_index`` values must satisfy
+        ``0 <= body_index < n_dof // 6``.
+    n_dof
+        Global DOF count ``6 * N`` for the system being integrated.
+
+    Returns
+    -------
+    Callable
+        ``state_force(t, xi, xi_dot)`` returning a length-``n_dof``
+        force vector. ``t`` and ``xi_dot`` are accepted for
+        signature compatibility with the integrator but unused
+        (catenary forces are quasi-static at PR3's locked scope).
+
+    Raises
+    ------
+    ValueError
+        If ``n_dof`` is not a positive multiple of 6, any
+        attachment's ``body_index`` is outside ``[0, n_dof // 6)``,
+        or ``solve_catenary`` cannot find a solution at runtime
+        (degenerate geometry, vertical line, etc.).
+    """
+    if n_dof <= 0 or n_dof % 6 != 0:
+        raise ValueError(f"n_dof must be a positive multiple of 6; got {n_dof}")
+    n_bodies = n_dof // 6
+    for k, a in enumerate(attachments):
+        if not (0 <= a.body_index < n_bodies):
+            raise ValueError(
+                f"attachment {k}: body_index {a.body_index} outside valid range "
+                f"[0, {n_bodies}) for n_dof = {n_dof}"
+            )
+
+    att_list = list(attachments)
+
+    def _state_force(
+        _t: float,
+        xi: NDArray[np.float64],
+        _xi_dot: NDArray[np.float64],
+    ) -> NDArray[np.float64]:
+        F_global = np.zeros(n_dof, dtype=np.float64)
+        for a in att_list:
+            slc = slice(6 * a.body_index, 6 * a.body_index + 6)
+            xi_body = xi[slc]
+            theta = xi_body[3:6]
+            # Small-angle linear rotated arm: r_arm = fairlead_body + theta x fairlead_body.
+            r_arm = a.fairlead_body + _skew_3(theta) @ a.fairlead_body
+            r_fairlead_inertial = xi_body[0:3] + r_arm
+
+            # 3D vector from fairlead to anchor; horizontal projection.
+            dxy = a.anchor_global[:2] - r_fairlead_inertial[:2]
+            horizontal_span = float(np.hypot(dxy[0], dxy[1]))
+            if horizontal_span < _MinAcceptableHorizontalSpan:
+                raise ValueError(
+                    f"catenary attachment with body_index = {a.body_index}: "
+                    f"degenerate horizontal span {horizontal_span:.3e} m at this "
+                    "body pose; line is effectively vertical. Adjust geometry or "
+                    "exclude the line at this pose."
+                )
+            azimuth_rad = float(np.arctan2(dxy[1], dxy[0]))
+
+            anchor_2d = np.array([0.0, float(a.anchor_global[2])], dtype=np.float64)
+            fairlead_2d = np.array(
+                [horizontal_span, float(r_fairlead_inertial[2])], dtype=np.float64
+            )
+            sol = solve_catenary(
+                line=a.line,
+                anchor_pos=anchor_2d,
+                fairlead_pos=fairlead_2d,
+                seabed_depth=a.seabed_depth,
+            )
+
+            # 3D force at fairlead, inertial frame.
+            cos_az = float(np.cos(azimuth_rad))
+            sin_az = float(np.sin(azimuth_rad))
+            F_fairlead = np.array(
+                [sol.H * cos_az, sol.H * sin_az, -sol.V_fairlead], dtype=np.float64
+            )
+
+            # Generalised force on body reference (small-angle moment arm).
+            F_6 = np.zeros(6, dtype=np.float64)
+            F_6[:3] = F_fairlead
+            F_6[3:] = np.cross(r_arm, F_fairlead)
+            F_global[slc] += F_6
+
+        return F_global
+
+    return _state_force

@@ -87,8 +87,10 @@ import pytest
 from numpy.typing import NDArray
 
 from floatsim.mooring.catenary_analytic import (
+    CatenaryAttachment,
     CatenaryLine,
     CatenarySolution,
+    make_catenary_state_force,
     solve_catenary,
 )
 from tests.support.openfast_csv import load_openfast_history
@@ -195,25 +197,68 @@ def _solve_line_at_body_offset(
     return sol, float(np.degrees(azimuth_rad))
 
 
+# ---------------------------------------------------------------------------
+# F3 composer wiring (M7-Foundation PR3 refactor)
+# ---------------------------------------------------------------------------
+#
+# Post-M7-Foundation PR3 (commit TBD), the catenary 6-vector force on
+# body 0 is computed by floatsim.mooring.catenary_analytic.make_catenary_state_force
+# rather than summed by hand from per-line CatenarySolution objects. The
+# composer's force agrees with the prior hand-wired path at rtol = 1e-12
+# (pinned by tests/unit/test_catenary_state_force.py at the M6 PR5
+# geometry; see also scripts/m7_pr3_catenary_prediction.py for the
+# Step A hand-derived 6-vector targets).
+#
+# Per-line CatenarySolution objects are still needed for the tension
+# assertions (T_fairlead per line). The composer returns the resultant
+# generalised force on the body; it does NOT decompose into per-line
+# tensions. _solve_line_at_body_offset is preserved for that purpose.
+
+
+def _build_oc4_attachments() -> list[CatenaryAttachment]:
+    """Build the 3 OC4 CatenaryAttachment instances from the locked geometry."""
+    return [
+        CatenaryAttachment(
+            body_index=0,
+            fairlead_body=_FAIRLEADS_BODY[i].copy(),
+            anchor_global=_ANCHORS_3D[i].copy(),
+            line=_LINE_PROPS,
+            seabed_depth=_SEABED_DEPTH_M,
+        )
+        for i in range(3)
+    ]
+
+
+# Module-level cached composer (single body, n_dof = 6).
+_CATENARY_STATE_FORCE: Final = make_catenary_state_force(_build_oc4_attachments(), n_dof=6)
+
+
 def _net_z_force_on_body(
     heave_m: float, surge_m: float = 0.0
 ) -> tuple[float, list[CatenarySolution], list[float]]:
     """Net vertical force on body at trial (surge, heave).
 
-    F_z = rho * V_0 * g - C_33 z - m g - Σ V_F_line(z)
+    F_z = rho * V_0 * g - C_33 z - m g + F_mooring_z
 
-    The minus sign on V_F: line pulls body DOWN at fairlead (toward
-    the seabed anchor), so its contribution to body's vertical force
-    is -V_F_line.
+    F_mooring_z is read from the composer's 6-vector (negative because
+    the lines pull body DOWN at the fairleads). The per-line
+    CatenarySolution list is still produced for downstream tension
+    assertions; it is NOT used in the Newton residual itself, which
+    flows through the composer to exercise the F3 code path the
+    integrator will use in dynamic runs.
     """
+    xi = np.array([surge_m, 0.0, heave_m, 0.0, 0.0, 0.0], dtype=np.float64)
+    F_6 = _CATENARY_STATE_FORCE(0.0, xi, np.zeros(6))
+    F_mooring_z = float(F_6[2])
+
+    # Per-line solutions for the eventual tension assertions.
     sols: list[CatenarySolution] = []
     azimuths: list[float] = []
-    F_mooring_z = 0.0
     for i in range(3):
         sol, az = _solve_line_at_body_offset(i, surge_m, heave_m)
         sols.append(sol)
         azimuths.append(az)
-        F_mooring_z -= sol.V_fairlead  # line pulls body DOWN at fairlead
+
     F_buoyancy = _RHO_KG_M3 * _PTFM_VOL0_M3 * _G_M_S2 - _C33_HEAVE_N_PER_M * heave_m
     F_weight = -_M_TOTAL_KG * _G_M_S2
     F_net = F_buoyancy + F_weight + F_mooring_z
