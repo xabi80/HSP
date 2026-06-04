@@ -41,7 +41,7 @@ before the parent PR closed.
 | S1 unmoored static equilibrium | PR2 | atol ≤ 5 cm on heave/roll/pitch |
 | S2 pitch free decay (radiation-only) | PR3 | period 32.34 s vs 26.83 s OF (+20.54 % post-WAMIT-fix; xfail-strict under KD-2-revised) |
 | S3 regular-wave RAO sweep | PR4 | impedance-domain Path A within rtol = 5e-2 on 23 of 42 (skips + xfails per Item 28, 29, F1-revised) |
-| S4 moored static equilibrium | PR5 | sub-0.15% on all 6 line tensions, sub-cm heave (margins 18-250×) |
+| S4 moored static equilibrium | PR5 | heave 0.28 cm \| surge 0.04 cm \| FairTen +1.72%/+3.73%/+1.71% (test-runner FS-vs-OF; all 6 assertions inside 5% / 5 cm / 10 cm gates) |
 | S5 drag-on heave free decay | PR6 | hyperbolic-envelope δ at +3.88% (Item 16 regime, rtol = 5e-2) |
 
 The six Phase-1 issues caught are summarised in §3. All fit the same
@@ -134,13 +134,36 @@ reachable, rather than letting it propagate.
 from PtfmSurge = 5 m, all DOFs free. Cross-check FloatSim's analytic
 catenary against MoorDyn's converged steady state.
 
-**Quantitative result.** Strongest M6 PR pre-flight result:
+**Quantitative result.** Two figures of merit, distinguished
+explicitly because the prior closure-doc draft conflated them
+(corrected on main 2026-06-03):
 
-- Heave equilibrium |Δ| = 0.27 cm vs OF (gate atol = 5 cm; **18.5×
-  margin**)
-- Surge equilibrium |Δ| = 0.04 cm vs OF (gate atol = 10 cm; 250× margin)
-- FairTen line 1/2/3: +0.11 % / −0.02 % / +0.11 % vs OF (gate rtol =
-  5 %; 45-250× margin)
+*Test-runner FS-vs-OF* (the assertion path; what
+`pytest tests/validation/test_m6_openfast_moored_eq.py` reports):
+
+- Heave equilibrium |Δ| = 0.28 cm vs OF (gate atol = 5 cm; ~18×
+  margin)
+- Surge equilibrium |Δ| = 0.04 cm vs OF (gate atol = 10 cm;
+  ~225× margin)
+- FairTen line 1/2/3: +1.72 % / +3.73 % / +1.71 % vs OF (gate
+  rtol = 5 %; 1.3-2.9× margin)
+
+*Step-A prediction vs OF* (the stricter pre-flight comparison
+in `scripts/m6_pr5_mooring_prediction.py`, computing the
+catenary prediction independently and comparing against the OF
+reference mean):
+
+- FairTen line 1/2/3: +0.11 % / −0.02 % / +0.11 % vs OF
+  (sub-0.15 % across all three lines)
+
+The two figures are distinct because the test-runner reflects
+the full FloatSim equilibrium-close pipeline (Newton iterate on
+heave, then per-line `solve_catenary` for tensions at that
+heave); the pre-flight prediction script computes the same
+quantities with slightly different intermediate values
+(prediction-script equilibrium close, separately documented).
+**Both are valid metrics; the test-runner numbers are the
+auditable assertion record.**
 
 **Tests landed.** `tests/validation/test_m6_openfast_moored_eq.py` (6
 assertions; anchor tensions logged as diagnostic-only to avoid over-
