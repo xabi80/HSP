@@ -93,8 +93,20 @@ from functools import lru_cache
 import numpy as np
 import pytest
 
+from floatsim.driver import build_system
 from floatsim.hydro.radiation import assemble_cummins_lhs
 from floatsim.hydro.retardation import compute_retardation_kernel
+from floatsim.io.deck import (
+    Body,
+    Deck,
+    Environment,
+    HydroDatabaseRef,
+    Inertia,
+    InitialConditions,
+    Output,
+    RegularWave,
+    Simulation,
+)
 from floatsim.solver.equilibrium import solve_static_equilibrium
 from floatsim.solver.newmark import integrate_cummins
 from floatsim.solver.state import (
@@ -196,39 +208,86 @@ def _first_positive_peak_after_t0(t: np.ndarray, x: np.ndarray) -> float:
 # ---------------------------------------------------------------------------
 
 
+def _f4_deck() -> Deck:
+    """Build the 4-body block-diagonal deck used by F4.
+
+    Each body's initial_conditions.position[2] (heave) is set to the
+    corresponding entry of _HEAVE_ICS_M; all other DOFs zero.
+
+    Post-M7-Foundation-PR4 (commit TBD): F4's system assembly flows
+    through build_system instead of the hand-wired assemble_global_lhs
+    path the original PR1 version used. The driver round-trip identity
+    (tests/unit/test_driver.py) pins the result; this validation test
+    exercises the same code path the driver provides to integrators.
+    """
+
+    def _body(name: str, heave_ic: float) -> Body:
+        return Body(
+            name=name,
+            reference_point=[0.0, 0.0, 0.0],
+            mass=_M_OTHER,
+            inertia=Inertia(Ixx=_I_OTHER, Iyy=_I_OTHER, Izz=_I_OTHER),
+            hydro_database=HydroDatabaseRef(format="wamit", path=f"synthetic_{name}"),
+            initial_conditions=InitialConditions(
+                position=[0.0, 0.0, heave_ic, 0.0, 0.0, 0.0],
+            ),
+        )
+
+    return Deck(
+        simulation=Simulation(duration=_DURATION_S, dt=_DT),
+        environment=Environment(water_depth=200.0, water_density=1025.0),
+        waves=RegularWave(type="regular", height=1.0, period=10.0, heading=0.0),
+        bodies=[
+            _body(f"body_{k}", ic_heave) for k, ic_heave in enumerate(_HEAVE_ICS_M)
+        ],
+        connections=[],
+        output=Output(file="out.h5", channels=["heave"], sample_rate=10.0),
+    )
+
+
 @lru_cache(maxsize=1)
 def _run_n4_block_diagonal_free_decay():
-    """Build the N=4 block-diagonal system and integrate; return (eq, res, lhs_*, lhs_single)."""
-    hdb = _single_body_hdb()
-    lhs_single = assemble_cummins_lhs(rigid_body_mass=_single_body_rigid_mass(), hdb=hdb)
-    kernel_single = compute_retardation_kernel(hdb, t_max=_T_MAX_KERNEL_S, dt=_DT)
+    """Build the N=4 block-diagonal system VIA build_system and integrate;
+    return (eq, res, lhs_*, lhs_single).
+    """
+    # Single-body hand-wired reference (for the cond(A_eff) test).
+    hdb_single = _single_body_hdb()
+    lhs_single = assemble_cummins_lhs(
+        rigid_body_mass=_single_body_rigid_mass(), hdb=hdb_single
+    )
 
-    # Block-diagonal stack into n_dof = 24.
-    lhs_global = assemble_global_lhs([lhs_single] * _N_BODIES)
-    kernel_global = assemble_global_kernel([kernel_single] * _N_BODIES)
+    # Driver path: 4-body deck through build_system.
+    deck = _f4_deck()
+    bem = {f"body_{k}": _single_body_hdb() for k in range(_N_BODIES)}
+    setup = build_system(
+        deck,
+        bem_databases=bem,
+        dt=_DT,
+        t_max_kernel=_T_MAX_KERNEL_S,
+        solve_equilibrium=False,  # F4 integrates from the deck-IC, not xi_eq
+    )
+    lhs_global = setup.lhs
+    kernel_global = setup.kernel
     assert lhs_global.n_dof == 24
     assert lhs_global.n_bodies == _N_BODIES
 
-    # Per-body 6-vector ICs: heave displacement from _HEAVE_ICS_M; other DOFs zero.
-    per_body_ic = []
-    for ic_heave in _HEAVE_ICS_M:
-        xi_body = np.zeros(6)
-        xi_body[2] = ic_heave
-        per_body_ic.append(xi_body)
-    xi0 = pack_state(per_body_ic)
+    # xi0 was packed by build_system from deck initial_conditions; sanity check.
+    xi0 = setup.xi0
     assert xi0.shape == (24,)
+    # Heave at each body slot matches the IC chosen above.
+    for k, ic_heave in enumerate(_HEAVE_ICS_M):
+        assert xi0[6 * k + 2] == ic_heave
 
-    # Static equilibrium pre-step -- with no state_force, this should
-    # collapse to xi_eq = 0 (or close), regardless of xi0. We're testing
-    # that the solve CONVERGES at n_dof = 24 with the rank-deficient C
-    # (lambda_reg path; pre-flight item (ii) of the diagnostic doc).
+    # Static equilibrium pre-step (separate from the deck's solve_equilibrium=False
+    # used by build_system above) -- this is the rank-deficient C lambda_reg path
+    # check from PR1 pre-flight item (ii).
     eq = solve_static_equilibrium(lhs=lhs_global, state_force=None, tol=1.0e-6)
 
     res = integrate_cummins(
         lhs=lhs_global,
         kernel=kernel_global,
-        xi0=xi0,  # NOT eq.xi_eq -- the test integrates from the chosen ICs
-        xi_dot0=np.zeros(24),
+        xi0=xi0,  # deck-stated IC, NOT eq.xi_eq
+        xi_dot0=setup.xi_dot0,
         duration=_DURATION_S,
         rho_inf=_RHO_INF,
     )

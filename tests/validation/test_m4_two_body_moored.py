@@ -76,17 +76,25 @@ from numpy.typing import NDArray
 from floatsim.bodies.connector import (
     check_connector_stability,
     heave_rigid_link,
-    make_connector_state_force,
 )
-from floatsim.hydro.radiation import assemble_cummins_lhs
-from floatsim.hydro.retardation import compute_retardation_kernel
-from floatsim.mooring.catenary_analytic import CatenaryLine, solve_catenary
+from floatsim.driver import build_system
+from floatsim.io.deck import (
+    Body,
+    Catenary as DeckCatenary,
+    CatenaryLine as DeckCatenaryLine,
+    Deck,
+    Environment,
+    HydroDatabaseRef,
+    Inertia,
+    InitialConditions,
+    Output,
+    RegularWave,
+    RigidLink as DeckRigidLink,
+    Simulation,
+)
+from floatsim.mooring.catenary_analytic import CatenaryLine
 from floatsim.solver.equilibrium import solve_static_equilibrium
 from floatsim.solver.newmark import integrate_cummins
-from floatsim.solver.state import (
-    assemble_global_kernel,
-    assemble_global_lhs,
-)
 from tests.support.synthetic_bem import make_diagonal_hdb, well_behaved_b
 from tests.validation.test_cummins_free_decay_analytical import (
     _A_INF_33,
@@ -139,88 +147,109 @@ def _single_body_rigid_mass():
     return np.diag([_M_OTHER, _M_OTHER, _M_33, _I_OTHER, _I_OTHER, _I_OTHER]).astype(np.float64)
 
 
-def _single_catenary_force(
-    anchor_x: float, fairlead_x_global: float, fairlead_z_global: float
-) -> tuple[float, float]:
-    """Return ``(Fx, Fz)`` applied to the fairlead by a single catenary line.
+# Helpers ``_single_catenary_force`` / ``_catenary_force_on_body0`` /
+# ``_build_mooring_state_force`` (pre-M7-PR4 hand-wired catenary path)
+# were removed when assembly migrated to
+# :func:`floatsim.driver.build_system`. The deck-driven path uses
+# :func:`floatsim.mooring.catenary_analytic.make_catenary_state_force`
+# (PR3 / F3 composer), which is byte-equivalent to the removed helpers
+# on this fixture per the round-trip identity at
+# :mod:`tests.unit.test_driver` and the M6 PR5 A/B regression note in
+# the M7 PR3 commit. Git history retains the prior implementations.
 
-    The catenary solver works in a local frame with anchor at origin,
-    fairlead to the right (``dx > 0``) and both z's in global coordinates
-    (seabed at ``z = -_SEABED_DEPTH``). The line's horizontal direction
-    points from fairlead toward anchor — which is ``sign(anchor_x -
-    fairlead_x)`` in the global X axis. The fairlead is pulled along
-    that direction with magnitude ``H``, and pulled downward with
-    magnitude ``V_fairlead``.
+
+def _m4_pr6_deck() -> Deck:
+    """Build the deck-level equivalent of the M4 PR6 fixture.
+
+    Post-M7-Foundation-PR4 (commit TBD): assembly flows through
+    build_system. The deck has 2 bodies, 1 heave RigidLink, 2
+    Catenaries from body 0 to earth (fairlead at body reference,
+    anchors at +/-350m). The round-trip identity at rtol = 1e-12
+    is pinned by tests/unit/test_driver.py.
     """
-    dx_global = anchor_x - fairlead_x_global  # +ve if anchor is to the right
-    sign_h = 1.0 if dx_global > 0.0 else -1.0
-    # Local frame: anchor at (0, -_SEABED_DEPTH), fairlead at (|dx|, z).
-    anchor_local = np.array([0.0, _ANCHOR_Z])
-    fairlead_local = np.array([abs(dx_global), fairlead_z_global])
-    sol = solve_catenary(
-        line=_LINE,
-        anchor_pos=anchor_local,
-        fairlead_pos=fairlead_local,
-        seabed_depth=_SEABED_DEPTH,
+
+    def _body(name: str) -> Body:
+        return Body(
+            name=name,
+            reference_point=[0.0, 0.0, 0.0],
+            mass=_M_OTHER,
+            inertia=Inertia(Ixx=_I_OTHER, Iyy=_I_OTHER, Izz=_I_OTHER),
+            hydro_database=HydroDatabaseRef(format="wamit", path=f"synthetic_{name}"),
+            initial_conditions=InitialConditions(),
+        )
+
+    return Deck(
+        simulation=Simulation(duration=_DURATION, dt=_DT),
+        environment=Environment(water_depth=200.0, water_density=1025.0),
+        waves=RegularWave(type="regular", height=1.0, period=10.0, heading=0.0),
+        bodies=[_body("body_0"), _body("body_1")],
+        connections=[
+            DeckRigidLink(
+                type="rigid_link",
+                body_a="body_0",
+                body_b="body_1",
+                penalty_stiffness_factor=_PENALTY_FACTOR,
+            ),
+            DeckCatenary(
+                type="catenary",
+                body_a="body_0",
+                body_b="earth",
+                attach_a_body=[0.0, 0.0, 0.0],
+                attach_b_body=[_ANCHOR_X_PLUS, 0.0, _ANCHOR_Z],
+                line=DeckCatenaryLine(
+                    length=_LINE.length,
+                    weight_per_length=_LINE.weight_per_length,
+                    EA=_LINE.EA,
+                ),
+            ),
+            DeckCatenary(
+                type="catenary",
+                body_a="body_0",
+                body_b="earth",
+                attach_a_body=[0.0, 0.0, 0.0],
+                attach_b_body=[_ANCHOR_X_MINUS, 0.0, _ANCHOR_Z],
+                line=DeckCatenaryLine(
+                    length=_LINE.length,
+                    weight_per_length=_LINE.weight_per_length,
+                    EA=_LINE.EA,
+                ),
+            ),
+        ],
+        output=Output(file="out.h5", channels=["heave"], sample_rate=10.0),
     )
-    Fx = sign_h * float(sol.H)  # pull toward anchor in global X
-    Fz = -float(sol.V_fairlead)  # fairlead pulled downward
-    return Fx, Fz
-
-
-def _catenary_force_on_body0(xi_body0_surge: float, xi_body0_heave: float) -> tuple[float, float]:
-    """Sum the force contributions of the +X and -X catenary lines."""
-    Fx_plus, Fz_plus = _single_catenary_force(_ANCHOR_X_PLUS, xi_body0_surge, xi_body0_heave)
-    Fx_minus, Fz_minus = _single_catenary_force(_ANCHOR_X_MINUS, xi_body0_surge, xi_body0_heave)
-    return Fx_plus + Fx_minus, Fz_plus + Fz_minus
-
-
-def _build_mooring_state_force(
-    connector_force: Callable[
-        [float, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
-    ],
-) -> Callable[[float, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]:
-    """Sum the rigid-link connector force and the catenary-pair force on body 0."""
-
-    def _force(
-        t: float, xi: NDArray[np.float64], xi_dot: NDArray[np.float64]
-    ) -> NDArray[np.float64]:
-        F = np.asarray(connector_force(t, xi, xi_dot), dtype=np.float64).copy()
-        Fx, Fz = _catenary_force_on_body0(float(xi[0]), float(xi[2]))
-        # Body 0 occupies slots [0, 6): (surge, sway, heave, roll, pitch, yaw).
-        F[0] += Fx
-        F[2] += Fz
-        return F
-
-    return _force
 
 
 def _assemble_system() -> tuple[object, object, Callable, list]:
     """Shared LHS, kernel, state-force closure, and the connector list.
 
-    The connector list is returned alongside so the test that checks the
-    integrator stability gate can call
-    :func:`floatsim.bodies.connector.check_connector_stability` directly.
+    Assembly flows through floatsim.driver.build_system (M7-Foundation
+    PR4 / F1). The connector list (just the heave_rigid_link) is built
+    independently and returned alongside so the integrator-stability
+    gate test can call check_connector_stability directly -- build_system
+    does not expose its internal connector list.
+
+    t_max = 120 s (bumped from 60 s at fix-wamit-dimensionalisation):
+    the three-check kernel gate added Check 3 (post-extension kernel
+    decay < 0.1 %) which the M4 single-body fixture's B(omega) fails
+    at t_max = 60 s (0.2 % of peak). 120 s clears it; we deliberately
+    keep this near the gate to limit the M4 suite's runtime cost.
     """
-    hdb = _single_body_hdb()
-    lhs_single = assemble_cummins_lhs(rigid_body_mass=_single_body_rigid_mass(), hdb=hdb)
-    # t_max = 120 s (bumped from 60 s at fix-wamit-dimensionalisation):
-    # the three-check kernel gate added Check 3 (post-extension kernel
-    # decay < 0.1 %) which the M4 single-body fixture's B(omega) fails
-    # at t_max = 60 s (0.2 % of peak). 120 s clears it; we deliberately
-    # keep this near the gate to limit the M4 suite's runtime cost
-    # (kernel size scales linearly with t_max, and the convolution sum
-    # in dynamic-run tests dominates overall test time).
-    kernel_single = compute_retardation_kernel(hdb, t_max=120.0, dt=_DT)
+    deck = _m4_pr6_deck()
+    bem = {"body_0": _single_body_hdb(), "body_1": _single_body_hdb()}
+    setup = build_system(
+        deck,
+        bem_databases=bem,
+        dt=_DT,
+        t_max_kernel=120.0,
+        solve_equilibrium=False,  # this helper just builds; _solve_equilibrium_and_run solves
+    )
 
-    lhs_global = assemble_global_lhs([lhs_single, lhs_single])
-    kernel_global = assemble_global_kernel([kernel_single, kernel_single])
-
+    # Connectors list for the stability-gate test (build_system encapsulates
+    # this list inside its make_connector_state_force closure).
     link = heave_rigid_link(body_a=0, body_b=1, penalty_stiffness=_PENALTY_K)
     connectors = [link]
-    connector_force = make_connector_state_force(connectors, n_dof=12)
-    total_state_force = _build_mooring_state_force(connector_force)
-    return lhs_global, kernel_global, total_state_force, connectors
+
+    return setup.lhs, setup.kernel, setup.state_force, connectors
 
 
 @lru_cache(maxsize=1)
