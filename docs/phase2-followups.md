@@ -448,6 +448,69 @@ free from B2.
 
 ---
 
+### BEM-INPUT-NORMAL-VALIDATION — BEM mesh panel-normal orientation validation
+
+**Mechanism.** BEM-import paths from external mesh sources
+(GDF, STL, NEMOH, etc.) can carry reversed panel normals. BEM
+solvers do not crash on incorrectly-oriented normals; they
+silently produce wrong added-mass and damping results. In the
+worst observed case
+([`studies/spar-fin-decay`](../studies/spar-fin-decay/), mesh
+`test2_spar_fin.gdf` at commit `064d630`), a horizontal heave
+plate annulus with both faces oriented inward produced
+`A_inf(heave) = 1.30 kg` vs analytical ~30 kg — a factor ~25
+error with no warning. The plate was effectively invisible to
+the BEM integral.
+
+**Audit reference.**
+[`studies/spar-fin-decay/STEP-A-FINDING.md`](../studies/spar-fin-decay/STEP-A-FINDING.md);
+Check 2 of the diagnostic at commit `064d630`; resolution
+documented at the corrected-mesh commit on
+`scratch-spar-fin-decay`.
+
+**Why latent.** M2-M6 fixture meshes (OC4 marin_semi etc.) have
+no thin horizontal features in regions where the normal
+direction is ambiguous; the OC4 cylindrical columns are
+forgiving. The first mesh with a thin (~4 mm) horizontal
+heave-plate feature surfaced the issue. Any future
+externally-imported mesh with thin horizontal features (heave
+plates, fins, sharp hull transitions) is at risk.
+
+**Scope.** Two resolution paths:
+
+1. **Upstream discipline:** documented mesh-prep step that
+   validates panel normals before any BEM run, with the
+   centroid-outward test as the validation criterion. Fix at
+   the source mesh.
+2. **FloatSim-level reader hygiene:** a pre-ingestion
+   normal-validation step in FloatSim's Capytaine / WAMIT
+   readers (and any future BEM reader) that runs the
+   centroid-outward test and either auto-corrects or raises
+   with diagnostic info. The detection logic from the spar-fin
+   study (`fix_mesh_normals.py`) is the seed; generalising it
+   for arbitrary closed meshes requires care around concave
+   regions where "outward" is ambiguous.
+
+**Estimated effort.** Path (1): operational discipline, not
+code. Path (2): ~1 week if scoped to convex-meshes-only with
+the centroid test; longer if generalised. Natural fit for B4
+(multi-body BEM ingestion) Tier 3 work — same code surface,
+same audit layer.
+
+**Blocks.** Any future BEM-based study importing external
+meshes, particularly anything with thin horizontal surfaces.
+The spar-fin study's load-time fix is study-specific; future
+studies on different geometries will need to re-validate
+normals each time until the FloatSim-level hygiene check
+exists.
+
+**Status.** Open. Surfaced 2026-06-29 via the spar-fin study.
+Sequencing: revisit during B4 scoping if normal-validation is
+naturally co-located with multi-body BEM ingestion; otherwise
+standalone milestone candidate.
+
+---
+
 ## Resolved entries
 
 *(none yet)*
