@@ -44,3 +44,10 @@ htmlcov/
 *.hdf5
 results/
 scratch/
+
+# ...except study deliverables under studies/*/results/ (small,
+# audit-trail artifacts: JSON findings, CSV traces, summary docs,
+# PNG figures). studies/ is the home for bounded research artifacts
+# that need to be preserved, NOT bulk test output.
+!studies/*/results/
+!studies/*/results/**

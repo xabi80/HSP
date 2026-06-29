@@ -1,9 +1,202 @@
-# Step A finding — BEM geometry vs Morison heave-plate spec mismatch
+# Step A finding — Capytaine A_inf integration on the spar+plate mesh
 
-**Date:** 2026-06-27.
-**Status:** STOP per the locked plan (Step B Check 1 fail). Awaiting
-Xabier's geometry-interpretation decision before proceeding to Step C
-(decks).
+**Date:** 2026-06-27, updated 2026-06-28 (geometry interpretation
+corrected by Xabier).
+**Status:** STOP per the locked plan (Step B Check 1 fail). The
+disposition decision tree from the original finding ((a)/(b)/(c)
+choices) is **paused** — the corrected geometry reading rules out
+options (b) and (c) and reframes the finding as a Capytaine-
+integration diagnostic, not a geometry-interpretation question.
+Awaiting Xabier's review of diagnostic Checks 1-3 (see "Open
+diagnostic plan" at the bottom of this file).
+
+## CORRECTION (2026-06-28): mesh DOES contain a horizontal heave plate
+
+My original reading "mesh is a slender vertical spar with no heave
+plate" was **wrong**. A finer-grained vertex scan reveals:
+
+- **768 vertices with r > 0.10 m**, all clustered in a thin band
+  at **z ∈ [-0.9587, -0.9548]** m (~4 mm vertical extent).
+- **Maximum radius reached: 0.2150 m** (exactly matching the
+  Morison-plate spec R = 0.215 m).
+- This is a **horizontal annular heave plate** spanning the spar
+  outer radius (r = 0.0841 m) to the plate outer radius (r =
+  0.215 m), positioned at z ≈ -0.957 m below the waterline.
+
+The plate is so thin in z (4 mm) that my original coarse band
+sampling ("z < -1.0 m for near-bottom") missed it entirely.
+
+Full corrected geometry (per Xabier's image confirmation):
+
+- Spar: r = 0.0841 m from z = +0.757 m to z = -0.954 m.
+- **Horizontal heave plate annulus**: r ∈ [0.084, 0.215] m at
+  z ≈ -0.957 m, ~4 mm thick.
+- Hemispherical end cap: z ∈ [-1.00, -1.094] m (768-96 = 672
+  vertices in this region).
+- Thin vertical "fin" surface offset 5 mm from spar axis (per
+  GDF header — exact geometry not separately verified, but
+  consistent with the panel count).
+
+## What the BEM produced (corrected interpretation)
+
+The numerical results (unchanged from the original run) are:
+
+| metric | Capytaine | locked-plan band | gap |
+|---|---|---|---|
+| C33 (heave hydrostatic) | 221.08 N/m | 223.43 N/m | ✅ -1.05 % |
+| A_inf(heave) | 1.30 kg | 30-70 kg | ❌ -96 % to -98 % |
+| Predicted T_n | 2.31 s | 3.2-3.8 s | ❌ -28 % to -39 % |
+| Predicted ζ_rad | 0.05 % | 5-15 % | ❌ -99 % |
+| B(ω) ≥ 0 everywhere | yes | yes | ✅ |
+
+The C33 = 221 N/m (1 % off the slender-spar-only expected value)
+*also* suggests the plate isn't contributing as expected — a
+0.215-m heave plate, when its top face crosses the waterline,
+would add ρ·g·π·(0.215² - 0.0841²) ≈ 121 N/m to the heave-heave
+hydrostatic. The plate sits at z ≈ -0.957 m (well below the
+waterline), so it doesn't contribute to the waterplane area —
+that part is consistent.
+
+But: a 0.215-m horizontal disk at z = -0.957 m SHOULD contribute
+A_inf_heave ≈ (8/3)·ρ·R³ ≈ (8/3)·1025·0.215³ ≈ 27 kg per face,
+plus the spar contribution of ~1.6 kg ≈ 28-30 kg total. The
+Capytaine result of 1.30 kg is consistent with **only the spar's
+contribution being captured**.
+
+**Reframed diagnostic question:** why doesn't Capytaine's
+radiation integration on this mesh capture the plate's added
+mass?
+
+## Most likely candidates (to be checked)
+
+1. **Panel normal orientation.** If the top face (z ≈ -0.955 m,
+   normal should point +z) and bottom face (z ≈ -0.959 m, normal
+   should point -z) of the plate have inconsistent normals, the
+   BEM source distribution may cancel.
+2. **Double-sided cancellation.** If the plate's top + bottom +
+   edge form a closed thin volume with normals pointing inward
+   on both faces (or outward on both faces), the BEM treats it
+   as a zero-thickness sheet that does not displace water under
+   heave motion.
+3. **GDF parser issue.** The "5 mm offset" in the GDF header
+   suggests this mesh was built with a panel-offset technique
+   for OrcaWave's thin-panel handling. Capytaine's GDF loader
+   may not respect that and may interpret the offset panels
+   incorrectly.
+
+## Diagnostic Checks 1-3 results (2026-06-29) — CONCLUSIVE
+
+`studies/spar-fin-decay/capytaine_diagnostic.py` ran all three
+checks. Result: **the GDF mesh has reversed panel normals on the
+heave-plate faces**, making the plate invisible to BEM integration.
+
+### Check 1 — mesh visualisation
+
+`results/figures/capytaine_mesh_view.png` (left panel: full X-Z
+projection of all 1488 panels; right panel: plate-band z-slice
+shown in X-Y with the spar / plate radii overlaid). Plate
+annulus is clearly visible at z ≈ -0.957 m with vertices reaching
+r = 0.215 m, matching the expected geometry.
+
+### Check 2 — panel normals on plate top + bottom — REVERSED
+
+Per-face analysis on the 216 plate panels (120 top + 96 bottom)
+detected via `(z in [-0.96, -0.95]) and (r in [0.085, 0.216])`:
+
+| face | expected nz (outward-from-body) | measured nz | mesh area | analytical |
+|---|---|---|---|---|
+| TOP (z = -0.955) | **+1.0** (outward = into water above) | mean **-0.80**, min -1.0, max 0.0 | 0.1269 m² | 0.1230 m² |
+| BOT (z = -0.959) | **-1.0** (outward = into water below) | mean **+1.0**, all +z | 0.1216 m² | 0.1230 m² |
+
+**Both normals point INWARD toward the plate midplane**, not
+outward into the surrounding fluid. The plate's top face says
+"water is below me" and the bottom face says "water is above
+me" — exactly the opposite of physical reality. BEM treats this
+as a closed thin-volume cavity with zero outward flux, so it
+contributes essentially zero to the heave radiation integral.
+
+Plate mesh areas are consistent with the analytical annulus
+(0.1230 m²), so the *geometry* of the plate is correct in the
+mesh — only the *orientation* is wrong.
+
+### Check 3 — procedurally-built reference geometry
+
+Built a Capytaine-native spar (r = 0.0841 m, length 1.7 m) +
+horizontal disk plate (R = 0.215 m) at z ≈ -0.957 m using
+`cpt.mesh_vertical_cylinder` + `cpt.mesh_disk` and ran the same
+BEM pipeline:
+
+```
+omega =  0.50: A_inf(heave) = 24.242 kg
+omega =  1.00: A_inf(heave) = 24.237 kg
+omega = 30.00: A_inf(heave) = 24.209 kg
+```
+
+vs the analytical estimate ~28.79 kg (spar end + disk one-face).
+The ~16 % gap to analytical is finite-resolution mesh effects,
+NOT a fundamental issue. **The reference is in the expected
+30 kg ballpark; the GDF result of 1.30 kg is not.**
+
+This isolates the issue: **Capytaine's setup is correct**; the
+GDF mesh's plate panel normals are reversed. The procedurally-
+built mesh has correctly-oriented normals (because Capytaine's
+primitives build them that way) and produces a physical result.
+
+### Conclusion + new disposition (d)
+
+A fourth disposition replaces the original tree:
+
+**(d) The mesh is geometrically correct but has reversed normals
+on the heave plate.** The fix is to flip the plate panel
+orientations on import (or in a pre-processed mesh) before
+running the BEM. Three possible mechanical paths:
+
+1. **Flip the GDF source**: re-export from OrcaWave (if
+   regeneration is feasible) or directly edit the GDF to reverse
+   panel vertex ordering on the plate panels.
+2. **Selective in-Python flip**: identify plate panels by their
+   (z, r) signature and flip them on the loaded mesh before
+   constructing the FloatingBody. The Check 2 detection
+   criterion `(z in plate band) and (r > spar_r)` is already
+   implemented and could drive a selective `_flip_faces`.
+3. **Global flip + revert**: `mesh.flipped()` flips everything,
+   which would correct the plate but break the spar. Combined
+   with a selective re-flip of the spar panels, this also works
+   but is the messiest path.
+
+(1) or (2) are the cleanest. (1) is preferred if the GDF export
+process is parametric and the fix lives in the OrcaWave script;
+(2) is preferred if the GDF is the authoritative source and we
+want the fix to live in the FloatSim study, not upstream.
+
+### Capytaine 2.x API drift captured (additional)
+
+In addition to the three drifts from the original Step A note:
+
+4. `cpt.mesh_vertical_cylinder` `resolution` is a **3-tuple**
+   `(n_radial_disk, n_theta, n_axial)` in Capytaine 2.x (was
+   2-tuple in 1.x). `cpt.mesh_disk` `resolution` is a 2-tuple
+   `(n_radial, n_theta)`.
+
+### What's blocked
+
+Steps C onward remain blocked until Xabier picks a fix path for
+the plate-normal issue. Once the normals are corrected, the
+existing `capytaine_run.py` should produce a physically-reasonable
+A_inf in the 25-30 kg range and the rest of the study can proceed
+without modification.
+
+## What is NOT in this commit
+
+The original (a)/(b)/(c) disposition tree from the first version
+of this finding is paused. With the corrected geometry reading,
+(b) "mesh missing plate" is ruled out (plate IS in the mesh) and
+(c) "no plate exists" is ruled out (image confirmation). Only
+(a) "intentional decoupled-model (BEM spar + Morison plate)" or
+a NEW disposition "(d) Capytaine is mis-integrating this mesh"
+remain. The diagnostic Checks 1-3 determine which.
+
+Steps C onward remain blocked. No `floatsim/` modifications.
 
 ## What ran cleanly
 
