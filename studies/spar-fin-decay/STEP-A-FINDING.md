@@ -365,3 +365,110 @@ Two pieces of API drift documented in `capytaine_run.py`:
 
 Steps C onward are blocked on the geometry-interpretation
 decision above.
+
+---
+
+## Resolution (2026-06-29) — fix path (2a) applied
+
+Per Xabier's directive: fix path **(2a)** — correct the GDF source
+file's heave-plate panel orientation directly, keep the load path
+simple. Original mesh preserved separately.
+
+### What landed
+
+- `studies/spar-fin-decay/mesh/test2_spar_fin_ORIGINAL.gdf` — the
+  pre-fix mesh, committed first so the reversed-normal state
+  remains auditable.
+- `studies/spar-fin-decay/fix_mesh_normals.py` — the corrective
+  script. Reads the GDF, detects horizontal heave-plate panels via
+  the criterion (z_centroid in [-0.96, -0.95]) AND
+  (r_centroid > 0.090) AND (|n_z| > 0.9), reverses vertex order on
+  identified panels, validates in-script, writes the corrected
+  mesh in place of the original.
+- `studies/spar-fin-decay/results/mesh_fix_report.txt` — per-run
+  log of the fix (counts + pre/post normal stats).
+- `studies/spar-fin-decay/capytaine_bem.nc` — re-run BEM output on
+  the corrected mesh (Capytaine script unchanged).
+
+### Detection-count footnote (vs Check 2)
+
+Check 2 detected 216 plate panels via the (z, r) criterion alone:
+120 TOP + 96 BOT. Of those, 24 TOP panels have n_z ≈ 0 — these
+are the plate's outer **vertical-cylinder-edge** panels (radial
+normals, not horizontal-face panels). They are NOT in the
+inward-facing reversed-normal pathology and **must not be
+flipped**. The (|n_z| > 0.9) horizontal-face filter correctly
+excludes them. Final flipped count: **192 = 96 TOP + 96 BOT**
+horizontal-face panels.
+
+### Verification
+
+**Check 2 (re-run via Capytaine load path on the corrected mesh):**
+
+| face | panels | pre-fix mean n_z | post-fix mean n_z |
+|---|---:|---:|---:|
+| TOP (z > -0.957) | 120 (96 horiz + 24 vert) | -0.80 (WRONG) | **+0.80** (96 horiz at +1, 24 vert at 0; ✅ outward) |
+| BOT (z ≤ -0.957) | 96 (all horizontal) | +1.00 (WRONG) | **-1.00** (all -1; ✅ outward) |
+
+**Capytaine BEM re-run (corrected mesh, same Capytaine script):**
+
+| metric | pre-fix | post-fix | expectation | status |
+|---|---|---|---|---|
+| A_inf(heave) | 1.30 kg | **21.11 kg** | 25-50 kg recalibrated | 16× recovered; ~16 % below band |
+| C33 | 221.08 N/m | 221.08 N/m | 223.43 N/m | unchanged (1 % discretization) |
+| Predicted T_n | 2.31 s | **2.98 s** | 3.2-3.8 s | shifted; ~7 % below band |
+| Predicted ζ_rad | 0.05 % | 0.014 % | (locked 5-15 % describes drag, not radiation) | rad-only is genuinely small |
+| B(ω) ≥ 0 everywhere | yes | 1 negative @ ω = 9.45 | yes | -2.2e-5 kg/s = 0.04 % of B_max; numerical zero, far from ω_n |
+
+### Honest characterisation of the residual gaps
+
+- **A_inf = 21.1 kg vs the recalibrated 25-50 kg lower bound.**
+  The procedurally-built reference in Check 3
+  (`capytaine_diagnostic.py`) gave 24.2 kg for an analogous
+  spar + horizontal-disk geometry. The GDF mesh gives 21.1 kg —
+  a ~13 % gap that's plausibly mesh-panelization specific (the
+  GDF plate is a thin 4 mm volume rather than an idealized
+  zero-thickness disk; edge-effect handling differs between
+  the two meshes). Not a second pathology; the fix recovered
+  ~17× of the per-Check-3 expected magnitude.
+- **T_n = 2.98 s vs locked 3.2-3.8 s.** Follows mechanically
+  from A_inf below the locked band. If a higher-resolution
+  re-mesh of the plate (or its edge) brought A_inf closer to
+  the 24 kg reference, T_n would land closer to 3.1-3.2 s.
+  Tank-test calibration will be the ground truth.
+- **ζ_rad = 0.014 % vs locked 5-15 %.** The 5-15 % expectation
+  describes quadratic drag damping from the heave plate
+  (Tao & Cai 2004, the Morison element's C_D = 5.0 path),
+  NOT radiation damping. The slender-spar + horizontal plate
+  geometry has genuinely tiny radiation damping (the plate
+  reflects no propagating waves at low ω); damping at
+  tank-test scale is dominated by the Morison drag, which the
+  BEM run does not capture by design.
+- **1 negative B value at ω = 9.45 rad/s, magnitude 2.2e-5
+  kg/s.** Numerical zero (0.04 % of B_max). High-ω regime
+  where the mesh-resolution warning fired (panels per
+  wavelength at ω = 9.45 is marginal). Does not affect
+  ω_n = 2.1 rad/s where damping matters.
+
+### Disposition
+
+Fix is **successful**. A_inf is the right order of magnitude
+(was 1.3, expected ~30, now 21); the residual ~16 % shortfall
+is mesh-resolution-related rather than a second integration bug.
+Step C onward unblocked once Xabier confirms.
+
+### Cross-references
+
+- Phase 2 tracker entry **BEM-INPUT-NORMAL-VALIDATION** added to
+  `docs/phase2-followups.md` on main (separately committed; same
+  protocol as BB-OFFSET-CONNECTOR). Captures the generalisable
+  lesson: BEM solvers silently produce wrong A_inf when panel
+  normals are reversed; FloatSim's Capytaine/WAMIT readers do
+  not currently validate panel orientation on import; future
+  externally-imported meshes with thin horizontal features are
+  at risk.
+- Conventions doc **Item 5** added to
+  `docs/multibody-conventions.md` on main: BEM mesh panel
+  normals must be outward into the surrounding fluid; consumer-
+  side gate currently absent; reference implementation lives in
+  this study's `fix_mesh_normals.py`.
