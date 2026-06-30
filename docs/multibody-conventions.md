@@ -195,5 +195,48 @@ paths).
 
 ---
 
-*Status: starting set of 4 items locked at M7-Foundation close
-(2026-06-05). Grows organically with successor work.*
+## Item 5 — BEM mesh panel normals: outward orientation required for BEM integration validity
+
+**Convention.** Any mesh passed to a BEM solver (Capytaine,
+WAMIT, OrcaWave, etc.) must have panel normals pointing
+**outward into the surrounding fluid**. The validity criterion:
+for each panel, the dot product of the panel normal with the
+vector from the body's interior toward the panel centroid must
+be positive.
+
+**Validity range.** Applies to any closed-surface mesh in any
+BEM workflow. For convex bodies the centroid-outward test is
+unambiguous; for concave bodies (e.g., bodies with cavities)
+"interior" needs explicit definition.
+
+**Failure mode.** BEM solvers do not crash on incorrectly-
+oriented normals; they silently produce wrong added-mass and
+damping. In the worst observed case
+([`studies/spar-fin-decay`](../studies/spar-fin-decay/)), a
+single-side-reversed heave plate annulus produced
+`A_inf(heave)` 25× lower than physical (1.30 kg vs analytical
+~30 kg) with no warning.
+
+**Consumer-side gate.** Currently absent from FloatSim's
+Capytaine reader (and presumably from the WAMIT reader; not
+audited as of 2026-06-29). Tracked as
+[**BEM-INPUT-NORMAL-VALIDATION**](phase2-followups.md#bem-input-normal-validation--bem-mesh-panel-normal-orientation-validation)
+in the Phase 2 tracker. Studies importing external meshes must
+validate panel normals before BEM runs (the spar-fin study's
+[`fix_mesh_normals.py`](../studies/spar-fin-decay/fix_mesh_normals.py)
+is the reference implementation).
+
+**Locked at.**
+[`studies/spar-fin-decay/STEP-A-FINDING.md`](../studies/spar-fin-decay/STEP-A-FINDING.md)
+"Resolution" section; mesh-fix commit on the
+`scratch-spar-fin-decay` branch; tracker entry on main. Sourced
+from standard panel-method literature (Newman 1977 Ch. 10; Lee &
+Newman WAMIT manual). The spar-fin study surfaced it
+operationally — the convention itself is BEM-foundational, not
+study-specific.
+
+---
+
+*Status: 5 items locked at M7-Foundation close (2026-06-05)
+through to the spar-fin study (2026-06-29). Grows organically
+with successor work.*
