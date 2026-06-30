@@ -511,6 +511,70 @@ standalone milestone candidate.
 
 ---
 
+### BEM-CAPYTAINE-READER-SYMMETRIZATION — Capytaine reader missing A/B symmetry tolerance
+
+**Mechanism.** Capytaine's BEM panel-method computes `A(i, j)`
+and `A(j, i)` via independent radiation problems (radiating DOF
+i vs j). Solver discretization produces ~1e-4 to 1e-3 relative
+asymmetry between the two — unphysical (A should be symmetric
+by reciprocity) and well below any tolerance that matters
+physically, but enough to fail FloatSim's `rtol = 1e-6`
+symmetry check at `floatsim/hydro/database.py:181`. The
+FloatSim **WAMIT** reader already handles this via
+`_resolve_6x6_from_dict`'s arithmetic-mean averaging of
+duplicate `(i, j)` and `(j, i)` entries; the **Capytaine**
+reader does not. On the spar+fin mesh, this manifested as
+~2.85e-4 relative A asymmetry and ~3.78e-3 B asymmetry —
+rejecting an otherwise-correct dataset.
+
+**Audit reference.**
+[`studies/spar-fin-decay/STEP-A-FINDING.md`](../studies/spar-fin-decay/STEP-A-FINDING.md)
+Pre-flight 1 resolution section; commit `ef61d0e` on
+`scratch-spar-fin-decay`. WAMIT reader's existing pattern at
+[`floatsim/hydro/readers/wamit.py`](../floatsim/hydro/readers/wamit.py)
+`_resolve_6x6_from_dict`.
+
+**Why latent.** M5/M6 fixtures used the WAMIT reader (with
+averaging) and a synthetic Capytaine fixture (carefully
+constructed to be perfectly symmetric); real Capytaine BEM
+output from non-trivial meshes carries panel-method noise that
+no M5/M6 test exercised. The spar+fin study was the first
+real-Capytaine-output ingestion attempt.
+
+**Scope.** Symmetric to BEM-INPUT-NORMAL-VALIDATION above. Two
+resolution paths:
+
+1. **Upstream discipline:** documented mesh-prep / BEM-output
+   step in the contributor's Capytaine workflow that
+   symmetrizes A and B before saving the NetCDF. The spar+fin
+   study's `capytaine_run.py` is the seed: a 5-line
+   `0.5 * (M + M.swapaxes(-1, -2))` step.
+2. **FloatSim-level reader hygiene:** add the symmetrization
+   step to `floatsim/hydro/readers/capytaine.py`, matching the
+   WAMIT reader's existing pattern. ~5-10 lines (the per-omega
+   loop already exists for the complex-merge step at
+   `_merge_split_complex`).
+
+**Estimated effort.** Path (1): operational discipline. Path
+(2): ~1 day if scoped to the existing reader's per-omega-loop
+structure. Natural co-located fix with
+BEM-INPUT-NORMAL-VALIDATION: both are reader-hygiene gaps
+where the Capytaine reader lacks something the WAMIT reader
+has.
+
+**Blocks.** Any future Capytaine-BEM-based study with a real
+(non-perfectly-symmetric) mesh. The spar-fin study's
+study-local fix is workable but every future Capytaine study
+will re-encounter the same issue until the FloatSim reader is
+updated.
+
+**Status.** Open. Surfaced 2026-06-29 via the spar-fin study
+Pre-flight 1. Sequencing: reassess at study close together
+with BEM-INPUT-NORMAL-VALIDATION for promotion to a small
+reader-hygiene milestone or absorption into B4 scoping.
+
+---
+
 ## Resolved entries
 
 *(none yet)*
