@@ -237,6 +237,55 @@ study-specific.
 
 ---
 
-*Status: 5 items locked at M7-Foundation close (2026-06-05)
+## Item 6 — BEM A/B matrix symmetrization on ingestion
+
+**Convention.** The added-mass matrix `A(omega)` and radiation-
+damping matrix `B(omega)` are physically symmetric by
+reciprocity. BEM solvers that compute `A(i, j)` and `A(j, i)`
+via independent radiation problems (radiating DOF i vs j —
+Capytaine's default behavior) produce ~1e-4 to 1e-3 relative
+panel-method asymmetry that must be averaged out during
+ingestion via `M_sym = 0.5 * (M + M.T)` per omega.
+
+**Validity range.** Applies to any BEM reader that consumes
+solver output where `M(i, j)` and `M(j, i)` are independently
+computed. The WAMIT format writes both halves redundantly and
+the FloatSim WAMIT reader already symmetrizes via
+`_resolve_6x6_from_dict`'s arithmetic-mean handling. The
+FloatSim Capytaine reader currently does NOT symmetrize and
+rejects panel-method-noisy datasets on the `rtol = 1e-6`
+symmetry check at
+[`floatsim/hydro/database.py:181`](../floatsim/hydro/database.py).
+
+**Failure mode.** The reader raises `ValueError: A[:, :, k] must
+be symmetric (within rtol=1e-06)` on first-omega slice — a hard
+ingestion failure on real Capytaine BEM output from non-trivial
+meshes. The dataset is physically correct; the rejection is a
+hygiene-step omission.
+
+**Consumer-side gate.** The WAMIT reader has the step. The
+Capytaine reader does not (as of 2026-06-29). Tracked as
+[**BEM-CAPYTAINE-READER-SYMMETRIZATION**](phase2-followups.md#bem-capytaine-reader-symmetrization--capytaine-reader-missing-ab-symmetry-tolerance)
+in the Phase 2 tracker. Studies importing Capytaine BEM output
+must symmetrize at output before saving the NetCDF (the
+spar-fin study's
+[`capytaine_run.py`](../studies/spar-fin-decay/capytaine_run.py)
+symmetrization block is the reference implementation; also
+records audit-trail attributes
+`symmetrization_max_residual_A` /
+`symmetrization_relative_residual_A` (same for B) on the
+NetCDF).
+
+**Locked at.**
+[`studies/spar-fin-decay/STEP-A-FINDING.md`](../studies/spar-fin-decay/STEP-A-FINDING.md)
+"Pre-flight 1 finding + resolution" section; commit `ef61d0e`
+on `scratch-spar-fin-decay`; tracker entry on main (commit
+`a0821ac`). Sourced from BEM reciprocity (Newman 1977 Ch. 6 —
+added-mass / damping coefficients in inviscid theory satisfy
+`A_ij = A_ji`).
+
+---
+
+*Status: 6 items locked at M7-Foundation close (2026-06-05)
 through to the spar-fin study (2026-06-29). Grows organically
 with successor work.*
