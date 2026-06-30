@@ -93,6 +93,10 @@ def main() -> None:
     print(f"  omega grid: [{omegas[0]:.3f}, ..., {omegas[-1]:.3f}] rad/s")
 
     # --- build problems: radiation (one per dof per omega) + diffraction (one per omega) ---
+    # Include omega = inf for radiation as the canonical A_inf case --
+    # FloatSim's Capytaine reader needs this populated to fill A_inf
+    # without requiring a caller-supplied kwarg.
+    omegas_rad = list(omegas) + [float("inf")]
     radiation_problems = [
         cpt.RadiationProblem(
             body=body,
@@ -102,7 +106,7 @@ def main() -> None:
             rho=_RHO_KG_M3,
             g=_G_M_S2,
         )
-        for omega in omegas
+        for omega in omegas_rad
         for dof in body.dofs
     ]
     diffraction_problems = [
@@ -114,7 +118,7 @@ def main() -> None:
             rho=_RHO_KG_M3,
             g=_G_M_S2,
         )
-        for omega in omegas
+        for omega in omegas  # diffraction at finite omegas only
     ]
     problems = radiation_problems + diffraction_problems
     print(f"  Total problems: {len(problems)} "
@@ -143,6 +147,52 @@ def main() -> None:
     K_hs = immersed.compute_hydrostatic_stiffness(rho=_RHO_KG_M3, g=_G_M_S2)
     dataset["hydrostatic_stiffness"] = K_hs
     print(f"  hydrostatic_stiffness shape: {K_hs.shape}")
+
+    # --- symmetrize A and B per omega (Pre-flight 1 workaround) ---
+    # Capytaine's BEM panel-method noise produces ~1e-4 relative asymmetry
+    # on per-omega A and B (max |A - A.T| ~ 3e-3 vs A_max ~ 24 kg). FloatSim's
+    # Capytaine reader enforces rtol = 1e-6 symmetry without an averaging
+    # step (the WAMIT reader DOES have one, via _resolve_6x6_from_dict's
+    # arithmetic mean of duplicate (i,j)/(j,i) entries). Until the FloatSim
+    # Capytaine reader gains a parallel hygiene step (tracker entry
+    # BEM-CAPYTAINE-READER-SYMMETRIZATION; multibody-conventions Item 6),
+    # this study pre-symmetrizes at output.
+    print("Symmetrizing A and B per omega (Pre-flight 1 workaround) ...")
+    A_vals = dataset["added_mass"].values  # (n_omega, 6, 6)
+    B_vals = dataset["radiation_damping"].values
+    A_asym = A_vals - A_vals.swapaxes(-1, -2)
+    B_asym = B_vals - B_vals.swapaxes(-1, -2)
+    A_max_abs = float(np.max(np.abs(A_vals)))
+    B_max_abs = float(np.max(np.abs(B_vals)))
+    A_asym_max = float(np.max(np.abs(A_asym)))
+    B_asym_max = float(np.max(np.abs(B_asym)))
+    A_rel = A_asym_max / A_max_abs if A_max_abs > 0 else 0.0
+    B_rel = B_asym_max / B_max_abs if B_max_abs > 0 else 0.0
+    print(f"  Pre-sym: max |A - A.T| = {A_asym_max:.4e} (rel {A_rel:.4e} vs A_max {A_max_abs:.4e})")
+    print(f"  Pre-sym: max |B - B.T| = {B_asym_max:.4e} (rel {B_rel:.4e} vs B_max {B_max_abs:.4e})")
+    A_sym = 0.5 * (A_vals + A_vals.swapaxes(-1, -2))
+    B_sym = 0.5 * (B_vals + B_vals.swapaxes(-1, -2))
+    # Verify symmetric to machine precision post-symmetrization.
+    post_A_asym = float(np.max(np.abs(A_sym - A_sym.swapaxes(-1, -2))))
+    post_B_asym = float(np.max(np.abs(B_sym - B_sym.swapaxes(-1, -2))))
+    print(f"  Post-sym: max |A - A.T| = {post_A_asym:.4e} (expect ~ float64 eps)")
+    print(f"  Post-sym: max |B - B.T| = {post_B_asym:.4e} (expect ~ float64 eps)")
+    assert post_A_asym < 1.0e-10, f"A post-sym asymmetry {post_A_asym} too large"
+    assert post_B_asym < 1.0e-10, f"B post-sym asymmetry {post_B_asym} too large"
+
+    dataset["added_mass"] = (("omega", "radiating_dof", "influenced_dof"), A_sym)
+    dataset["radiation_damping"] = (("omega", "radiating_dof", "influenced_dof"), B_sym)
+    # Audit-trail attributes on the NetCDF.
+    dataset.attrs["symmetrization_max_residual_A"] = A_asym_max
+    dataset.attrs["symmetrization_relative_residual_A"] = A_rel
+    dataset.attrs["symmetrization_max_residual_B"] = B_asym_max
+    dataset.attrs["symmetrization_relative_residual_B"] = B_rel
+    dataset.attrs["symmetrization_note"] = (
+        "A and B symmetrized via 0.5*(M + M.T) per omega. Pre-symmetrization "
+        "max relative residual recorded for audit. See "
+        "docs/phase2-followups.md BEM-CAPYTAINE-READER-SYMMETRIZATION + "
+        "multibody-conventions.md Item 6."
+    )
 
     # --- save (split complex variables into re/im per FloatSim reader format) ---
     print(f"Writing {_OUTPUT_NC} ...")

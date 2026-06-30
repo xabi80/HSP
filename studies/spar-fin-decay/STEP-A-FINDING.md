@@ -472,3 +472,86 @@ Step C onward unblocked once Xabier confirms.
   normals must be outward into the surrounding fluid; consumer-
   side gate currently absent; reference implementation lives in
   this study's `fix_mesh_normals.py`.
+
+---
+
+## Pre-flight 1 finding + resolution (2026-06-29) — Capytaine reader symmetry tolerance
+
+While running the Pre-flight 1 ingestion check on the post-fix
+NetCDF, FloatSim's Capytaine reader raised:
+
+    ValueError: A[:, :, 0] must be symmetric (within rtol=1e-06)
+
+The dataset's A matrix has Capytaine BEM panel-method asymmetry
+on the order of ~2.85e-4 relative (max |A - A.T| ~ 7.2e-3 vs
+A_max ~ 25 kg; ~3.8e-3 relative for B). This is panel-method
+solver noise from computing `A(i, j)` and `A(j, i)` via separate
+radiation problems (radiating DOF i vs j); the asymmetry is
+unphysical and should be averaged out.
+
+**Reader-hygiene gap.** The WAMIT reader has a symmetrization
+step via `_resolve_6x6_from_dict`'s arithmetic-mean averaging of
+duplicate `(i, j)` and `(j, i)` entries (documented in
+`floatsim/hydro/readers/wamit.py`). The Capytaine reader has no
+equivalent — it ingests Capytaine's per-radiating-DOF values
+verbatim and rejects them on the `rtol = 1e-6` symmetry check
+(`floatsim/hydro/database.py:181`). Parallel oversight to
+BEM-INPUT-NORMAL-VALIDATION.
+
+### Resolution — path (α): study-local symmetrization
+
+Per Xabier 2026-06-29: apply a study-local symmetrization step
+in `capytaine_run.py` rather than patching `floatsim/` mid-study
+(reading the WAMIT-reader code as the canonical handling but
+deferring the patch). Both reader-hygiene findings will be
+reassessed together at study close.
+
+**Implementation.** `capytaine_run.py` symmetrizes A and B
+per-omega before NetCDF save:
+
+    A_sym = 0.5 * (A + A.swapaxes(-1, -2))
+    B_sym = 0.5 * (B + B.swapaxes(-1, -2))
+
+Audit-trail attributes captured on the NetCDF:
+
+    symmetrization_max_residual_A      = 7.18e-3 kg
+    symmetrization_relative_residual_A = 2.85e-4
+    symmetrization_max_residual_B      = 1.25e-1 kg/s
+    symmetrization_relative_residual_B = 3.78e-3
+
+Post-symmetrization max |A - A.T| and |B - B.T| are both 0.0 to
+float64 precision.
+
+`capytaine_run.py` also added an `omega = inf` case to the
+radiation problem set so Capytaine's BEM directly populates
+A_inf via the canonical infinite-frequency problem (FloatSim's
+Capytaine reader otherwise requires an external `a_inf=` kwarg).
+
+### Verification
+
+Pre-flight 1 re-run on the symmetrized NetCDF:
+
+    FloatSim Capytaine reader: INGESTS CLEAN
+    A.shape         = (6, 6, 80)        ✓
+    B.shape         = (6, 6, 80)        ✓
+    A_inf.shape     = (6, 6)            ✓
+    C.shape         = (6, 6)            ✓
+    RAO.shape       = (6, 80, 1)        ✓
+    A_inf[2,2]      = 21.1177 kg        ✓ (matches post-fix BEM)
+    C[2,2]          = 221.0807 N/m      ✓
+
+A_inf(heave) unchanged (diagonal entries are invariant under
+symmetrization).
+
+### Cross-references
+
+- Phase 2 tracker entry **BEM-CAPYTAINE-READER-SYMMETRIZATION**
+  on `docs/phase2-followups.md` (main; separate commit). Same
+  protocol as BEM-INPUT-NORMAL-VALIDATION.
+- Conventions doc **Item 6** on `docs/multibody-conventions.md`
+  (main; separate commit): BEM A/B matrix symmetrization on
+  ingestion.
+- Both reader-hygiene findings (BEM-INPUT-NORMAL-VALIDATION +
+  BEM-CAPYTAINE-READER-SYMMETRIZATION) reassessed at spar-fin
+  study close for either promotion to a small reader-hygiene
+  milestone or absorption into B4 scoping.
