@@ -555,3 +555,120 @@ symmetrization).
   BEM-CAPYTAINE-READER-SYMMETRIZATION) reassessed at spar-fin
   study close for either promotion to a small reader-hygiene
   milestone or absorption into B4 scoping.
+
+---
+
+## Study paused pending M7.5 (2026-06-30)
+
+The spar-fin study surfaced **three pre-flight findings**, each
+inside BEM reader ingestion:
+
+1. **Pre-flight 0 (mesh normals)** — reversed panel normals on
+   thin horizontal heave-plate features are silently accepted by
+   Capytaine and produce a physically wrong `A_inf`. Tracked as
+   **BEM-INPUT-NORMAL-VALIDATION** in
+   [`docs/phase2-followups.md`](../../docs/phase2-followups.md)
+   on main (commit `1c5d29e`); institutional pattern captured as
+   **Item 5** in
+   [`docs/multibody-conventions.md`](../../docs/multibody-conventions.md)
+   on main (commit `4b3d205`). Study-local fix in
+   [`fix_mesh_normals.py`](fix_mesh_normals.py).
+2. **Pre-flight 1 (A/B symmetry)** — Capytaine BEM's per-radiating-
+   DOF panel-method solves produce O(1e-3) asymmetry in A and B;
+   FloatSim's WAMIT reader has an averaging-symmetrization step
+   but the Capytaine reader does not, so the reader raised on the
+   `rtol = 1e-6` symmetry check. Tracked as
+   **BEM-CAPYTAINE-READER-SYMMETRIZATION** in
+   [`docs/phase2-followups.md`](../../docs/phase2-followups.md)
+   on main (commit `a0821ac`); institutional pattern captured as
+   **Item 6** in
+   [`docs/multibody-conventions.md`](../../docs/multibody-conventions.md)
+   on main (commit `36ec66d`). Study-local fix in
+   [`capytaine_run.py`](capytaine_run.py) (per-omega averaging
+   `A_sym = 0.5*(A + A.T)` before NetCDF save).
+3. **Pre-flight 2 (Item 25 applicability bound)** — the
+   retardation-kernel three-check gate's asymptote requirement
+   (`std/|mean|` of `B·ω⁴` over the last 10 grid points must be
+   `< 0.10`) is not satisfied at any ω_max ∈ [3, 30] rad/s across
+   any diagonal DOF, for two independent reasons: (i) heave `B`
+   reaches the numerical floor (~1e-8 kg/s) by ω ≈ 5-10 rad/s so
+   the std/mean metric is meaningless on float noise (case (b)
+   gate coverage gap); (ii) surge/sway/roll/pitch `B` has a
+   physical frequency dependence for this geometry that is not
+   in the 1/ω⁴ asymptotic regime anywhere on the available BEM
+   grid — the asymptote is a far-field theoretical limit that is
+   not reached at ω ≤ 30 rad/s for a body of characteristic
+   length ~1.85 m. This is a **new institutional finding**
+   (Item 25's gate is calibrated for OC4-class floaters where
+   the asymptote IS visible in the practical BEM range;
+   small-body BEM exits Item 25's validity envelope). Diagnostic
+   evidence in
+   [`preflight2_diagnostic.py`](preflight2_diagnostic.py) and
+   [`results/figures/B_heave_high_omega.png`](results/figures/B_heave_high_omega.png).
+   Tracker entry and conventions-doc note deferred to M7.5.
+
+### Common shape
+
+All three findings live at **BEM-reader / kernel-input hygiene**.
+None require FloatSim physics changes; all three want small,
+composable additions to the ingestion + kernel-input validation
+layer (a normal-orientation gate, a symmetrization step, a
+size-class-aware asymptote check). The spar-fin study can
+proceed cleanly once those additions are in place.
+
+### Xabier decision (2026-06-30): Path B
+
+Three paths were on the table:
+
+- **Path A** — chain four study-local workarounds
+  (mesh-normal-flip + symmetrization + gate-bypass + whatever
+  the fourth turns out to be) and finish the study against
+  unhardened readers.
+- **Path B** — pause the study, run a small dedicated
+  reader-hygiene milestone (M7.5), then resume the study
+  against hardened readers.
+- **Path C** — defer the reader-hygiene work to B4 (Phase 2
+  boundary-condition upgrade), keep the study on ice until
+  then.
+
+**Xabier picked Path B.** M7.5 will land before the spar-fin
+study can complete cleanly.
+
+### What is preserved / paused
+
+- Branch `scratch-spar-fin-decay` remains at commit `a2b9622`
+  (this Pre-flight 2 diagnostic commit).
+- The three pre-flight findings on main (two tracker entries +
+  two conventions items) are the study's institutional
+  byproducts to date; they stand on their own.
+- Steps C-G (deck writing, equilibrium, decay runs, analytical
+  comparison, plots + RUNBOOK) remain blocked.
+- Locked analytical targets (T_n ≈ 2.98 s, ζ_rad ~ 0.014 %
+  after Pre-flight 0 recalibration) will be re-verified once
+  the study resumes against the M7.5-hardened readers; the
+  recalibrated targets may drift again if the hardened
+  ingestion path changes A_inf materially (e.g. if the
+  symmetrization moves upstream and its residual changes).
+
+### What resumes after M7.5 closes
+
+The study picks back up at Pre-flight 1 re-verification against
+the M7.5-hardened Capytaine reader, then Pre-flight 2 against
+the M7.5-hardened kernel-input gate, then Pre-flight 3
+(Morison heave-plate topology), then Steps C-G as originally
+scoped. `capytaine_run.py`'s study-local symmetrization step
+becomes redundant once the reader owns it and can be removed
+at that time.
+
+### Pattern lock (informational)
+
+Item 19 ("code-path exercise principle") predicts this pattern:
+the spar-fin study is the first real exerciser of the
+Capytaine reader on a small-body, thin-plate geometry, and it
+has surfaced three separate reader-side gaps that no prior
+synthetic test exercised. The M7.5 milestone is Item 19
+applied at the workflow level — surface the ingestion gaps in
+a bounded milestone, then resume the physics study.
+
+No `floatsim/` modifications in this commit. No tracker entry
+changes. This is a pause commit only.
