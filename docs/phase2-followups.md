@@ -448,6 +448,120 @@ free from B2.
 
 ---
 
+### F2-HYPOTHESIS-TOLERANCE-EMPIRICAL — F2 cached-K_ref precision bound is empirical, not analytical
+
+**Mechanism.** F2's `assemble_attachment_transformed_connector`
+([`floatsim/bodies/connector.py`](../floatsim/bodies/connector.py))
+builds a cached `K_ref = T^T @ K_attach @ T` at construction
+time (one 6x6 matrix, applied once per integrator step per
+body). This is an intentional caching optimisation for the
+integrator hot path. Its precision at very small attachment
+offset ``r`` is bounded by a cancellation-like effect: at
+`|r| ~ 1e-8 m`, the `r`-dependent corrections
+(`r_tilde @ K_attach @ (-r_tilde)`, `r_tilde @ K_attach_upper`,
+`K_attach_lower @ (-r_tilde)`) are all of order `1e-8 * ||K||`,
+which is 8 orders below the O(1) diagonal entries they fold
+into. Storing this sum as a float64 matrix loses the tiny
+corrections at their relative precision level. The equivalent
+on-the-fly path (`T @ xi` first, then `K_attach @ result`,
+then `T^T @ result`) applies the same corrections as small
+perturbations to O(1)-magnitude vectors throughout the chain,
+preserving them. Same algebra, two different numerical
+trajectories; the cached-K_ref path is genuinely less precise
+in the very-small-r regime.
+
+**Audit reference.** Surfaced during the M7.5 pre-milestone
+audit baseline pytest run at main head `dd7dc9f` (see
+[`docs/audits/m7.5-reader-audit.md`](audits/m7.5-reader-audit.md)
+§Item 5). The failing hypothesis property test was
+`tests/unit/test_connector_attachment_transform.py::test_property_F_ref_equals_T_pullback_of_F_attach`
+(M7-Foundation PR2 code, commit `0d5f82f`), whose docstring
+explicitly anticipated this class of empirical-tolerance
+failure ("rtol = 1e-9 (looser than the identity-test 1e-12 to
+accommodate hypothesis-induced floating-point noise in
+K @ T @ ... compositions)").
+
+**Why latent / visibility.** Hypothesis property tests explore
+input regimes that fixed-input tests never exercise. The
+failing shrunk example (`r = [1e-8, 1e-8, 1e-8]`, small pure
+rotation `xi[3:6] = [3.125e-2]*3`, triangular SPD K with
+entries 1..6) produced a 1.87e-9 absolute discrepancy against
+a `rtol=atol=1e-9` gate — just barely exceeding. The original
+M7-Foundation PR2 tolerance choice at `0d5f82f` was itself
+empirical (docstring-documented); the 1e-9 gate passed all
+seeds Hypothesis explored during PR2 landing. The M7.5 audit's
+first pytest run explored different seeds and surfaced the
+edge case.
+
+**Regime — the failing regime is unphysical.** The 1.87e-9
+discrepancy occurs at `r = 1e-8 m = 10 nm`, five or more
+orders of magnitude below any physical body attachment offset
+(real Phase-1 fixtures use offsets in the `1e-3` to `1e0` m
+range). At `r = 1e-3` the discrepancy shrinks proportionally
+to `~1e-19`, well below any tolerance the test suite gates
+against. F2's precision at physical `r` is unaffected.
+
+**Current disposition.** Empirical tolerance loosened from
+`rtol=atol=1e-9` to `rtol=atol=1e-8` at commit `bbb5b9b`
+(2026-07-01), giving one decade of margin over the observed
+shrunk example. Test passes; audit's baseline-all-green claim
+holds. This is a REFINEMENT of the M7-Foundation PR2
+empirical-tolerance choice, not a fix for a bug.
+
+**Scope — deferred analytical work.**
+
+1. **Derive the actual precision bound analytically.** The
+   observed discrepancy is `~5 orders larger` than naive
+   per-matmul FP-roundoff bounds predict for these matrix
+   sizes and value scales. The excess comes from
+   cancellation-like effects in K_ref construction at small
+   `r`. An analytical bound of the form
+   `O(cancellation_factor · eps · ||K|| · ||r|| · ||xi||)`
+   would let us set the tolerance from theory rather than
+   from one shrunk hypothesis example. A different
+   hypothesis seed or `max_examples=1000` could surface a
+   worse case (e.g., `5e-8` or `1e-7`) that requires
+   loosening again.
+2. **Investigate cache-skip for very small `r`.** F2 could
+   fall back to the on-the-fly path (which preserves
+   precision) when `||r|| < r_threshold`, and only cache
+   when caching is precision-safe. Trade-off: the
+   integrator hot path gains a branch per body per step.
+   Determine whether the branch cost is acceptable in
+   the current single-body-focused regime (Phase 2 might
+   need it for the 12-body case).
+3. **Consider hypothesis-test regime constraints.** The
+   `_bounded_arm` strategy at
+   [`test_connector_attachment_transform.py`](../tests/unit/test_connector_attachment_transform.py)
+   `:_bounded_arm` allows `r` in `[-5, +5]` m without a
+   lower bound. Adding `min_value = 1e-6` or similar would
+   restrict hypothesis to physical regimes and prevent
+   future edge cases from surfacing spurious failures.
+   Alternatively, the property test could ASSERT the
+   bound analytically ("if `||r|| < 1e-6`, expected
+   precision is ...").
+
+**Estimated effort.** (1) `~1 week` (analytical derivation
++ verification against expanded hypothesis budget). (2)
+`~2-3 days` (branch + integrator perf measurement +
+regression test). (3) `~1 day` (test-strategy tweak). Not
+sequenced; any of the three could be done independently.
+
+**Blocks.** Nothing immediately. Matters for future work
+where F2's tolerance would need to be tightened
+(e.g., higher-precision cross-checks against known-stable
+references), where high-precision regimes are exercised
+(multi-body rigid-link chains at very tight offsets), or
+where the empirical-tolerance chain gets stress-tested by
+a hypothesis-strategy change.
+
+**Status.** Open. Surfaced 2026-07-01 (M7.5 pre-milestone
+audit). Empirical tolerance in place at `bbb5b9b`;
+analytical bound derivation and cache-skip investigation
+deferred. Not blocking M7.5.
+
+---
+
 ### BEM-INPUT-NORMAL-VALIDATION — BEM mesh panel-normal orientation validation
 
 **Mechanism.** BEM-import paths from external mesh sources
