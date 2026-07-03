@@ -199,15 +199,36 @@ paths).
 
 **Convention.** Any mesh passed to a BEM solver (Capytaine,
 WAMIT, OrcaWave, etc.) must have panel normals pointing
-**outward into the surrounding fluid**. The validity criterion:
-for each panel, the dot product of the panel normal with the
-vector from the body's interior toward the panel centroid must
-be positive.
+**outward into the surrounding fluid**. The validity
+criterion (amended 2026-07-02): every shared edge is
+traversed in opposite directions by its two adjacent
+panels (edge-consistency), and the total signed volume of
+the resulting orientation is positive (`V = (1/6) · Σ
+signed tetrahedron volumes per panel > 0`). Panels
+disagreeing with the majority orientation are flipped
+relative to it; if the majority signed volume is negative
+the whole set is inverted.
 
-**Validity range.** Applies to any closed-surface mesh in any
-BEM workflow. For convex bodies the centroid-outward test is
-unambiguous; for concave bodies (e.g., bodies with cavities)
-"interior" needs explicit definition.
+**Validity range.** Applies to any closed orientable mesh
+in any BEM workflow, convex or non-convex. Non-watertight
+or non-manifold input (edges shared by != 2 panels,
+disconnected multi-shell adjacency) is DETECTED and
+raised explicitly rather than silently mis-validated;
+see tracker entry
+[**PANEL-NORMAL-NONCONVEX-BODIES**](phase2-followups.md#panel-normal-nonconvex-bodies--mesh_hygiene-panel-normal-validation-punts-on-non-convex-meshes)
+(amended 2026-07-02, scope narrowed to non-watertight /
+non-manifold).
+
+**Amended M7.5 pre-PR3 (2026-07-02):** the previously
+documented centroid-outward test is invalid for
+non-convex closed bodies — it inverts on the spar+fin
+heave-plate top annulus (interior-estimate at spar-axis
+z~-0.1 sees the plate TOP at z=-0.955 from above, so
+correct +z normals produce negative dot products).
+Edge-consistency + signed volume is the correct general
+criterion for closed orientable meshes; it needs no
+"interior" concept at all, only the shared-edge
+adjacency and the vertex triples of each panel.
 
 **Failure mode.** BEM solvers do not crash on incorrectly-
 oriented normals; they silently produce wrong added-mass and

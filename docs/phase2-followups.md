@@ -868,6 +868,21 @@ Convex-only validation in M7.5 is sufficient for the
 target scope; non-convex support deferred to a future
 milestone if a triggering use case materialises.
 
+**Amended 2026-07-02 (pre-PR3 lock correction):** the M7.5
+PR3 algorithm changed from centroid-outward to
+edge-consistency + signed volume, which handles non-convex
+CLOSED bodies natively. The open scope of this entry
+narrows to non-watertight / non-manifold meshes (open
+shells, T-junctions, edges shared by != 2 panels,
+disconnected multi-shell meshes needing per-shell
+seeding). The algorithm detects and raises on these rather
+than mis-validating. Ray-casting / SDF strategies remain
+the candidate resolution paths if a future watertight-
+but-topologically-complex fixture (multi-shell with
+per-shell seeding, or a mesh with intentional
+T-junctions from a specific solver export format) needs
+handling.
+
 ---
 
 ## Resolved entries
