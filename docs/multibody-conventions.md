@@ -199,17 +199,118 @@ paths).
 
 **Convention.** Any mesh passed to a BEM solver (Capytaine,
 WAMIT, OrcaWave, etc.) must have panel normals pointing
-**outward into the surrounding fluid**. The validity criterion:
-for each panel, the dot product of the panel normal with the
-vector from the body's interior toward the panel centroid must
-be positive.
+**outward into the surrounding fluid**. The validity
+criterion (amended 2026-07-02): every shared edge is
+traversed in opposite directions by its two adjacent
+panels (edge-consistency), and the total signed volume of
+the resulting orientation is positive (`V = (1/6) · Σ
+signed tetrahedron volumes per panel > 0`). Panels
+disagreeing with the majority orientation are flipped
+relative to it; if the majority signed volume is negative
+the whole set is inverted.
 
-**Validity range.** Applies to any closed-surface mesh in any
-BEM workflow. For convex bodies the centroid-outward test is
-unambiguous; for concave bodies (e.g., bodies with cavities)
-"interior" needs explicit definition.
+**Validity range.** Applies to any closed orientable mesh
+in any BEM workflow, convex or non-convex. Non-watertight
+or non-manifold input (edges shared by != 2 panels,
+disconnected multi-shell adjacency) is DETECTED and
+raised explicitly rather than silently mis-validated;
+see tracker entry
+[**PANEL-NORMAL-NONCONVEX-BODIES**](phase2-followups.md#panel-normal-nonconvex-bodies--mesh_hygiene-panel-normal-validation-punts-on-non-convex-meshes)
+(amended 2026-07-02, scope narrowed to non-watertight /
+non-manifold).
 
-**Failure mode.** BEM solvers do not crash on incorrectly-
+**Amended M7.5 pre-PR3 (2026-07-02):** the previously
+documented centroid-outward test is invalid for
+non-convex closed bodies — it inverts on the spar+fin
+heave-plate top annulus (interior-estimate at spar-axis
+z~-0.1 sees the plate TOP at z=-0.955 from above, so
+correct +z normals produce negative dot products).
+Edge-consistency + signed volume is the correct general
+criterion for closed orientable meshes; it needs no
+"interior" concept at all, only the shared-edge
+adjacency and the vertex triples of each panel.
+
+**Amended M7.5 PR3-pre-flight (2026-07-03, second
+amendment):** the input class is **multi-shell polygon
+soup**, not closed orientable mesh. PR3 pre-flight surfaced
+that the terminal spar+fin fixture is not vertex-welded at
+the heave-plate/spar-wall junction — 96 open edges,
+consistent with the fixture header `"spar+fin 5mm offset"`
+documenting the plate as a 5-mm-offset thin surface. This
+is standard WAMIT GDF practice for thin plates. The
+amended validity criterion has three parts:
+
+1. Per-connected-component flood-fill orientation parity
+   (XOR propagation on shared edges; degenerate edges
+   skipped).
+2. Per-component absolute orientation: signed volume for
+   closed components; ray-parity against the whole mesh
+   for open components (majority vote over sample panel
+   centroids, cast along parity-0 normal, count even/odd
+   crossings, graze-tolerant discard).
+3. T-junctions (edges shared by more than two panels)
+   remain a hard error — genuine ambiguity.
+
+The 96-open-edge finding is the motivating evidence: the
+validity criterion must handle real WAMIT GDF exports, not
+just closed manifolds.
+
+**Amended M7.5 PR3 (2026-07-03, FINAL Q2 amendment).** The
+edge-consistency + signed-volume algorithm was correct on
+synthetic geometry (verified twice) but computes RELATIVE
+orientation within shells — a question the terminal fixture
+proved is not the protective one. The final validity
+criterion is **per-panel ray-parity**: cast from each
+panel's centroid + epsilon along the as-stored normal,
+count intersections against all other panels, odd = inward.
+Assumption-free (no manifold, no components, no parity
+classes). Edge machinery retained only for T-junction
+detection (raise). Superseded predecessors:
+
+1. Centroid-outward test (original Q2 lock): inverted on
+   concave features like the plate top annulus.
+2. Edge-consistency + signed volume (first amendment):
+   required closed manifold; failed on the multi-shell
+   fixture with plate/strip topology.
+3. Per-component parity + ray-parity for open components
+   (second amendment): assumed uniform orientation within a
+   connected component; failed on thin plates where strips
+   are traversal-inconsistent with faces even in the
+   correct state.
+
+**Load-bearing protection is tier 2:**
+`check_hydrostatic_volume` measures displaced volume
+directly via the divergence-theorem sum over all panels
+as-stored. Reversed faces corrupt the volume; the check
+sees it without any topology assumption. The tier-1
+per-panel ray-parity check is diagnostic detail; tier 2 is
+the primary protective screen. **Deciding measurement**:
+Step 0 diagnostic run 2026-07-03 (per-panel ray-parity on
+both terminal fixtures) showed 216 inward on ORIGINAL and
+24 inward on CORRECTED — proving the study's z-band
+heuristic left the strip panels misoriented, invisibly to
+Capytaine's A_inf calculation.
+
+**Tier-1 false-negative on open shells** (added M7.5 PR3,
+2026-07-03). Per-panel ray-parity requires a closed
+enclosing volume that the ray can re-enter to signal
+inward. On a mesh with an open boundary (missing lid,
+isolated sheet, dangling strip), a reversed panel whose
+ray exits through the opening hits zero triangles → parity
+even → reported as outward. `validate_panel_normals` and
+`fix_panel_normals` emit a `UserWarning` on any mesh with
+non-zero `n_open_edges`, alerting the caller that
+ray-parity is unreliable near openings. The terminal
+spar-fin fixture has 96 open edges (plate-spar junction +
+disk rim) and the warning fires there in-suite; the
+strip-panel detection is not affected because the strip
+rays hit spar-body geometry radially inward. The
+false-negative mode is pinned by two documentation tests
+in `tests/unit/test_mesh_hygiene.py`
+(`test_open_component_is_silent_false_negative_with_warning`,
+`test_two_shell_isolated_plate_is_silent_false_negative_with_warning`).
+See tracker `BEM-MESH-THIN-SURFACE-ORIENTATION` for
+scope. BEM solvers do not crash on incorrectly-
 oriented normals; they silently produce wrong added-mass and
 damping. In the worst observed case
 ([`studies/spar-fin-decay`](../studies/spar-fin-decay/)), a
