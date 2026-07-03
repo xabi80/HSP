@@ -689,6 +689,101 @@ reader-hygiene milestone or absorption into B4 scoping.
 
 ---
 
+### ITEM25-SMALL-BODY-APPLICABILITY — Item 25 kernel-quality gate inapplicable to small-body BEM
+
+**Mechanism.**
+[`docs/openfast-cross-check-conventions.md`](openfast-cross-check-conventions.md)
+Item 25 defines a three-check kernel-quality gate on
+`compute_retardation_kernel` input:
+
+1. **Asymptote consistency** — `std / |mean|` of
+   `B(omega) * omega^4` over the last N tail samples must
+   be below `_GATE_ASYMPTOTE_STD_OVER_MEAN = 0.10` per
+   diagonal DOF (hard error on diagonal failure).
+2. **Kramers-Kronig relation** — check the causality
+   requirement linking A(omega) and B(omega).
+3. **Kernel decay** — post-computation, the reconstructed
+   K(t) must decay to below `_GATE_KERNEL_DECAY_RATIO`
+   of its peak by `t_max`.
+
+The asymptote check assumes the BEM omega grid extends into
+the geometric 1/omega^4 far-field regime, characterised by
+the non-dimensional group `omega_max · L / c` above some
+threshold, where `L` is the body's characteristic length
+and `c` is the wave celerity. For wave-tank-scale models
+(`L ~ 1-2 m`) with `omega_max ~ 30 rad/s`, this group is
+too small — the asymptotic regime is not reached anywhere
+on the available BEM grid, and the asymptote check fires
+spuriously regardless of BEM correctness.
+
+**Audit reference.**
+[`studies/spar-fin-decay/STEP-A-FINDING.md`](../studies/spar-fin-decay/STEP-A-FINDING.md)
+Pre-flight 2 (2026-06-30): a diagnostic sweep of
+`omega_max` in `[3, 15]` rad/s for the spar+fin geometry
+(`L = 1.85 m`) found NO omega_max value passes the Item 25
+asymptote check — the tail is nowhere clean because the
+regime is nowhere asymptotic. The BEM output IS correct
+by every other measure (analytical spar contributions
+match, plate-face symmetries hold, K-K passes); Item 25's
+asymptote check is simply the wrong gate for this scale.
+
+**Why latent / visibility.** M6 Item 25 was calibrated
+against OC4-scale floaters (`L ~ 50 m`, `omega_max ~ 5-15`
+rad/s) where the 1/omega^4 asymptote IS visible because
+the wavelength-to-size ratio reaches the far-field regime
+within the BEM grid. Small-body BEM exits Item 25's
+implicit validity envelope. M2-M6 fixtures used only
+OC4-scale geometries; the first wave-tank-scale BEM (the
+spar-fin study, 2026-06-30) surfaced the mismatch.
+
+**Scope.** Two dispositions co-exist:
+
+1. **M7.5 PR1 — user-facing override.**
+   `compute_retardation_kernel` gains an
+   `asymptote_check_override: str | None = None` keyword-
+   only parameter (Q3 lock, see
+   [`docs/m7.5-reader-hygiene-plan.md`](m7.5-reader-hygiene-plan.md)
+   §Q3). Small-body users invoke the override with a
+   non-empty rationale string; the kernel is computed via
+   the zero-fill tail path documented at plan §I3. The
+   override is by-user-judgment; the rationale string is
+   the forcing-function acknowledgment that Item 25 does
+   not apply.
+2. **Deferred analytical work — quantify the threshold.**
+   Compute a characteristic `omega_max · L / c` (or
+   similar non-dimensional group) below which Item 25's
+   asymptote check does not apply, so `compute_retardation_kernel`
+   could either auto-skip the check or auto-select the
+   zero-fill tail path. **Explicitly deferred per M7.5 Q4
+   lock: "Do not quantify small-body threshold in M7.5"**
+   (this belongs to a research-level milestone, not to a
+   reader-hygiene bounded-scope milestone). May be
+   absorbed into B4 (multi-body BEM ingestion) scoping if
+   small-body multi-body geometries surface.
+
+**Estimated effort.** The M7.5 PR1 override (disposition 1)
+is `~180 lines code + ~200 lines test` per plan Phase 2 §PR1.
+The analytical-threshold quantification (disposition 2) is a
+research task with unclear bounds; a first-pass empirical
+threshold sweep across geometries (spar+fin, spar-only,
+disk, OC4-truncated, ...) is `~1-2 weeks` and would need
+literature review for the theoretical `omega_max · L / c`
+regime characterisation.
+
+**Blocks.** Nothing immediately after M7.5 PR1 lands.
+Small-body BEM users can proceed with the override.
+Quantifying the threshold matters for future work where
+automatic gate-bypass would be preferable to user
+judgment — potentially Tier 3 workflows (multi-body
+studies at wave-tank scale) if those materialise.
+
+**Status.** Open. Surfaced 2026-06-30 (spar-fin study
+Pre-flight 2). M7.5 PR1 provides the override mechanism
+(empirical user judgment); analytical quantification
+deferred.
+
+---
+
 ## Resolved entries
 
 *(none yet)*
