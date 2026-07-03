@@ -186,6 +186,7 @@ def compute_retardation_kernel(
     *,
     t_max: float,
     dt: float,
+    asymptote_check_override: str | None = None,
 ) -> RetardationKernel:
     """Compute the retardation kernel ``K(t)`` from ``hdb.B(omega)``.
 
@@ -213,6 +214,22 @@ def compute_retardation_kernel(
     dt
         Uniform spacing of the time grid in seconds. Must be positive
         and no larger than ``t_max``.
+    asymptote_check_override
+        Optional non-empty rationale string that bypasses Item 25's
+        asymptote gate (M7.5 PR1; see conventions doc Item 25
+        applicability sub-item at
+        ``docs/openfast-cross-check-conventions.md``). When supplied,
+        ``_validate_input_gates`` is skipped entirely (both the
+        Check 1 advisory warning and the Check 2 hard error) and the
+        1/omega^4 tail extension is zero-filled. Check 3
+        (post-extension kernel decay) still runs -- the authoritative
+        gate is not bypassable. Intended for wave-tank-scale bodies
+        (characteristic length ~ 1-2 m) where the 1/omega^4
+        asymptotic regime is not reached on the available BEM grid;
+        the rationale string is the forcing-function acknowledgment
+        that the caller has judged Item 25 inapplicable. Empty
+        strings (``None``, ``""``, or whitespace-only via
+        ``.strip() == ""``) raise ``ValueError``.
 
     Returns
     -------
@@ -224,28 +241,38 @@ def compute_retardation_kernel(
     ------
     ValueError
         - If ``t_max`` or ``dt`` are non-positive or if ``dt > t_max``.
-        - **Check 2** (asymptote consistency): if the asymptotic
-          constant ``C_ij = mean(B_ij · omega^4)`` over the last 10
-          grid points has ``std/mean > 0.10`` for any diagonal entry
-          (or any non-trivial off-diagonal), the ``omega^-4`` asymptote
-          is not clean enough for tail extrapolation. Resample the BEM
-          database with a wider frequency range.
-        - **Check 3** (post-extension kernel decay): if any diagonal
-          ``|K_ii(t_max)| / max|K_ii(t)| > 0.001``, the kernel fails to
-          decay -- sustained kernel oscillation would corrupt the
-          convolution sum. Increase ``t_max``, OR widen the BEM grid
-          if Check 1 also warned.
+        - If ``asymptote_check_override`` is supplied but is not a
+          non-empty rationale string (M7.5 PR1).
+        - **Check 2** (asymptote consistency; standard path only): if
+          the asymptotic constant ``C_ij = mean(B_ij · omega^4)`` over
+          the last 10 grid points has ``std/mean > 0.10`` for any
+          diagonal entry (or any non-trivial off-diagonal), the
+          ``omega^-4`` asymptote is not clean enough for tail
+          extrapolation. Resample the BEM database with a wider
+          frequency range, OR use ``asymptote_check_override`` if the
+          small-body regime applies.
+        - **Check 3** (post-extension kernel decay; both paths): if
+          any diagonal ``|K_ii(t_max)| / max|K_ii(t)| > 0.001``, the
+          kernel fails to decay -- sustained kernel oscillation would
+          corrupt the convolution sum. Increase ``t_max``, OR widen
+          the BEM grid if Check 1 also warned. Check 3 is not
+          bypassable by ``asymptote_check_override``.
 
     Warnings
     --------
     UserWarning
-        - **Check 1** (BEM amplitude proxy): if any diagonal has
-          ``|B_ii(omega_max)| / max|B_ii| > 0.05``, the BEM grid is
-          under-resolved relative to a "comfortably decayed" target
-          (~ 1 %). The 1/omega^4 tail extension typically compensates;
-          Check 3 is the authoritative gate. The warning is an early
-          heads-up that a future contributor may want to widen the BEM
-          grid for tighter cross-check tolerances.
+        - **Check 1** (BEM amplitude proxy; standard path only): if
+          any diagonal has ``|B_ii(omega_max)| / max|B_ii| > 0.05``,
+          the BEM grid is under-resolved relative to a "comfortably
+          decayed" target (~ 1 %). The 1/omega^4 tail extension
+          typically compensates; Check 3 is the authoritative gate.
+          The warning is an early heads-up that a future contributor
+          may want to widen the BEM grid for tighter cross-check
+          tolerances. Not emitted on the override path.
+        - **Item 25 override** (M7.5 PR1): emitted once when
+          ``asymptote_check_override`` is supplied, echoing the
+          rationale string and noting that high-frequency response
+          in overridden DOFs is not analytically bounded.
 
     Notes
     -----
@@ -256,6 +283,12 @@ def compute_retardation_kernel(
     - Check 3 is a hard post-computation gate ("does the kernel
       actually decay?") and is authoritative.
 
+    The M7.5 PR1 ``asymptote_check_override`` parameter bypasses
+    ``_validate_input_gates`` in its entirety (both Check 1 and
+    Check 2) for the small-body regime where the 1/omega^4 asymptote
+    is nowhere reached on the available BEM grid. Check 3 remains
+    authoritative and continues to fire on both paths.
+
     See ``docs/post-mortems/m6-pr3-radiation-kernel-bug.md`` for the
     audit that motivated the original implementation,
     ``docs/diagnostics/m6-pr3-filon-formula-check.md`` for the
@@ -263,6 +296,11 @@ def compute_retardation_kernel(
     form, and ``docs/post-mortems/m6-pr4-wamit-dim-bug.md`` /
     ``docs/diagnostics/m6-pr4-pre3-surge-kernel-quality.png`` for the
     Option E gate refactor (locked at fix-wamit-dimensionalisation).
+    The Item 25 applicability sub-item at
+    ``docs/openfast-cross-check-conventions.md`` and Phase 2 tracker
+    entry ``ITEM25-SMALL-BODY-APPLICABILITY`` at
+    ``docs/phase2-followups.md`` carry the M7.5 PR1 override
+    rationale.
     """
     if t_max <= 0.0:
         raise ValueError(f"t_max must be positive; got {t_max}")
@@ -271,6 +309,33 @@ def compute_retardation_kernel(
     if dt > t_max:
         raise ValueError(f"dt ({dt}) must be <= t_max ({t_max})")
 
+    # Item 25 override (M7.5 PR1). Inline rationale validation +
+    # UserWarning emission per plan §I3; no separate helper (over-
+    # abstracted for 5 lines per plan Phase 2 fix #6).
+    if asymptote_check_override is not None:
+        if not isinstance(asymptote_check_override, str):
+            raise ValueError(
+                "asymptote_check_override must be a non-empty rationale string; got "
+                f"{type(asymptote_check_override).__name__}"
+            )
+        if asymptote_check_override.strip() == "":
+            raise ValueError(
+                "asymptote_check_override rationale is empty or whitespace-only; "
+                "the override requires an explicit rationale (see "
+                "docs/openfast-cross-check-conventions.md Item 25 applicability "
+                "sub-item)."
+            )
+        warnings.warn(
+            "Item 25 asymptote check bypassed via asymptote_check_override; "
+            f"rationale: {asymptote_check_override!r}. Kernel computed via "
+            "zero-fill tail -- high-frequency response in overridden DOFs is "
+            "not analytically bounded. See docs/openfast-cross-check-"
+            "conventions.md Item 25 applicability sub-item for the full "
+            "applicability envelope.",
+            UserWarning,
+            stacklevel=2,
+        )
+
     omega = np.asarray(hdb.omega, dtype=np.float64)
     b_stack = np.asarray(hdb.B, dtype=np.float64)
 
@@ -278,34 +343,47 @@ def compute_retardation_kernel(
         omega = np.concatenate([[0.0], omega])
         b_stack = np.concatenate([np.zeros((6, 6, 1), dtype=np.float64), b_stack], axis=2)
 
-    # Refinement-2 input gates: raises ValueError on diagonal failures,
-    # returns a (6, 6) bool mask flagging off-diagonal entries whose tail
-    # contribution should be zeroed (below the trivial-magnitude threshold,
-    # or asymptote check 2 failed).
-    skip_tail_mask = _validate_input_gates(omega, b_stack)
+    if asymptote_check_override is None:
+        # Standard path -- bit-identical to pre-PR1 behavior.
+        # Refinement-2 input gates: raises ValueError on diagonal failures,
+        # returns a (6, 6) bool mask flagging off-diagonal entries whose tail
+        # contribution should be zeroed (below the trivial-magnitude threshold,
+        # or asymptote check 2 failed).
+        skip_tail_mask = _validate_input_gates(omega, b_stack)
 
-    n_t = round(t_max / dt) + 1
-    t_arr = dt * np.arange(n_t, dtype=np.float64)
+        n_t = round(t_max / dt) + 1
+        t_arr = dt * np.arange(n_t, dtype=np.float64)
 
-    # In-grid integral via Filon-trapezoidal (exact for piecewise-linear B).
-    K_in = filon_trap_cosine(omega, b_stack, t_arr)
+        # In-grid integral via Filon-trapezoidal (exact for piecewise-linear B).
+        K_in = filon_trap_cosine(omega, b_stack, t_arr)
 
-    # High-frequency tail [omega_max, factor*omega_max] via per-entry
-    # C/omega^4 extrapolation. Per Refinement 1: fit C from last
-    # _GATE_TAIL_FIT_POINTS samples; entries flagged in skip_tail_mask
-    # contribute zero to the tail (their tails are at the noise floor).
-    C_tail = fit_per_entry_tail_constants(omega, b_stack, n_tail_points=_GATE_TAIL_FIT_POINTS)
-    C_tail[skip_tail_mask] = 0.0
+        # High-frequency tail [omega_max, factor*omega_max] via per-entry
+        # C/omega^4 extrapolation. Per Refinement 1: fit C from last
+        # _GATE_TAIL_FIT_POINTS samples; entries flagged in skip_tail_mask
+        # contribute zero to the tail (their tails are at the noise floor).
+        C_tail = fit_per_entry_tail_constants(omega, b_stack, n_tail_points=_GATE_TAIL_FIT_POINTS)
+        C_tail[skip_tail_mask] = 0.0
 
-    K_tail = compute_tail_contribution(
-        C_tail, float(omega[-1]), t_arr, upper_bound_factor=_TAIL_UPPER_BOUND_FACTOR
-    )
+        K_tail = compute_tail_contribution(
+            C_tail, float(omega[-1]), t_arr, upper_bound_factor=_TAIL_UPPER_BOUND_FACTOR
+        )
+    else:
+        # Override path per Q3 lock (docs/m7.5-reader-hygiene-plan.md §I3):
+        # skip _validate_input_gates entirely and zero-fill the tail extension.
+        # Check 3 still runs below via _validate_kernel_decay -- the
+        # post-extension gate is not bypassable per plan Q3 lock.
+        n_t = round(t_max / dt) + 1
+        t_arr = dt * np.arange(n_t, dtype=np.float64)
+
+        K_in = filon_trap_cosine(omega, b_stack, t_arr)
+        K_tail = np.zeros_like(K_in)
 
     K = (2.0 / np.pi) * (K_in + K_tail)
 
     # Check 3 (post-extension hard error). Authoritative gate -- the
     # BEM input proxies in _validate_input_gates only screen for likely
-    # problems; this measures the actual decay we care about.
+    # problems; this measures the actual decay we care about. Runs on
+    # both the standard and override paths per plan Q3 lock.
     _validate_kernel_decay(K)
 
     return RetardationKernel(K=K, t=t_arr, dt=float(dt))

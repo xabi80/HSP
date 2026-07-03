@@ -13,6 +13,7 @@ import warnings
 import numpy as np
 import pytest
 
+from floatsim.hydro._filon import filon_trap_cosine
 from floatsim.hydro.database import HydroDatabase
 from floatsim.hydro.retardation import (
     RetardationKernel,
@@ -375,3 +376,179 @@ def test_retardation_kernel_dataclass_rejects_t_length_mismatch() -> None:
             t=np.array([0.0, 0.1, 0.2]),  # length 3, K has 4 lags
             dt=0.1,
         )
+
+
+# ---------- M7.5 PR1: Item 25 asymptote_check_override ----------
+#
+# See:
+#   docs/m7.5-reader-hygiene-plan.md §Q3 (lock decision)
+#   docs/m7.5-reader-hygiene-plan.md §I3 (exact error/warning wording)
+#   docs/m7.5-reader-hygiene-plan.md Q6 PR1 (Step A/B/C contract)
+#   docs/openfast-cross-check-conventions.md Item 25 applicability sub-item
+#   docs/phase2-followups.md ITEM25-SMALL-BODY-APPLICABILITY
+
+
+def _synthetic_hdb_fails_check_2() -> HydroDatabase:
+    """Build a synthetic B(omega) that fails Item 25's Check 2 by construction.
+
+    Matches the M7.5 plan Q6 PR1 Step A specification:
+
+    - `omega` grid `np.linspace(0.1, 30.0, 300)` (matches the spar-fin
+      diagnostic pattern from Pre-flight 2).
+    - Only heave (index 2) carries non-zero `B`; all other DOFs stay
+      at zero.
+    - `B_heave(omega)` is the sum of a smooth Gaussian low-omega peak
+      (`A * exp(-((omega - omega_0) / w)^2)` with pinned `A = 5.0 kg/s`,
+      `omega_0 = 2.0 rad/s`, `w = 1.5 rad/s`) plus numerical-floor
+      Gaussian noise everywhere (`np.random.default_rng(seed=42)
+      .normal(loc=0.0, scale=1e-8)`).
+
+    Result: Check 2 (std/|mean| of `B * omega^4` over last 10 pts)
+    fails on the heave diagonal because the tail is at numerical floor
+    with sign-oscillating noise -- exactly the spar-fin regime the
+    override targets.
+    """
+    omega = np.linspace(0.1, 30.0, 300)
+    A_peak = 5.0
+    omega_0 = 2.0
+    width = 1.5
+    peak = A_peak * np.exp(-(((omega - omega_0) / width) ** 2))
+    rng = np.random.default_rng(seed=42)
+    noise = rng.normal(loc=0.0, scale=1.0e-8, size=omega.size)
+    B_diag = np.zeros((omega.size, 6))
+    B_diag[:, 2] = peak + noise
+    return _hdb_with_diagonal_damping(omega=omega, B_diag_per_omega=B_diag)
+
+
+def test_asymptote_check_override_kernel_identity() -> None:
+    """Q6 PR1 Step B: override-path kernel is bit-identical to the
+    in-grid Filon integral without tail extension.
+
+    Step A: hand-compute `K = (2/pi) * filon_trap_cosine(omega, B, t)`
+    directly on the same synthetic hdb (Step A, no tail extension).
+    Step B: `compute_retardation_kernel(..., asymptote_check_override="test
+    fixture: synthetic B constructed to fail Item 25 gate")`.
+    Step C: `rtol = 1e-12` on all 20 sample K values. Bit-identity is
+    by construction -- both paths call the same `filon_trap_cosine`
+    helper with `C_tail = 0`; the rtol=1e-12 gate catches any
+    accidental operation-order divergence.
+    """
+    hdb = _synthetic_hdb_fails_check_2()
+    dt = 0.01
+    t_max = 60.0
+
+    # Step B: override path.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        k = compute_retardation_kernel(
+            hdb,
+            dt=dt,
+            t_max=t_max,
+            asymptote_check_override=(
+                "test fixture: synthetic B constructed to fail Item 25 "
+                "gate by design; kernel computed on numerical data only "
+                "with zero-fill tail"
+            ),
+        )
+
+    # Step A: direct call to filon_trap_cosine on the same omega/B/t
+    # grid used by compute_retardation_kernel (post-zero-prepend if
+    # applicable), then multiply by (2/pi) per the kernel formula.
+    omega = np.asarray(hdb.omega, dtype=np.float64)
+    b_stack = np.asarray(hdb.B, dtype=np.float64)
+    # compute_retardation_kernel prepends omega=0 if omega[0] > eps;
+    # match its handling exactly for bit-identity.
+    if omega[0] > 1.0e-12:
+        omega = np.concatenate([[0.0], omega])
+        b_stack = np.concatenate(
+            [np.zeros((6, 6, 1), dtype=np.float64), b_stack], axis=2
+        )
+    K_in = filon_trap_cosine(omega, b_stack, k.t)
+    K_hand = (2.0 / np.pi) * K_in
+
+    # Compare all 20 sample times (uniformly spaced across the grid).
+    sample_idx = np.linspace(0, k.n_lags - 1, 20, dtype=int)
+    np.testing.assert_allclose(
+        k.K[:, :, sample_idx],
+        K_hand[:, :, sample_idx],
+        rtol=1.0e-12,
+        atol=0.0,
+    )
+
+
+def test_asymptote_check_override_none_is_default_behavior() -> None:
+    """Default `asymptote_check_override=None` preserves pre-PR1
+    behavior: `_validate_input_gates` runs and Check 3 runs; the
+    returned kernel is unchanged from what pre-PR1 code produced on
+    the same input.
+    """
+    omega = np.linspace(0.0, 20.0, 501)
+    B_diag = np.zeros((omega.size, 6))
+    B_diag[:, 2] = well_behaved_b(omega, band_value=1.0, cutoff_omega=5.0)
+    hdb = _hdb_with_diagonal_damping(omega=omega, B_diag_per_omega=B_diag)
+    # Default call (override omitted) -- should return a valid kernel
+    # exactly as pre-PR1.
+    k_default = compute_retardation_kernel(hdb, t_max=60.0, dt=0.1)
+    assert isinstance(k_default, RetardationKernel)
+    # Explicit None yields the same output.
+    k_none = compute_retardation_kernel(
+        hdb, t_max=60.0, dt=0.1, asymptote_check_override=None
+    )
+    np.testing.assert_array_equal(k_default.K, k_none.K)
+
+
+def test_asymptote_check_override_empty_string_raises() -> None:
+    """Empty rationale string raises ValueError with the exact message
+    pattern per plan §I3.
+    """
+    hdb = _synthetic_hdb_fails_check_2()
+    with pytest.raises(ValueError, match="empty or whitespace-only"):
+        compute_retardation_kernel(
+            hdb, t_max=60.0, dt=0.01, asymptote_check_override=""
+        )
+
+
+def test_asymptote_check_override_whitespace_only_raises() -> None:
+    """Whitespace-only rationale strings (single space, tab+newline,
+    multi-space, mixed whitespace) all raise ValueError under the
+    same `.strip() == ""` check per Q3 lock.
+    """
+    hdb = _synthetic_hdb_fails_check_2()
+    for whitespace in (" ", "\t\n", "   ", "\t \n \r"):
+        with pytest.raises(ValueError, match="empty or whitespace-only"):
+            compute_retardation_kernel(
+                hdb,
+                t_max=60.0,
+                dt=0.01,
+                asymptote_check_override=whitespace,
+            )
+
+
+def test_asymptote_check_override_non_string_raises() -> None:
+    """Non-string rationale (int, list, dict, ...) raises ValueError
+    matching "must be a non-empty rationale string" per plan §I3.
+    """
+    hdb = _synthetic_hdb_fails_check_2()
+    for bogus in (42, ["reason"], {"reason": "x"}, 3.14, True):
+        with pytest.raises(ValueError, match="must be a non-empty rationale string"):
+            compute_retardation_kernel(
+                hdb, t_max=60.0, dt=0.01, asymptote_check_override=bogus  # type: ignore[arg-type]
+            )
+
+
+def test_asymptote_check_override_warning_emitted() -> None:
+    """Valid rationale emits UserWarning matching "Item 25 asymptote
+    check bypassed" and echoing the rationale string per plan §I3.
+    """
+    hdb = _synthetic_hdb_fails_check_2()
+    rationale = "spar-fin small-body geometry; see ITEM25-SMALL-BODY-APPLICABILITY"
+    with pytest.warns(UserWarning, match="Item 25 asymptote check bypassed") as caught:
+        compute_retardation_kernel(
+            hdb, t_max=60.0, dt=0.01, asymptote_check_override=rationale
+        )
+    # Rationale string is echoed in the warning (via !r).
+    matching = [w for w in caught if rationale in str(w.message)]
+    assert len(matching) == 1, (
+        f"expected exactly one override warning echoing the rationale; "
+        f"got {len(matching)}: {[str(w.message)[:100] for w in caught]}"
+    )

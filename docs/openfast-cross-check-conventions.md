@@ -1228,6 +1228,73 @@ t_max" (only Check 3 fires).
 
 **Verification status.** Pinned by the three unit tests above.
 
+### Applicability sub-item -- small-body regime (M7.5 PR1)
+
+**Source.** M7.5 PR1 (2026-07-02),
+[`docs/m7.5-reader-hygiene-plan.md`](m7.5-reader-hygiene-plan.md)
+§Q3 lock. The three-check gate structure above was calibrated
+against OC4-class floaters (characteristic length `L ~ 50 m`,
+BEM `omega_max ~ 5-15 rad/s`) where the `1/omega^4`
+asymptotic regime IS visible on the available BEM grid.
+Small-body BEM (wave-tank-scale models, `L ~ 1-2 m`) exits
+this validity envelope: the group `omega_max * L / c` (with
+`c` the reference wave celerity) is too small for the
+asymptotic regime to be reached anywhere on the available
+grid. Check 2 (asymptote consistency) then fires spuriously
+regardless of BEM correctness -- the tail is nowhere clean
+because the asymptote is nowhere reached, not because the
+BEM data is wrong.
+
+**Rule.** When the small-body regime applies, the Check 2
+gate may be bypassed via the ``asymptote_check_override``
+parameter on
+:func:`floatsim.hydro.retardation.compute_retardation_kernel`.
+The parameter is keyword-only and defaults to ``None``
+(pre-PR1 behavior: Item 25's three-check gate runs
+unchanged, with Check 2 as the hard error and Check 1 as
+the advisory warning).
+Non-empty rationale strings bypass the gate; empty strings
+(``None``, ``""``, or whitespace-only via ``.strip() == ""``)
+raise ``ValueError`` (see plan §I3 for exact message text).
+
+**Bypass semantics.** When the override is active,
+``_validate_input_gates`` is skipped in its entirety --
+both Check 1 (advisory warning) and Check 2 (hard error) --
+and the `1/omega^4` tail extension is zero-filled rather
+than fit per entry. Check 3 (post-extension kernel decay)
+still runs; the authoritative gate is not bypassable per
+plan Q3 lock. A UserWarning is emitted once per call,
+echoing the rationale string and noting that
+high-frequency response in overridden DOFs is not
+analytically bounded.
+
+**Consumer implication.** Kernels computed via the override
+carry NO analytical model of the frequency response for
+`omega > omega_max` in the overridden DOFs -- the tail is
+zero, not extrapolated. Consumers should not rely on the
+kernel's high-frequency response in the overridden DOFs
+for physics that depends on it. For small-body geometries
+where the physical high-frequency B is small anyway, this
+is a benign restriction.
+
+**Small-body threshold is qualitative, not quantitative.**
+The plan §Q4 lock (2026-06-30) explicitly deferred formal
+threshold quantification. Users judge applicability based
+on the body's characteristic length, the BEM `omega_max`,
+the BEM tool's own reported mesh-resolution warnings, and
+the diagnostic signature "heave `B` at numerical floor by
+`omega ~ 5-10 rad/s` AND surge/sway `B` has no `1/omega^4`
+regime anywhere on the BEM grid." Analytical threshold
+derivation is tracked in Phase 2 tracker entry
+[`ITEM25-SMALL-BODY-APPLICABILITY`](phase2-followups.md#item25-small-body-applicability--item-25-kernel-quality-gate-inapplicable-to-small-body-bem).
+
+**Verification status.** Pinned by six unit tests in
+`tests/unit/test_retardation_kernel.py::test_asymptote_check_override_*`
+(M7.5 PR1): kernel identity vs bare Filon integral at
+`rtol=1e-12`; default-preserving None behavior;
+empty-string / whitespace-only / non-string rationale
+error paths; UserWarning emission on valid rationale.
+
 ---
 
 ## Item 26 -- MoorDyn dynamic damping is not captured by analytic catenary
