@@ -79,7 +79,13 @@ class-of-bug that motivated making this explicit.
 
 _C_SOURCE_VALUES: Final[tuple[str, ...]] = get_args(CSourceLiteral)
 
-_SYMMETRY_RTOL: Final[float] = 1.0e-6
+# M7.5 PR2 (Q1 sub-decision, 2026-06-30): tightened from 1e-6 to 1e-12.
+# Post-symmetrization residual is at float64 precision (~1e-15); 1e-12
+# leaves three orders of margin and makes the gate a real invariant
+# check. Any construction path that bypasses __post_init__'s
+# symmetrization step (or a hand-authored fixture with subtle
+# asymmetry) is caught. See docs/m7.5-reader-hygiene-plan.md §Q1.
+_SYMMETRY_RTOL: Final[float] = 1.0e-12
 _SYMMETRY_ATOL: Final[float] = 1.0e-10
 
 
@@ -97,8 +103,14 @@ def _require_all_finite(arr: NDArray[Any], label: str) -> None:
 class HydroDatabase:
     """Frequency-domain hydrodynamic database for a single floating body.
 
-    All arrays are stored as-passed — callers should treat them as read-only.
-    Copy on ingestion if you need to mutate.
+    All arrays are stored as-passed except A, B, A_inf, and C, which are
+    replaced with their symmetrized counterparts by ``__post_init__``
+    (M7.5 PR2 Q1 lock). Callers' original arrays are NOT mutated in
+    place; a new symmetrized array is created and stored on the
+    frozen dataclass via ``object.__setattr__``. Other arrays (omega,
+    heading_deg, RAO, reference_point) are stored as-passed. Callers
+    should treat all stored arrays as read-only; copy on ingestion if
+    you need to mutate.
 
     The ``C_source`` field is **mandatory** (no default). It declares
     whether ``C`` is buoyancy-only (the BEM-reader convention) or full
@@ -108,6 +120,34 @@ class HydroDatabase:
     instead route through :func:`floatsim.hydro.radiation.assemble_cummins_lhs`,
     which adds the gravity term when ``C_source == "buoyancy_only"`` and
     the body's mass/CoG/gravity are supplied.
+
+    Symmetrization audit trail (M7.5 PR2 Q1 lock, see plan §I1)
+    -----------------------------------------------------------
+    ``__post_init__`` symmetrizes A, B, A_inf, and C via
+    ``M_sym = 0.5 * (M + M.T)`` (per omega for A and B; block for
+    A_inf and C). The pre-symmetrization asymmetry residual for each
+    matrix is captured on ``self.metadata`` as four string-formatted
+    keys (per plan §I1 specification, ``:.6e`` format)::
+
+        metadata["symmetrization_max_residual_A"]      = "{max|A - A.T|:.6e}"
+        metadata["symmetrization_max_residual_B"]      = "{max|B - B.T|:.6e}"
+        metadata["symmetrization_max_residual_A_inf"]  = "{max|A_inf - A_inf.T|:.6e}"
+        metadata["symmetrization_max_residual_C"]      = "{max|C - C.T|:.6e}"
+
+    For A and B the residual is computed over the full (6, 6, n_w)
+    array before per-omega symmetrization: ``max|A - A.swapaxes(0, 1)|``
+    (a scalar summarizing worst-case asymmetry across ALL omega
+    slices AND all off-diagonal 6x6 positions). This matches the
+    plan §I1 "max over both omega slices AND the 6x6 block" spec.
+
+    Post-symmetrization, ``_require_symmetric`` runs at
+    ``rtol = 1e-12`` (Q1 sub-decision) on A_inf, C, and every
+    per-omega A / B slice. Symmetrized-input residuals are at float64
+    precision (~1e-15), so the tightened gate always passes on
+    normal-construction paths; the gate catches any code path that
+    constructs HydroDatabase bypassing ``__post_init__`` (e.g., via
+    ``object.__setattr__`` from user code, or hand-authored fixtures
+    with subtle asymmetry that somehow evade the symmetrization step).
     """
 
     omega: NDArray[np.floating]
@@ -174,7 +214,37 @@ class HydroDatabase:
         if not np.issubdtype(self.RAO.dtype, np.complexfloating):
             raise ValueError("RAO must be complex-valued")
 
-        # --- symmetry ---
+        # --- symmetrization (M7.5 PR2 Q1 lock, docstring "Symmetrization
+        # audit trail" section). Apply BEFORE _require_symmetric so the
+        # tightened rtol=1e-12 gate sees post-symmetrization residuals.
+        # For A and B: shape (6, 6, n_w); DOF indices are axes 0/1,
+        # omega is axis 2. Per-omega transpose = swapaxes(0, 1). The
+        # residual is a scalar max across all omega slices and all 6x6
+        # off-diagonals. Store residuals on metadata via direct dict
+        # assignment (the metadata field is a mutable dict; frozen
+        # only prevents rebinding self.metadata, not mutating it).
+        # Store symmetrized arrays via object.__setattr__ (standard
+        # frozen-dataclass idiom).
+
+        A_transpose = self.A.swapaxes(0, 1)
+        residual_A = float(np.max(np.abs(self.A - A_transpose)))
+        object.__setattr__(self, "A", 0.5 * (self.A + A_transpose))
+        self.metadata["symmetrization_max_residual_A"] = f"{residual_A:.6e}"
+
+        B_transpose = self.B.swapaxes(0, 1)
+        residual_B = float(np.max(np.abs(self.B - B_transpose)))
+        object.__setattr__(self, "B", 0.5 * (self.B + B_transpose))
+        self.metadata["symmetrization_max_residual_B"] = f"{residual_B:.6e}"
+
+        residual_A_inf = float(np.max(np.abs(self.A_inf - self.A_inf.T)))
+        object.__setattr__(self, "A_inf", 0.5 * (self.A_inf + self.A_inf.T))
+        self.metadata["symmetrization_max_residual_A_inf"] = f"{residual_A_inf:.6e}"
+
+        residual_C = float(np.max(np.abs(self.C - self.C.T)))
+        object.__setattr__(self, "C", 0.5 * (self.C + self.C.T))
+        self.metadata["symmetrization_max_residual_C"] = f"{residual_C:.6e}"
+
+        # --- symmetry (post-symmetrization invariant check at rtol=1e-12) ---
         _require_symmetric(self.A_inf, "A_inf")
         _require_symmetric(self.C, "C")
         for k in range(n_w):

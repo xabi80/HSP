@@ -378,9 +378,11 @@ def _extract_hydrostatic(
     if raw.shape != (6, 6):
         raise ValueError(f"hydrostatic_stiffness must be 6x6; got shape {raw.shape}.")
     perm_matrix = raw[dof_perm, :][:, dof_perm]
-    # Symmetrize against panel-method noise (same policy as the WAMIT reader).
-    sym = 0.5 * (perm_matrix + perm_matrix.T)
-    return sym
+    # Symmetrization moved to HydroDatabase.__post_init__ per M7.5 PR2
+    # (Q1 lock). Reader passes the permuted matrix directly; the
+    # HydroDatabase-level symmetrization step handles panel-method
+    # noise consistently across all readers.
+    return perm_matrix
 
 
 def _resolve_a_inf(
@@ -420,9 +422,11 @@ def _resolve_a_inf(
 
     if not np.all(np.isfinite(a_inf)):
         raise ValueError("Resolved A_inf contains non-finite entries.")
-    # Symmetrize against panel-method noise (mirrors the WAMIT reader policy).
-    a_inf_sym: NDArray[np.float64] = 0.5 * (a_inf + a_inf.T)
-    return a_inf_sym
+    # Symmetrization moved to HydroDatabase.__post_init__ per M7.5 PR2
+    # (Q1 lock). Reader passes A_inf directly; the HydroDatabase-level
+    # symmetrization step handles panel-method noise consistently
+    # across all readers.
+    return a_inf
 
 
 def _collect_metadata(ds: xr.Dataset, path: Path) -> dict[str, str]:

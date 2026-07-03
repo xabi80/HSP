@@ -91,28 +91,138 @@ def test_wrong_shape_rejected(field: str, bad_shape: tuple[int, ...]) -> None:
         HydroDatabase(**kw)
 
 
-# ---------- symmetry checks ----------
+# ---------- symmetrization checks (M7.5 PR2 Q1 lock) ----------
+#
+# Refactored from the pre-M7.5 raise-on-perturbation tests (per
+# docs/audits/m7.5-reader-audit.md §Item 5 Class-C disposition):
+# under Q1's HydroDatabase-level symmetrization, perturbations
+# get averaged out by 0.5 * (M + M.T) BEFORE _require_symmetric
+# runs. The tests now assert the new audit-trail behavior:
+#   (i)  hdb.metadata["symmetrization_max_residual_*"] captures
+#        the pre-symmetrization asymmetry
+#   (ii) hdb.M bit-equals 0.5 * (M_input + M_input.T)
+# rather than asserting a raise that no longer fires.
+#
+# See docs/m7.5-reader-hygiene-plan.md §Q1, §I1.
 
 
-def test_non_symmetric_C_rejected() -> None:
+def test_asymmetric_input_symmetrized_with_residual_captured_C() -> None:
+    """Perturbing C[0, 1] by delta=1.0 gets symmetrized to the average
+    of the perturbed entry and its transpose partner; the pre-symmetrization
+    residual `max|C - C.T|` is captured on metadata as "1.000000e+00".
+    """
     kw = _valid_kwargs()
-    kw["C"][0, 1] += 1.0  # break symmetry by a lot
-    with pytest.raises(ValueError, match="symmetric"):
-        HydroDatabase(**kw)
+    C_input = kw["C"].copy()
+    C_input[0, 1] += 1.0  # asymmetric by exactly 1.0
+    kw["C"] = C_input
+    hdb = HydroDatabase(**kw)
+    # (i) residual reported as delta=1.0
+    assert hdb.metadata["symmetrization_max_residual_C"] == f"{1.0:.6e}"
+    # (ii) stored C is bit-identical to 0.5 * (C_input + C_input.T)
+    expected_C = 0.5 * (C_input + C_input.T)
+    np.testing.assert_array_equal(hdb.C, expected_C)
 
 
-def test_non_symmetric_Ainf_rejected() -> None:
+def test_asymmetric_input_symmetrized_with_residual_captured_A_inf() -> None:
+    """Perturbing A_inf[2, 3] by delta=1.0: analogous to the C case."""
     kw = _valid_kwargs()
-    kw["A_inf"][2, 3] += 1.0
-    with pytest.raises(ValueError, match="symmetric"):
-        HydroDatabase(**kw)
+    A_inf_input = kw["A_inf"].copy()
+    A_inf_input[2, 3] += 1.0
+    kw["A_inf"] = A_inf_input
+    hdb = HydroDatabase(**kw)
+    assert hdb.metadata["symmetrization_max_residual_A_inf"] == f"{1.0:.6e}"
+    expected_A_inf = 0.5 * (A_inf_input + A_inf_input.T)
+    np.testing.assert_array_equal(hdb.A_inf, expected_A_inf)
 
 
-def test_non_symmetric_A_at_any_omega_rejected() -> None:
+def test_asymmetric_input_symmetrized_with_residual_captured_A_at_omega() -> None:
+    """Perturbing A[0, 1, 2] by delta=1.0 (at omega index 2, DOF pair
+    (0, 1)): residual is a scalar max across ALL omega slices AND all
+    off-diagonals, so it still reports 1.0 (all other slices are
+    symmetric by construction so contribute 0.0 to the max).
+    """
     kw = _valid_kwargs()
-    kw["A"][0, 1, 2] += 1.0  # break symmetry at one frequency slice
-    with pytest.raises(ValueError, match="symmetric"):
-        HydroDatabase(**kw)
+    A_input = kw["A"].copy()
+    A_input[0, 1, 2] += 1.0  # asymmetric at one frequency slice
+    kw["A"] = A_input
+    hdb = HydroDatabase(**kw)
+    assert hdb.metadata["symmetrization_max_residual_A"] == f"{1.0:.6e}"
+    # Only the perturbed slice is affected; all other omega slices
+    # are already symmetric so their symmetrized versions are unchanged.
+    A_transpose = A_input.swapaxes(0, 1)
+    expected_A = 0.5 * (A_input + A_transpose)
+    np.testing.assert_array_equal(hdb.A, expected_A)
+
+
+# Delta values must be exactly representable in float64
+# so the metadata's f"{delta:.6e}" format string matches
+# the computed max|M - M.T| residual bit-exactly. The
+# chosen values 1e-4, 1e-8, and 1.0 all satisfy this.
+# Non-representable values (e.g., 0.1) would produce a
+# residual that differs from the formatted delta by
+# accumulated float error.
+#
+# Note on base-value control: the test explicitly zeros
+# C[0, 1] and C[1, 0] before applying delta. This gives a
+# clean base of 0.0 where (0.0 + delta) - 0.0 == delta
+# bit-exactly for any float64-representable delta. Without
+# this control, _valid_kwargs()'s randomised C entries at
+# |base|~O(1e2) push ULP noise (~1e-14) into (base + 1e-8)
+# - base, giving 9.999994e-09 instead of 1.000000e-08 and
+# breaking the 6th-decimal exact-string match. The
+# metadata reporting IS bit-correct in either case; the
+# zeroing here is a test-hygiene step to make the assertion
+# express what it's supposed to test (the format-string
+# roundtrip), not to hide any real issue with the code
+# under test.
+@pytest.mark.parametrize("delta", [1.0e-4, 1.0e-8, 1.0])
+def test_symmetrization_residual_records_delta_across_magnitudes(delta: float) -> None:
+    """Metadata residual reporting must be quantitatively correct
+    across the panel-method-noise (~1e-4), near-float-precision
+    (~1e-8), and egregious (1.0) magnitudes.
+    """
+    kw = _valid_kwargs()
+    C_input = kw["C"].copy()
+    # Zero out C[0, 1] / C[1, 0] first so the perturbation sees a
+    # clean base of 0.0 (see comment above the parametrize block).
+    C_input[0, 1] = 0.0
+    C_input[1, 0] = 0.0
+    # Now apply the perturbation from the clean base.
+    C_input[0, 1] = delta
+    kw["C"] = C_input
+    hdb = HydroDatabase(**kw)
+    # (i) residual exact-string match to the perturbation magnitude
+    assert hdb.metadata["symmetrization_max_residual_C"] == f"{delta:.6e}"
+    # (ii) stored C[0, 1] is the average of the perturbed value
+    # (delta) and its transpose partner (0.0): 0.5 * delta.
+    assert hdb.C[0, 1] == 0.5 * delta
+    # And the symmetric partner C[1, 0] equals the same average.
+    assert hdb.C[1, 0] == hdb.C[0, 1]
+
+
+def test_symmetric_input_preserved_bit_identical() -> None:
+    """Q1 idempotency: symmetrization on already-symmetric input is a
+    bit-exact no-op. Residual is 0.0; stored arrays are bit-identical
+    to input arrays (via 0.5 * (M + M) = M for IEEE 754 finite floats).
+    """
+    kw = _valid_kwargs()
+    # _valid_kwargs() already builds A, B, A_inf, C via _sym6 which
+    # constructs them as 0.5 * (m + m.T) -- bit-exactly symmetric.
+    C_input = kw["C"].copy()
+    A_inf_input = kw["A_inf"].copy()
+    A_input = kw["A"].copy()
+    B_input = kw["B"].copy()
+    hdb = HydroDatabase(**kw)
+    # (i) All four residuals report exact zero.
+    assert hdb.metadata["symmetrization_max_residual_A"] == f"{0.0:.6e}"
+    assert hdb.metadata["symmetrization_max_residual_B"] == f"{0.0:.6e}"
+    assert hdb.metadata["symmetrization_max_residual_A_inf"] == f"{0.0:.6e}"
+    assert hdb.metadata["symmetrization_max_residual_C"] == f"{0.0:.6e}"
+    # (ii) Stored arrays bit-identical to input arrays.
+    np.testing.assert_array_equal(hdb.C, C_input)
+    np.testing.assert_array_equal(hdb.A_inf, A_inf_input)
+    np.testing.assert_array_equal(hdb.A, A_input)
+    np.testing.assert_array_equal(hdb.B, B_input)
 
 
 # ---------- monotonicity / sign / finiteness checks ----------
