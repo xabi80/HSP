@@ -289,7 +289,28 @@ Step 0 diagnostic run 2026-07-03 (per-panel ray-parity on
 both terminal fixtures) showed 216 inward on ORIGINAL and
 24 inward on CORRECTED — proving the study's z-band
 heuristic left the strip panels misoriented, invisibly to
-Capytaine's A_inf calculation. BEM solvers do not crash on incorrectly-
+Capytaine's A_inf calculation.
+
+**Tier-1 false-negative on open shells** (added M7.5 PR3,
+2026-07-03). Per-panel ray-parity requires a closed
+enclosing volume that the ray can re-enter to signal
+inward. On a mesh with an open boundary (missing lid,
+isolated sheet, dangling strip), a reversed panel whose
+ray exits through the opening hits zero triangles → parity
+even → reported as outward. `validate_panel_normals` and
+`fix_panel_normals` emit a `UserWarning` on any mesh with
+non-zero `n_open_edges`, alerting the caller that
+ray-parity is unreliable near openings. The terminal
+spar-fin fixture has 96 open edges (plate-spar junction +
+disk rim) and the warning fires there in-suite; the
+strip-panel detection is not affected because the strip
+rays hit spar-body geometry radially inward. The
+false-negative mode is pinned by two documentation tests
+in `tests/unit/test_mesh_hygiene.py`
+(`test_open_component_is_silent_false_negative_with_warning`,
+`test_two_shell_isolated_plate_is_silent_false_negative_with_warning`).
+See tracker `BEM-MESH-THIN-SURFACE-ORIENTATION` for
+scope. BEM solvers do not crash on incorrectly-
 oriented normals; they silently produce wrong added-mass and
 damping. In the worst observed case
 ([`studies/spar-fin-decay`](../studies/spar-fin-decay/)), a

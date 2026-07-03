@@ -949,7 +949,8 @@ in case a future fixture presents it.
 **BEM-MESH-STRIP-PANELS-STUDY-FIXTURE (sub-item).** The
 `test2_spar_fin_corrected.gdf` fixture from the spar-fin
 study (committed at `scratch-spar-fin-decay` branch under
-`studies/spar-fin-decay/mesh/`) carries 24 strip panels
+`studies/spar-fin-decay/mesh/` and pinned in-suite at
+`tests/fixtures/bem/mesh_hygiene/`) carries 24 strip panels
 that are objectively misoriented (radially inward normals).
 `fix_mesh_normals.py` in the study never touched them
 because its z-band + radius + `|n_z| > 0.9` filter
@@ -957,13 +958,51 @@ excluded them. `A_inf(heave) = 21.11 kg` computed via
 Capytaine on this fixture matches analytical expectations
 within 16% of the reference — tier-2
 `check_hydrostatic_volume` (M7.5 PR3) quantifies the
-insensitivity numerically. PR4 spar-fin re-verification
-must record this measurement. When `scratch-spar-fin-decay`
-is next touched (post-M7.5), an addendum to
-`studies/spar-fin-decay/STEP-A-FINDING.md` should note the
-strip misorientation and cite the tier-2 residual as
-evidence that the study's Capytaine A_inf result stands
-despite the topological deficiency.
+insensitivity numerically.
+
+**Tier-2 measurements** (2026-07-03, `rho = 1025 kg/m^3`,
+body mass `28.67 kg`):
+
+| variant   | `signed_volume`    | `displaced_mass` | `residual_fraction` |
+|-----------|--------------------|-----------------:|--------------------:|
+| ORIGINAL  | `+3.882e-02 m^3`   | `39.79 kg`       | `+0.388`            |
+| CORRECTED | `+3.914e-02 m^3`   | `40.12 kg`       | `+0.399`            |
+| full_fix  | `+3.989e-02 m^3`   | `40.89 kg`       | `+0.426`            |
+
+Pairwise `|ΔV|/V(CORRECTED)`: ORIG-vs-CORR = `0.82%`,
+FULLFIX-vs-CORR = `1.92%`. The `+40%` residual is
+mesh-buoyancy-vs-body-mass **reserve buoyancy**, not a
+mismatch to close — the meshed waterline displaces ~40.1 kg
+against a 28.67 kg body. Documented so PR4 spar-fin
+re-verification does not open this as a bug: it is a
+fixture property.
+
+**Open-boundary false-negative.** The fixture has 96 open
+boundary edges (plate-spar junction + disk rim). M7.5 PR3's
+tier-1 `validate_panel_normals` / `fix_panel_normals` emit
+a `UserWarning` on any mesh with open edges: a reversed
+panel whose ray exits through an opening is silently
+reported as outward. The 24 strip panels do *not* trigger
+this false negative (their rays hit body geometry radially
+inward), which is why ray-parity detects them; the warning
+is pinned in-suite as a fixture property, not a defect to
+suppress. See conventions doc Item 5 and mesh_hygiene test
+`test_open_component_is_silent_false_negative_with_warning`
+for the documented failure mode.
+
+PR4 spar-fin re-verification obligations:
+
+1. Record the 24 misoriented strip panels.
+2. Record the `+40%` reserve-buoyancy residual (as a
+   documented fixture property, not a mismatch).
+3. Record the 96 open-boundary edges and the tier-1
+   false-negative warning.
+
+When `scratch-spar-fin-decay` is next touched (post-M7.5),
+an addendum to `studies/spar-fin-decay/STEP-A-FINDING.md`
+should note the strip misorientation and cite the tier-2
+residual as evidence that the study's Capytaine A_inf
+result stands despite the topological deficiency.
 
 **Scope.** Adding an "orientation convention override" API
 to `mesh_hygiene` that lets users declare per-panel
