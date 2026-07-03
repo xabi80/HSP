@@ -230,6 +230,31 @@ criterion for closed orientable meshes; it needs no
 "interior" concept at all, only the shared-edge
 adjacency and the vertex triples of each panel.
 
+**Amended M7.5 PR3-pre-flight (2026-07-03, second
+amendment):** the input class is **multi-shell polygon
+soup**, not closed orientable mesh. PR3 pre-flight surfaced
+that the terminal spar+fin fixture is not vertex-welded at
+the heave-plate/spar-wall junction — 96 open edges,
+consistent with the fixture header `"spar+fin 5mm offset"`
+documenting the plate as a 5-mm-offset thin surface. This
+is standard WAMIT GDF practice for thin plates. The
+amended validity criterion has three parts:
+
+1. Per-connected-component flood-fill orientation parity
+   (XOR propagation on shared edges; degenerate edges
+   skipped).
+2. Per-component absolute orientation: signed volume for
+   closed components; ray-parity against the whole mesh
+   for open components (majority vote over sample panel
+   centroids, cast along parity-0 normal, count even/odd
+   crossings, graze-tolerant discard).
+3. T-junctions (edges shared by more than two panels)
+   remain a hard error — genuine ambiguity.
+
+The 96-open-edge finding is the motivating evidence: the
+validity criterion must handle real WAMIT GDF exports, not
+just closed manifolds.
+
 **Failure mode.** BEM solvers do not crash on incorrectly-
 oriented normals; they silently produce wrong added-mass and
 damping. In the worst observed case

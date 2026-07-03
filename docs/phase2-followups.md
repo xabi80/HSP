@@ -883,6 +883,30 @@ per-shell seeding, or a mesh with intentional
 T-junctions from a specific solver export format) needs
 handling.
 
+**Amended 2026-07-03 (PR3 pre-flight, second narrowing):**
+the M7.5 PR3 algorithm underwent a second amendment after
+pre-flight surfaced that the terminal fixture is not a
+closed manifold — 96 open edges at the plate-spar junction,
+caused by the "spar+fin 5mm offset" thin-surface convention
+documented in the mesh header. The second-amendment
+algorithm accepts multi-shell polygon soup as its input
+class: per-component flood-fill parity, signed volume for
+closed components, ray-parity against the whole mesh for
+open components (majority vote over sample-panel centroids,
+graze-tolerant). Open shells and multi-shell meshes are now
+SUPPORTED. The open scope of this entry narrows again to
+only meshes with T-junctions (edges shared by more than two
+panels) or otherwise ambiguous adjacency. T-junction
+handling would need either explicit topology metadata from
+the exporter, or a genuine geometric-ambiguity resolution
+policy — neither is currently required by any FloatSim
+fixture. The correction pattern (four Q2 amendments, this
+one derived from measured fixture topology) suggests future
+BEM-format expansions may surface similar topology
+surprises; the algorithm's per-component structure gives us
+headroom to add T-junction handling as a fourth branch if
+needed.
+
 ---
 
 ## Resolved entries
