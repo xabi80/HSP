@@ -255,7 +255,41 @@ The 96-open-edge finding is the motivating evidence: the
 validity criterion must handle real WAMIT GDF exports, not
 just closed manifolds.
 
-**Failure mode.** BEM solvers do not crash on incorrectly-
+**Amended M7.5 PR3 (2026-07-03, FINAL Q2 amendment).** The
+edge-consistency + signed-volume algorithm was correct on
+synthetic geometry (verified twice) but computes RELATIVE
+orientation within shells — a question the terminal fixture
+proved is not the protective one. The final validity
+criterion is **per-panel ray-parity**: cast from each
+panel's centroid + epsilon along the as-stored normal,
+count intersections against all other panels, odd = inward.
+Assumption-free (no manifold, no components, no parity
+classes). Edge machinery retained only for T-junction
+detection (raise). Superseded predecessors:
+
+1. Centroid-outward test (original Q2 lock): inverted on
+   concave features like the plate top annulus.
+2. Edge-consistency + signed volume (first amendment):
+   required closed manifold; failed on the multi-shell
+   fixture with plate/strip topology.
+3. Per-component parity + ray-parity for open components
+   (second amendment): assumed uniform orientation within a
+   connected component; failed on thin plates where strips
+   are traversal-inconsistent with faces even in the
+   correct state.
+
+**Load-bearing protection is tier 2:**
+`check_hydrostatic_volume` measures displaced volume
+directly via the divergence-theorem sum over all panels
+as-stored. Reversed faces corrupt the volume; the check
+sees it without any topology assumption. The tier-1
+per-panel ray-parity check is diagnostic detail; tier 2 is
+the primary protective screen. **Deciding measurement**:
+Step 0 diagnostic run 2026-07-03 (per-panel ray-parity on
+both terminal fixtures) showed 216 inward on ORIGINAL and
+24 inward on CORRECTED — proving the study's z-band
+heuristic left the strip panels misoriented, invisibly to
+Capytaine's A_inf calculation. BEM solvers do not crash on incorrectly-
 oriented normals; they silently produce wrong added-mass and
 damping. In the worst observed case
 ([`studies/spar-fin-decay`](../studies/spar-fin-decay/)), a

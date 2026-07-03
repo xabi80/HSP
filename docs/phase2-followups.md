@@ -907,6 +907,82 @@ surprises; the algorithm's per-component structure gives us
 headroom to add T-junction handling as a fourth branch if
 needed.
 
+**Amended 2026-07-03 (PR3 pre-flight, FINAL Q2 sixth
+amendment).** Both prior algorithm amendments have been
+DELETED. The M7.5 PR3 algorithm is now per-panel ray-parity,
+assumption-free. The only remaining scope out of this entry
+is T-junction / ambiguous adjacency (hard raise; no
+algorithmic fix). Truly two-sided sheets are now the scope
+of the new tracker entry
+[**BEM-MESH-THIN-SURFACE-ORIENTATION**](#bem-mesh-thin-surface-orientation--orientation-convention-for-genuinely-two-sided-sheets)
+below — the terminal fixture's strips were initially
+suspected to be this class; measurement showed they have a
+defined outward via ray-parity, so this entry no longer
+covers them.
+
+---
+
+### BEM-MESH-THIN-SURFACE-ORIENTATION — Orientation convention for genuinely two-sided sheets
+
+**Mechanism.** Some BEM meshes model genuinely two-sided
+surfaces (flat membranes, theoretical zero-thickness
+surfaces, sheets without an enclosing body). Such surfaces
+have no defined "outward" direction — both sides are
+equally valid. Per-panel ray-parity (M7.5 PR3's algorithm)
+gives one answer or the other based on which side happens
+to enclose more of the surrounding mesh, but there is no
+physical correctness criterion.
+
+**Audit reference.** Q5 punt (final form, 2026-07-03).
+Surfaced during Q2 sixth-amendment discussion: the
+terminal fixture's 24 strip panels were initially
+suspected to be this class (radially inward-pointing
+normals with no defined outward). Per-panel ray-parity
+measurement (Step 0 diagnostic gate, 2026-07-03) showed
+the strips DO have a defined outward — radially away
+from the spar axis — and ray-parity detects and can fix
+them. So the terminal fixture is NOT this class; it's a
+mis-oriented thin surface that ray-parity handles
+cleanly. This entry captures the genuine-two-sided case
+in case a future fixture presents it.
+
+**BEM-MESH-STRIP-PANELS-STUDY-FIXTURE (sub-item).** The
+`test2_spar_fin_corrected.gdf` fixture from the spar-fin
+study (committed at `scratch-spar-fin-decay` branch under
+`studies/spar-fin-decay/mesh/`) carries 24 strip panels
+that are objectively misoriented (radially inward normals).
+`fix_mesh_normals.py` in the study never touched them
+because its z-band + radius + `|n_z| > 0.9` filter
+excluded them. `A_inf(heave) = 21.11 kg` computed via
+Capytaine on this fixture matches analytical expectations
+within 16% of the reference — tier-2
+`check_hydrostatic_volume` (M7.5 PR3) quantifies the
+insensitivity numerically. PR4 spar-fin re-verification
+must record this measurement. When `scratch-spar-fin-decay`
+is next touched (post-M7.5), an addendum to
+`studies/spar-fin-decay/STEP-A-FINDING.md` should note the
+strip misorientation and cite the tier-2 residual as
+evidence that the study's Capytaine A_inf result stands
+despite the topological deficiency.
+
+**Scope.** Adding an "orientation convention override" API
+to `mesh_hygiene` that lets users declare per-panel
+outward directions explicitly for two-sided sheets (via a
+supplementary metadata file or per-panel keyword arg).
+Only becomes necessary if a future fixture presents a
+genuinely two-sided sheet.
+
+**Estimated effort.** ~2 weeks, mostly research (what does
+the community do; is there a WAMIT/OrcaWave/Capytaine
+convention for this?) plus small implementation.
+
+**Blocks.** Nothing immediately. Any FloatSim study
+involving flat membranes / sail surfaces / thin planar
+wave-energy converters would need this.
+
+**Status.** Open. Surfaced 2026-07-03 during Q2 sixth
+amendment. Parked (research-scale).
+
 ---
 
 ## Resolved entries
