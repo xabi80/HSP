@@ -784,6 +784,92 @@ deferred.
 
 ---
 
+### PANEL-NORMAL-NONCONVEX-BODIES — mesh_hygiene panel-normal validation punts on non-convex meshes
+
+**Mechanism.**
+`floatsim.hydro.mesh_hygiene.validate_panel_normals()`
+(created in M7.5 PR3 per
+[`docs/m7.5-reader-hygiene-plan.md`](m7.5-reader-hygiene-plan.md)
+§Q2) uses the centroid-outward test: for each panel, the
+dot product of the panel normal with the vector from
+body-interior toward the panel centroid must be positive.
+Body-interior is estimated as `mesh.vertices.mean(axis=0)`,
+which is unambiguous for convex meshes — the arithmetic
+centroid of a convex hull's vertices is guaranteed to lie
+inside the hull.
+
+For non-convex meshes (bodies with cavities, indentations,
+moon pools, ducted geometry, or complex articulated
+topology), `mesh.vertices.mean(axis=0)` may fall OUTSIDE
+the body's interior region — e.g., in the empty volume
+of a moon pool, or on the "wrong side" of a concave
+surface. The centroid-outward test then produces either
+false positives (correctly-oriented panels flagged as
+reversed) or false negatives (actually-reversed panels
+incorrectly passed), depending on the specific mesh
+topology.
+
+**Audit reference.**
+[`docs/m7.5-reader-hygiene-plan.md`](m7.5-reader-hygiene-plan.md)
+§Q5 lock (2026-06-30): "Non-convex body support — punt
+entirely. Deferred with tracker entry
+`PANEL-NORMAL-NONCONVEX-BODIES`. Scope creep would double
+the audit surface without a red fixture."
+
+**Why deferred.** M7.5's target validation scope
+(spar-fin decay study; OC4-class fixtures; wave-tank models)
+is all convex or near-convex geometry. Non-convex body
+support requires a different interior-determination
+strategy AND its own audit surface (fixtures, edge cases,
+performance characterisation). Deferred per Q5 lock.
+
+**Scope — candidate resolution strategies.** Two approaches
+cover most non-convex cases:
+
+1. **Ray-casting.** For each panel, cast a ray from the
+   panel centroid along its normal direction; count
+   intersections with the rest of the mesh. Even count
+   means the normal points outward (the ray exits the body
+   without re-entering); odd count means inward (the ray
+   re-enters). Robust for arbitrary topology; runtime is
+   O(n²) per validation (n panels × n candidate intersecting
+   panels). Reusable off-the-shelf implementations exist
+   (Trimesh, PyMesh) but pulls in a dependency.
+2. **Signed-distance field (SDF).** Build an SDF for the
+   mesh; sample points where the SDF is strongly negative
+   (deep-interior points); use those as the reference
+   "inside" set for the centroid-outward test on each
+   panel. Overkill for validation alone but reusable for
+   any other geometry work that needs "is this point
+   inside." The SDF construction is its own algorithmic
+   complexity.
+
+**Estimated effort.** `~2 weeks` for ray-casting
+integration + fixture set (moon-pool geometry;
+articulated-body test case; existing convex regression
+suite); `~3-4 weeks` for SDF-based validation with the
+same audit surface. Both include the audit + testing +
+docstring update; neither is a small piece of work.
+
+**Blocks.** Nothing immediately. Any future study or
+milestone involving non-convex geometry needs either a
+different validation strategy or explicit opt-out. Not
+exercised by any currently planned FloatSim work.
+Candidate triggers for prioritising this work:
+
+- A moon-pool floater cross-check case.
+- A ship-shaped hull with internal cavities in a study.
+- A future spar-fin-like study with a more complex
+  attached-body configuration.
+- A ducted-body Morison-element test case.
+
+**Status.** Open. Deferred per M7.5 Q5 lock 2026-06-30.
+Convex-only validation in M7.5 is sufficient for the
+target scope; non-convex support deferred to a future
+milestone if a triggering use case materialises.
+
+---
+
 ## Resolved entries
 
 *(none yet)*
