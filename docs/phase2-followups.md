@@ -562,7 +562,24 @@ deferred. Not blocking M7.5.
 
 ---
 
-### BEM-INPUT-NORMAL-VALIDATION — BEM mesh panel-normal orientation validation
+### ~~BEM-INPUT-NORMAL-VALIDATION~~ — BEM mesh panel-normal orientation validation
+
+**Closed 2026-07-03 by M7.5 PR3 (`6d457c2`).**
+`floatsim.hydro.mesh_hygiene` delivers per-panel ray-parity
+validation + auto-fix + tier-2 hydrostatic-volume physics
+screen; terminal-gate test 1
+(`tests/validation/test_m7_5_terminal_gate.py::test_mesh_chain_reversed_normals_detected_and_fixed`)
+exercises the workflow end-to-end on the study's ORIGINAL GDF
+(216 inward → 0 inward after auto-fix; 96 open edges warned
+in-suite). The FloatSim-level reader-hygiene resolution (path 2
+below) is delivered as a standalone utility rather than wired
+into the readers per plan §Q2 — users invoke
+`validate_panel_normals` / `fix_panel_normals` in their study
+pre-BEM-solve scripts.
+
+---
+
+### ~~BEM-INPUT-NORMAL-VALIDATION~~ (original entry, retained for audit trail)
 
 **Mechanism.** BEM-import paths from external mesh sources
 (GDF, STL, NEMOH, etc.) can carry reversed panel normals. BEM
@@ -625,7 +642,26 @@ standalone milestone candidate.
 
 ---
 
-### BEM-CAPYTAINE-READER-SYMMETRIZATION — Capytaine reader missing A/B symmetry tolerance
+### ~~BEM-CAPYTAINE-READER-SYMMETRIZATION~~ — Capytaine reader missing A/B symmetry tolerance
+
+**Closed 2026-07-03 by M7.5 PR2 (`dafed8c`).**
+`HydroDatabase.__post_init__` symmetrizes A, B, A_inf, and C
+via `0.5 · (M + M.T)` (per-omega for A/B); the
+pre-symmetrization asymmetry residual is stored on
+`metadata["symmetrization_max_residual_{A,B,A_inf,C}"]`.
+Terminal-gate test 2
+(`tests/validation/test_m7_5_terminal_gate.py::test_reader_chain_ingests_asymmetric_capytaine_netcdf`)
+ingests the study's own asymmetric NetCDF fixture
+(`tests/fixtures/bem/spar_fin_terminal/capytaine_bem_asymmetric.nc`
+extracted from `2767c12`) and verifies residual_A ≈ 7.18e-3,
+residual_B ≈ 1.25e-1, and post-symmetrization symmetry to
+rtol=1e-12. Delivered at HydroDatabase per plan §Q1 lock
+rather than at the reader — every reader inherits the
+symmetrization for free.
+
+---
+
+### ~~BEM-CAPYTAINE-READER-SYMMETRIZATION~~ (original entry, retained for audit trail)
 
 **Mechanism.** Capytaine's BEM panel-method computes `A(i, j)`
 and `A(j, i)` via independent radiation problems (radiating DOF
@@ -690,6 +726,23 @@ reader-hygiene milestone or absorption into B4 scoping.
 ---
 
 ### ITEM25-SMALL-BODY-APPLICABILITY — Item 25 kernel-quality gate inapplicable to small-body BEM
+
+**Addressed 2026-07-03 by M7.5 PR1 (`8c5da4a`), sub-scope
+remains open per Q4 lock.** `compute_retardation_kernel`
+gains the `asymptote_check_override: str | None` keyword;
+non-empty rationale bypasses Check 1 and Check 2 while
+keeping Check 3 authoritative. Terminal-gate test 3
+(`tests/validation/test_m7_5_terminal_gate.py::test_kernel_chain_override_bypasses_gate_and_check3_passes`)
+verifies the override on the real small-body spar+fin BEM:
+warning fires with the rationale echoed, Check 3 passes on
+the actual kernel, and empty-rationale still raises.
+**The disposition-2 analytical-threshold quantification
+(non-dimensional `omega_max · L / c` cutoff) remains
+explicitly open per plan §Q4 lock: "Do not quantify
+small-body threshold in M7.5"** — this is a research task
+outside a hygiene-scoped milestone. Sub-scope status:
+`Open` for the analytical threshold; `Delivered` for the
+user-facing override.
 
 **Mechanism.**
 [`docs/openfast-cross-check-conventions.md`](openfast-cross-check-conventions.md)
@@ -919,6 +972,14 @@ below — the terminal fixture's strips were initially
 suspected to be this class; measurement showed they have a
 defined outward via ray-parity, so this entry no longer
 covers them.
+
+**Confirmed 2026-07-03 (PR4-A, milestone close).** The Q5 punt
+held: PR3 detects T-junctions with a hard raise and warns on
+the open-boundary false-negative mode (`n_open_edges > 0`);
+final in-scope items for this entry are T-junction handling
+and the open-shell false-negative documentation tests (both
+pinned in-suite). No fixture in the M7.5 target scope
+required resolving either class beyond detect-and-warn.
 
 ---
 
