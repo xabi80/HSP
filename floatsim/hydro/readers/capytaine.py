@@ -68,6 +68,23 @@ Capytaine's NetCDF does not carry a single canonical reference point.
 The default is ``(0, 0, 0)`` (the origin in the inertial frame the BEM
 problem was solved in). Override via the ``reference_point`` kwarg if
 the BEM run was not at the origin.
+
+Pre-BEM-solve mesh validation (recommended)
+-------------------------------------------
+This reader consumes a NetCDF file produced AFTER the Capytaine BEM
+solve has run; it has no visibility into the mesh that generated the
+result. Silently-reversed panel normals on the input mesh produce
+wrong ``added_mass`` and ``radiation_damping`` values that this reader
+cannot detect. See ``docs/multibody-conventions.md`` Item 5 for the
+convention and the spar-fin study post-mortem
+(``studies/spar-fin-decay/STEP-A-FINDING.md``) for the pathology.
+
+Recommended workflow: validate the mesh BEFORE running the BEM solve
+using ``floatsim.hydro.mesh_hygiene.validate_panel_normals(mesh)``
+(M7.5 PR3). The utility raises on reversed normals and also on
+non-watertight / non-manifold input;
+``floatsim.hydro.mesh_hygiene.fix_panel_normals(mesh)`` produces a
+corrected mesh via vertex-order reversal on the flagged panels.
 """
 
 from __future__ import annotations
