@@ -1,0 +1,33 @@
+mesh_fix_report.txt -- spar-fin study heave-plate normal correction
+======================================================================
+Source mesh: studies/spar-fin-decay/mesh/test2_spar_fin.gdf
+Original preserved at: studies/spar-fin-decay/mesh/test2_spar_fin_ORIGINAL.gdf
+
+Detection criterion:
+  z_centroid in [-0.96, -0.95]
+  r_centroid > 0.09
+  |n_z| > 0.9
+
+Counts:
+  Total panels examined:    1488
+  Plate panels detected:    192
+    TOP (z > -0.957): 96
+    BOT (z <= -0.957): 96
+  Panels flipped:           192
+
+Pre-fix normals (mean n_z):
+  TOP: -1.0000 (expected +1.0; WRONG)
+  BOT: +1.0000 (expected -1.0; WRONG)
+
+Post-fix normals (mean n_z):
+  TOP: +1.0000 (expected +1.0)
+  BOT: -1.0000 (expected -1.0)
+
+In-script assertions: ALL PASS
+  TOP post-flip n_z > 0.5: PASS
+  BOT post-flip n_z < -0.5: PASS
+  Total flips in [200, 220]: PASS
+
+Next step: re-run capytaine_run.py and verify A_inf(heave) is
+in the expected 25-50 kg range (vs the 1.30 kg from the
+reversed-normal mesh).

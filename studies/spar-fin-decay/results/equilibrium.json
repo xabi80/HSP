@@ -1,0 +1,15 @@
+{
+  "converged": true,
+  "residual_norm_N": 0.0,
+  "xi_eq": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "z_eq_m": 0.0,
+  "gate_abs_z_lt_0p01": true,
+  "note": "Equilibrium ~0 by construction: the eqdraft mesh was translated so the free-floating waterline is at z=0. Gate verifies the translation."
+}
