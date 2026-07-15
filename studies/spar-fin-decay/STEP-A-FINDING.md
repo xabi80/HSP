@@ -672,3 +672,171 @@ a bounded milestone, then resume the physics study.
 
 No `floatsim/` modifications in this commit. No tracker entry
 changes. This is a pause commit only.
+
+---
+
+# Addendum — M7.5 resumption (2026-07-04)
+
+The study resumed after M7.5 (reader hygiene) closed. This
+addendum records what changed, the corrected buoyancy
+interpretation, the regenerated BEM, and the completed
+free-decay results (Steps C-G). Configuration: **free-floating,
+no moorings** (Xabier disposition 2026-07-04).
+
+## 1. Workaround retirements
+
+- **A/B symmetrization (Pre-flight 1 workaround) — RETIRED.**
+  `capytaine_run.py` no longer pre-symmetrizes A and B; the
+  NetCDF is saved raw. `HydroDatabase.__post_init__` symmetrizes
+  on ingestion (M7.5 PR2, `dafed8c`) and records the residual on
+  metadata. Measured raw asymmetry on the regenerated eqdraft
+  BEM: residual_A = 6.73e-3, residual_B = 2.08e-1 (dominated by
+  high-omega mesh-resolution noise; physics band clean).
+- **`fix_mesh_normals.py` — DEPRECATED.** Its z-band + radius +
+  `|n_z|>0.9` heuristic fixed only 192 of 216 misoriented
+  panels. Superseded by `floatsim.hydro.mesh_hygiene` via
+  `prepare_mesh.py` (workflow alpha). The script is retained as
+  an audit-trail artifact.
+
+## 2. Mesh provenance (workflow alpha)
+
+```
+test2_spar_fin_ORIGINAL.gdf   (OrcaWave export; 216 inward, 96 open edges)
+  -> mesh_hygiene.fix_panel_normals (per-panel ray-parity; 216 flips)
+  -> test2_spar_fin_fullfix.gdf     (0 inward; superset of the study's 192-fix)
+  -> translate down dz = 0.1846 m   (to true equilibrium waterline)
+  -> test2_spar_fin_fullfix_eqdraft.gdf   (consumed by capytaine_run.py)
+```
+
+The 24 outer-edge strip panels the old heuristic missed are now
+fixed. All three inherited fixture properties (24 strips, +40%
+reserve buoyancy, 96 open edges) are documented and pinned
+in-suite (M7.5 closure §3.4; terminal-gate test 1).
+
+## 3. Corrected buoyancy interpretation
+
+The tier-2 `check_hydrostatic_volume` figure (~40.9 kg, +40%
+residual) integrates the **full closed mesh** — the
+displacement-*if-fully-submerged* (reserve buoyancy), NOT the
+displaced mass at the waterline. Earlier notes that "the meshed
+waterline displaces ~40 kg" were a misinterpretation (corrected
+on main, closure §3.3 + phase2-followups, commit `907a2b2`).
+
+**Measured waterline balance** (`waterline_balance.py`,
+2026-07-04): at the design waterline (z=0) the fullfix mesh
+displaces only **24.47 kg** (manual z-clip via Sutherland-
+Hodgman and Capytaine `immersed_part()` agree to 6 sig figs) —
+*less* than the 28.67 kg body. The free-floating buoy therefore
+sinks
+
+    dz = (M - m_disp) / (rho * A_wp)
+       = (28.67 - 24.47) / (1025 * pi*0.0841^2)
+       = 0.1846 m
+
+to reach equilibrium. True unmoored draft ~ 1.09 + 0.185 =
+**1.28 m**. New CoG z = -0.8317 - 0.1846 = **-1.0163 m**. The
+mesh was translated down by dz so that the equilibrium waterline
+is z=0; the eqdraft mesh then displaces 28.63 kg at z=0 (-0.15%
+of body mass), verified in `prepare_mesh.py`.
+
+*(The earlier "dz ~ 0.54 m / mooring pretension" framing is
+withdrawn: it was tied to the 40 kg misinterpretation. Moorings
+are not needed to hold the meshed draft; the free-floating
+configuration is adopted.)*
+
+## 4. Regenerated BEM (eqdraft) + pre-flight re-verification
+
+Re-ran `capytaine_run.py` on the eqdraft mesh (rho=1025,
+80 omega + inf), workaround-free:
+
+| check | prediction | measured | verdict |
+|---|---|---|---|
+| C33 (waterplane) | 221 +/- 2 N/m | 221.08 N/m | PASS |
+| displaced mass @ z=0 | 28.67 +/- 1% | 28.63 kg (-0.15%) | PASS |
+| A_inf(heave) | 22.74 +/- 10% | **21.12 kg** | PASS (-7.1%) |
+| B(omega)>=0, omega<=10 | non-negative | min -9.1e-8 (floor) | PASS |
+| omega=inf sample | present | present | PASS |
+
+- **Finding — A_inf(heave) = 21.12 kg, essentially unchanged
+  from the design-draft value (21.118 kg).** The 0.185 m draft
+  translation did NOT move A_inf toward 22.74 kg. The heave plate
+  was already ~5 plate-radii deep at design draft; deepening it a
+  further 0.185 m barely changes the heave added mass. The 22.74
+  expectation was tied to the over-estimated 0.54 m draft from
+  the buoyancy misinterpretation; with the corrected dz = 0.185 m
+  the added mass is ~flat. Within the +/-10% pin, no HARD STOP.
+  The measured A_inf = 21.12 kg is adopted (measurements first).
+- Pre-flight 1 (reader ingestion) and Pre-flight 2 (kernel with
+  small-body override, Check 3 passes on the real kernel)
+  re-verified clean on the eqdraft BEM (`verify_preflight.py`).
+- Note: the design-draft fullfix run had one negative B_heave at
+  omega=9.45 (-2.2e-5, solver noise); the eqdraft run is clean in
+  the physics band (min -9.1e-8, at the floor).
+
+## 5. Pre-flight 3 — Morison heave-plate topology (audit)
+
+FloatSim's `MorisonElement` is a **slender-cylinder** model:
+drag acts on the velocity component NORMAL to the member axis,
+`F_drag = 0.5*rho*Cd*(D*L)*|u_n|*u_n` (projected area D*L; no
+hidden factor — the M6 Item-16 JAxCd class of bug is absent).
+There is no dedicated disk/heave-plate element.
+
+**Degenerate approximation adopted:** a single Morison member
+with a HORIZONTAL axis and projected area `D*L = A_plate =
+0.1452 m^2`, Cd = 5.0, centred on the spar axis at the plate z.
+For pure heave the plate-normal velocity is v_z, so
+`F_z = 0.5*rho*Cd*A_plate*|v_z|*v_z` is reproduced exactly, with
+zero spurious moment (on-axis) and zero cross-DOF coupling. The
+approximation mis-models horizontal (surge/sway) plate drag, but
+the study is pure-heave decay so that is never exercised;
+documented gap. `include_inertia=False` (BEM already carries the
+added-mass/FK inertia).
+
+## 6. Free-decay results (Steps C-G, eqdraft, IC heave = 0.10 m)
+
+Deck-driven `build_system` could not be used: it calls
+`compute_retardation_kernel` without the Item-25 override, which
+the small-body BEM (std/mean of B*omega^4 = 0.60 > 0.10) cannot
+pass. The system was hand-assembled study-side (`study_common.py`)
+using the same floatsim primitives — no `floatsim/` change.
+
+**Step D — static equilibrium.** `z_eq = 0` exactly (equilibrium
+is ~0 by construction after the eqdraft translation); gate
+|z_eq| < 0.01 m PASSED.
+
+**Step F — analysis:**
+
+| quantity | analytical | FloatSim | rel-err | gate |
+|---|---|---|---|---|
+| T_n (heave) | 2.9818 s | 2.9820 s | 0.008% | 1e-2 PASS |
+| zeta_rad | 1.118e-4 (0.011%) | 1.132e-4 (0.011%) | 1.28% | 5e-2 PASS |
+
+- `T_n = 2*pi*sqrt((M+A_inf)/C33) = 2*pi*sqrt(49.79/221.08)`.
+  Just below the README's 3.0-3.8 s pre-run band (the band was
+  set before A_inf was known); the measured/analytical agreement
+  is the real check and it passes at 0.008%.
+- Radiation damping is extremely light (0.011% critical): the
+  spar+fin is a low-radiation heave geometry, so BEM-only decay
+  persists tens of periods (heave still 0.012 m at t=50 s).
+- **BEM+Morison effective zeta ~ 2.52% critical** (first peaks;
+  amplitude-dependent quadratic drag, no quantitative gate — tank
+  data is the validator). The plate drag dominates radiation by
+  ~2 orders of magnitude and kills the decay within a few periods.
+- **Cross-DOF** max |xi_k| (k != heave) = **9.4e-13** (yaw;
+  others ~1e-17), i.e. numerical-noise level — the body is
+  effectively axisymmetric in heave. Band asserted from the
+  measurement (< 9.4e-12) per instruction, not the README's
+  1e-11 (which would also have passed).
+
+Artifacts: `results/decay_bem_only.csv`,
+`results/decay_bem_morison.csv`, `results/equilibrium.json`,
+`results/summary.md`, `results/figures/{heave_decay,
+decay_envelope_log, cross_dof_silence}.png`.
+
+## 7. Cross-references
+
+- M7.5 closure: `docs/m7.5-reader-hygiene-closure.md` (§3.3/§3.4
+  buoyancy correction, §7 resumption plan).
+- Terminal gate: `tests/validation/test_m7_5_terminal_gate.py`
+  (the three pre-flight failure classes pinned in-suite).
+- Buoyancy-interpretation correction on main: commit `907a2b2`.

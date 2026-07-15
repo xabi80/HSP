@@ -1,4 +1,31 @@
-"""Fix path (2a) -- correct the heave-plate panel normals in the GDF.
+"""DEPRECATED 2026-07-03 -- superseded by floatsim.hydro.mesh_hygiene.
+
+Retired at M7.5 resumption. This script's z-band + radius +
+|n_z| > 0.9 heuristic fixed 192 of the 216 misoriented panels on the
+ORIGINAL GDF; the 24 outer-edge strip panels were outside its filter
+and remained inward-facing in this script's output
+(``test2_spar_fin.gdf`` at commit 42e6d80). Capytaine's ``A_inf(heave)``
+calculation was insensitive to the missing 24 strips (tier-2 volume
+delta of 1.9% -- see closure doc §3.3), which is why the study's
+Pre-flight 1 verification passed despite the topological deficiency.
+
+The M7.5 PR3 utility ``floatsim.hydro.mesh_hygiene`` detects and can
+auto-fix all 216 panels via per-panel ray-parity (strict superset of
+this script's coverage) and produces ``test2_spar_fin_fullfix.gdf``
+via ``studies/spar-fin-decay/prepare_mesh.py``. See:
+
+  - ``docs/m7.5-reader-hygiene-closure.md`` §3.4 (deficiency
+    quantified);
+  - ``studies/spar-fin-decay/prepare_mesh.py`` (replacement workflow);
+  - ``tests/validation/test_m7_5_terminal_gate.py`` (in-suite gate on
+    the same fixture).
+
+This script is retained as an audit-trail artifact of the pre-M7.5
+study workflow. Do not invoke; do not extend.
+
+--- Original docstring (pre-deprecation) below ---
+
+Fix path (2a) -- correct the heave-plate panel normals in the GDF.
 
 Per Xabier's 2026-MM-DD decision and STEP-A-FINDING.md (disposition
 (d), commit 064d630): the GDF mesh has reversed normals on the
