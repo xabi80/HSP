@@ -167,9 +167,14 @@ class VolumeReport:
     ----------
     signed_volume
         Divergence-theorem sum over all panels as-stored,
-        divided by 6. Positive for a mesh whose panels are
-        collectively outward-oriented; sign-flipped or
-        anomalously small for a mesh with reversed panels.
+        divided by 6. This is the **total enclosed volume of
+        the closed mesh** (the displacement if the body were
+        fully submerged), NOT the displaced volume at a
+        waterline. For displaced volume at a free surface,
+        clip the mesh at the waterline plane first. Positive
+        for a mesh whose panels are collectively
+        outward-oriented; sign-flipped or anomalously small
+        for a mesh with reversed panels.
     displaced_mass
         ``rho * signed_volume``. Physical if the mesh is
         correctly oriented and represents a solid displacement

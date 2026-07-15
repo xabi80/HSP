@@ -1033,9 +1033,26 @@ body mass `28.67 kg`):
 Pairwise `|ΔV|/V(CORRECTED)`: ORIG-vs-CORR = `0.82%`,
 FULLFIX-vs-CORR = `1.92%`. The `+40%` residual is
 mesh-buoyancy-vs-body-mass **reserve buoyancy**, not a
-mismatch to close — the meshed waterline displaces ~40.1 kg
-against a 28.67 kg body. Documented so PR4 spar-fin
-re-verification does not open this as a bug: it is a
+mismatch to close.
+
+**Correction (2026-07-04, study resumption).**
+`check_hydrostatic_volume` integrates the **full closed
+mesh** — it returns the displacement-*if-fully-submerged*
+(~40.9 kg), the genuine reserve buoyancy. The earlier phrase
+"the meshed waterline displaces ~40.1 kg against a 28.67 kg
+body" was a **misinterpretation**: the tier-2 number is not
+the waterline displacement. Measured at the design waterline
+(`z = 0`), the fullfix mesh displaces only **24.47 kg**
+(manual z-clip and Capytaine `immersed_part()` agree to 6
+sig figs) — *less* than the 28.67 kg body — so the
+free-floating buoy sinks **~0.185 m** to balance
+(`dz = (M − m_disp)/(ρ·A_wp)`, `A_wp = π·0.0841²`); true
+unmoored draft ≈ 1.28 m. The `+40%` figure is correct as a
+reserve-buoyancy / fully-submerged number; it is simply not
+a waterline balance. See
+`studies/spar-fin-decay/waterline_balance.py` and the
+STEP-A-FINDING.md resumption addendum. Documented so the
+resumption does not open this as a bug: it is a
 fixture property.
 
 **Open-boundary false-negative.** The fixture has 96 open
