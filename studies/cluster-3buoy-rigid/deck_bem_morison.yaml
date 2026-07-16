@@ -1,0 +1,51 @@
+# 3-buoy rigid-cluster heave decay -- BEM + Morison deck.
+#
+# As deck_bem_only.yaml, plus a single degenerate Morison heave-plate
+# element for the whole cluster. FloatSim has no disk element; the
+# cluster plate drag is modelled as one horizontal Morison cylinder
+# with projected area D*L = 3 * 0.1452 = 0.4356 m^2 and Cd = 5.0 on the
+# cluster axis at the plate depth. For pure heave of a rigid symmetric
+# body this is EXACTLY equivalent to three offset elements (each
+# 0.1452 m^2): the three vertical drag forces sum, and being on a
+# symmetric ring they produce zero net moment. include_inertia=false
+# (the BEM already carries the added-mass / FK inertia).
+
+simulation:
+  duration: 50.0
+  dt: 0.01
+  integrator: generalized_alpha
+  spectral_radius_inf: 0.9
+  retardation_memory: 30.0
+  ramp_duration: 0.0
+  skip_static_equilibrium: false
+
+environment:
+  water_depth: 200.0
+  water_density: 1025.0
+  gravity: 9.81
+
+bodies:
+  - name: cluster3
+    reference_point: [0.0, 0.0, -0.9889]
+    mass: 98.01
+    inertia:
+      Ixx: 113.294
+      Iyy: 113.294
+      Izz: 22.844
+    hydro_database:
+      format: capytaine
+      path: ./composite_bem.nc
+      body_index: 0
+    drag_elements:
+      - type: morison_member          # cluster heave plate (3x single, on-axis)
+        node_a: [-0.43, 0.0, -1.45]
+        node_b: [0.43, 0.0, -1.45]
+        diameter: 0.5065               # D*L = 0.4356 m^2 with L = 0.86 m
+        Cd: 5.0
+        Ca: 0.0
+        include_inertia: false
+    initial_conditions:
+      position: [0.0, 0.0, 0.10, 0.0, 0.0, 0.0]
+      velocity: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+connections: []

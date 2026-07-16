@@ -1,0 +1,43 @@
+# 3-buoy rigid-cluster heave decay -- BEM-only deck.
+#
+# Composite single rigid body: three spar-fin fullfix hulls on a 0.5 m
+# circle (120 deg apart) + a 12 kg dry arm structure. Config record;
+# the study hand-assembles the Cummins system (cluster_study_common.py)
+# because build_system cannot pass the small-body Item-25 kernel gate.
+#
+# reference_point = composite CoG (z = -0.9889 m in the cluster mesh
+# frame; waterline at z=0). Heave is reference-independent so this is
+# exact for the heave-only study. Inertia is about the composite CoG
+# (Step 2, cluster_balance.py).
+
+simulation:
+  duration: 50.0
+  dt: 0.01
+  integrator: generalized_alpha
+  spectral_radius_inf: 0.9
+  retardation_memory: 30.0
+  ramp_duration: 0.0
+  skip_static_equilibrium: false
+
+environment:
+  water_depth: 200.0
+  water_density: 1025.0
+  gravity: 9.81
+
+bodies:
+  - name: cluster3
+    reference_point: [0.0, 0.0, -0.9889]
+    mass: 98.01
+    inertia:                       # about the composite CoG
+      Ixx: 113.294
+      Iyy: 113.294
+      Izz: 22.844
+    hydro_database:
+      format: capytaine
+      path: ./composite_bem.nc
+      body_index: 0
+    initial_conditions:
+      position: [0.0, 0.0, 0.10, 0.0, 0.0, 0.0]   # +0.10 m heave from equilibrium
+      velocity: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+connections: []

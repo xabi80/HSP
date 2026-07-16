@@ -1,0 +1,13 @@
+{
+  "converged": true,
+  "z_eq_m": 0.0,
+  "xi_eq": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "gate_pass": true
+}
