@@ -166,14 +166,20 @@ def main() -> None:
 ## Headline: hydrodynamic interaction
 
 **Interaction ratio R(inf) = A33_composite / (3 x A33_single) =
-{R:.4f}** (+{(R-1)*100:.2f}% on heave added mass). R(omega_n) =
-{inter['R_omega_n']:.4f}. The radiation-damping interaction is
-slightly destructive: B33_composite / (3 x B33_single) at omega_n =
-{inter['B33_ratio_omega_n']:.4f} (< 3, i.e. -{(1-inter['B33_ratio_omega_n']/3)*100:.1f}%).
-The three hulls sit ~0.87 m apart (0.5 m cluster radius) -- far
-relative to the 0.215 m plate radius -- so hydrodynamic coupling is
-weak but measurable and, per the prior band [1.00, 1.20], at the low
-end.
+{R:.4f}** (+{(R-1)*100:.2f}% on heave added mass; near-field, weak).
+R(omega_n) = {inter['R_omega_n']:.4f}.
+
+**Radiation damping interacts strongly and CONSTRUCTIVELY:**
+B33_composite / (3 x B33_single) at omega_n =
+{inter['B33_ratio_omega_n']:.4f} (>> 1), i.e.
+B33_composite / B33_single = {3*inter['B33_ratio_omega_n']:.2f}x,
+approaching the coherent-radiation ceiling N^2 = 9 for N = 3 in-phase
+sources. A rigid cluster heaves in phase; at sub-wavelength spacing the
+three radiated fields add coherently, so radiated power scales toward
+N^2. Added mass (near-field) sees the hulls as independent; radiation
+damping (far-field) sees them as one coherent source.
+See the Conclusions / Cross-DOF closeout section for the corrected
+interpretation and the decay-zeta consequence.
 
 **Period effect of the interaction:**
 

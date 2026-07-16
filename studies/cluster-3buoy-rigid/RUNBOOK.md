@@ -32,13 +32,19 @@ Item-25 kernel gate — same reason as the single-buoy study.
 
 ## Headline result: hydrodynamic interaction
 
-- **R(∞) = A33_composite / (3·A33_single) = 1.0113** (+1.1% heave
-  added mass). R(ω_n) = 1.0106. Radiation damping slightly
-  destructive: B33 ratio at ω_n = 2.894 (−3.5% vs 3×).
+- **Added mass barely interacts (near-field): R(∞) = A33_composite /
+  (3·A33_single) = 1.0113** (+1.1%). R(ω_n) = 1.0106.
+- **Radiation damping interacts strongly and CONSTRUCTIVELY
+  (far-field coherent): B33_composite / (3·B33_single) = 2.894**, i.e.
+  B33_composite/B33_single = 8.68× — toward the coherent ceiling
+  N²=9 for N=3 in-phase sources. (Corrects the original commit's
+  "slightly destructive −3.5%" mislabel — 2.894 is the composite /
+  3×single ratio itself, i.e. strongly constructive.)
 - Interaction lengthens the heave period by **+6.85 ms (+0.22%)**:
   T_n 3.10609 s (with) vs 3.09924 s (3× single, no interaction).
-- Weak coupling is expected: hull spacing ~0.87 m is ~4× the plate
-  radius.
+- Decay radiation damping rose 2.58× vs the single buoy but is still
+  ~86× below the Morison viscous damping, so the tank-test Cd
+  calibration dominates decay-rate fidelity for the 12-buoy model.
 
 ## Validation
 
