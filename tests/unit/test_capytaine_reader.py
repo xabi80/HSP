@@ -335,3 +335,118 @@ def test_dispatcher_routes_capytaine_format_to_read_capytaine() -> None:
     rho = 1025.0
     a = (2.0 / 3.0) * np.pi * rho * 1.0**3
     np.testing.assert_allclose(np.diag(db.A_inf)[:3], np.full(3, a), rtol=1.0e-12)
+
+
+# ---------------------------------------------------------------------------
+# M8 PR2: multi-body ingestion (plan Q2 lock)
+# ---------------------------------------------------------------------------
+#
+# Detection keys on the number of DISTINCT body prefixes, not on prefix
+# presence: a single-body Capytaine run with a *named* body emits
+# ``spar_fin__Heave``-style labels and is still N = 1, which must produce a
+# database byte-identical to the unlabeled path.
+
+_FIXTURE_MULTIBODY = (
+    Path(__file__).resolve().parents[2]
+    / "studies"
+    / "cluster-3buoy-rigid"
+    / "capytaine_multibody_18dof.nc"
+)
+
+
+def _prefix_dof_coords(src: Path, dst: Path, prefix: str) -> None:
+    """Copy a single-body Capytaine NetCDF, prefixing its DOF labels.
+
+    Decodes byte-string coords first (the fixtures store ``b'Surge'``),
+    using the reader's own decoder so the synthesised dataset matches
+    what a real named-body Capytaine run emits.
+    """
+    from floatsim.hydro.readers.capytaine import _decode_string_coords
+
+    with xr.open_dataset(src) as ds:
+        ds = _decode_string_coords(ds.load())
+    ren = {
+        c: [f"{prefix}__{v!s}" for v in ds[c].values]
+        for c in ("radiating_dof", "influenced_dof")
+        if c in ds.coords
+    }
+    ds.assign_coords(ren).to_netcdf(dst)
+
+
+def test_named_single_body_is_n1_and_byte_identical(tmp_path: Path) -> None:
+    """N=1 WITH labels must equal the unlabeled path bit-for-bit.
+
+    This is the PR2 Step-C gate: it isolates the reader from the assembly,
+    so a phase/sign convention error shows up as a byte difference rather
+    than being absorbed on both sides of a condensation identity.
+    """
+    labelled = tmp_path / "labelled_simple.nc"
+    _prefix_dof_coords(_FIXTURE_SIMPLE, labelled, "spar_fin")
+
+    plain = read_capytaine(_FIXTURE_SIMPLE)
+    named = read_capytaine(labelled)
+
+    assert named.n_bodies == 1
+    assert named.body_labels is None, (
+        "a single distinct prefix must collapse to the LEGACY construction "
+        "(body_labels None), not an N=1 labelled database"
+    )
+    for name in ("A", "B", "A_inf", "C", "RAO"):
+        np.testing.assert_array_equal(
+            getattr(named, name),
+            getattr(plain, name),
+            err_msg=f"{name} differs between labelled-N=1 and unlabeled paths",
+        )
+    np.testing.assert_array_equal(named.omega, plain.omega)
+    np.testing.assert_array_equal(named.heading_deg, plain.heading_deg)
+
+
+def test_multibody_fixture_ingests_with_labels() -> None:
+    hdb = read_capytaine(_FIXTURE_MULTIBODY)
+    assert hdb.n_bodies == 3
+    assert hdb.body_labels == ("buoy1", "buoy2", "buoy3")
+    n_w = hdb.n_frequencies
+    assert hdb.A.shape == (18, 18, n_w)
+    assert hdb.B.shape == (18, 18, n_w)
+    assert hdb.A_inf.shape == (18, 18)
+    assert hdb.C.shape == (18, 18)
+    assert hdb.RAO.shape == (18, n_w, hdb.n_headings)
+
+
+def test_multibody_reciprocity_residual_matches_measurement() -> None:
+    """A_inf reciprocity reproduces the Phase-1 measurement (MD, 1.08e-4).
+
+    Reciprocity is a genuine physical invariant -- unlike the M8
+    condensation gates, it is NOT a construction identity.
+    """
+    hdb = read_capytaine(_FIXTURE_MULTIBODY)
+    resid = float(np.max(np.abs(hdb.A_inf - hdb.A_inf.T)))
+    assert resid == pytest.approx(
+        0.0, abs=1e-13
+    ), "post-construction A_inf must be symmetric (full-matrix symmetrization)"
+    pre = float(hdb.metadata["symmetrization_max_residual_A_inf"])
+    assert pre / float(np.max(np.abs(hdb.A_inf))) == pytest.approx(1.08e-4, rel=0.05)
+
+
+def test_multibody_heave_block_reproduces_phase1_values() -> None:
+    """The 3x3 heave block matches the Phase-1 diagnostic exactly."""
+    hdb = read_capytaine(_FIXTURE_MULTIBODY)
+    heave_idx = [2, 8, 14]  # buoyK Heave, canonical order within each block
+    blk = hdb.A_inf[np.ix_(heave_idx, heave_idx)]
+    np.testing.assert_allclose(np.diag(blk), 21.1209, rtol=1e-4)
+    off = blk[~np.eye(3, dtype=bool)]
+    np.testing.assert_allclose(off, 0.1185, rtol=1e-3)
+    assert float(blk.sum()) == pytest.approx(64.0738, rel=1e-5)
+
+
+def test_multibody_mixed_dof_names_rejected(tmp_path: Path) -> None:
+    """Every body must carry the full canonical six DOF names."""
+    bad = tmp_path / "bad_multibody.nc"
+    with xr.open_dataset(_FIXTURE_MULTIBODY) as ds:
+        ds = ds.load()
+    labels = [str(v) for v in ds["radiating_dof"].values]
+    labels[0] = "buoy1__Bogus"
+    ds = ds.assign_coords(radiating_dof=labels, influenced_dof=labels)
+    ds.to_netcdf(bad)
+    with pytest.raises(ValueError, match="rigid-body names"):
+        read_capytaine(bad)

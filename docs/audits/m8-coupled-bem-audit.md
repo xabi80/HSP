@@ -102,3 +102,64 @@ change under `floatsim/` or `tests/` is a **docstring-only** edit to
 `floatsim/hydro/mesh_hygiene.py` (`907a2b2`, `VolumeReport.signed_volume`
 clarification; verified: every changed line is inside the docstring).
 The baseline therefore still applies without a re-run.
+
+---
+
+# PR2 Step A — excitation phase-convention audit
+
+**Per plan PR2 Step A** (the M6 Item-16 JAxCd-class lesson: a hidden
+convention factor is invisible until real data exercises it). Audited
+before the multi-body reader path was written, against the real
+spar-fin Capytaine output (`studies/spar-fin-decay/capytaine_bem.nc`).
+
+## Convention under test
+
+| | convention |
+|---|---|
+| Capytaine (native) | `x(t) = Re[X e^{-i omega t}]` — **lags** |
+| FloatSim `HydroDatabase.RAO` | `F(t) = Re[X A_wave e^{+i omega t}]` — **leads** |
+| translation | `RAO_floatsim = conj(F_capytaine)` — `capytaine.py`, `_extract_excitation` |
+
+## Measured results
+
+| check | result | reads |
+|---|---|---|
+| conjugation applied exactly | `max\|RAO − conj(raw)\| = 0.0` | translation is exact, not approximate |
+| conjugation is not a no-op | `max\|RAO − raw\| = 1.2414` | the conj genuinely fires (a symmetric-phase fixture could hide this) |
+| **no hidden magnitude factor** | `\|RAO\|/\|raw\|` = **1.0** (min = max = 1.0) | pure phase operation; no rho/g/area scaling sneaks in |
+| **physical magnitude guard** | long-wave heave `\|F\|/C33` = **0.9977** at omega = 0.1, rising toward 1 as omega -> 0 | independent physics check |
+
+The last row is the Item-16-class guard. In the long-wave limit the
+heave excitation per unit wave amplitude tends to `rho g A_wp` (the
+wave lifts the body hydrostatically), which is exactly `C33`. Measuring
+`0.9977` confirms **no missing rho, g, or waterplane-area factor**
+anywhere in the chain — the failure mode that Item 16 recorded.
+
+## Consequence for the multi-body path (PR2 Step B)
+
+`_extract_radiation` and `_extract_excitation` are **permutation-length
+generic** — they index with `dof_perm` and never hardcode 6. The
+multi-body path therefore reuses them unchanged, with a `6N`
+permutation. This is deliberate: **the conjugation cannot diverge
+between the single-body and multi-body paths, because there is only one
+copy of it.** Only three functions needed generalizing
+(`_resolve_dof_permutation`, `_extract_hydrostatic`, `_resolve_a_inf`),
+none of which touch phase.
+
+## Standing finding — pre-existing `mypy --strict` errors
+
+`mypy --strict floatsim/hydro/readers/capytaine.py` reports **4 errors,
+all pre-existing and unchanged by M8** (verified by stashing the PR2
+diff and re-running: identical set, the capytaine one merely
+line-shifted 446 -> 516 by added code):
+
+- `readers/wamit.py:228,229,230` — `**dict[str, float]` passed where
+  `bool` expected (3 errors).
+- `readers/capytaine.py` `_resolve_a_inf` — `Returning Any from
+  function declared to return ndarray[float64]` (1 error).
+
+M8 introduces **zero** new type errors. These are **not** fixed here:
+CLAUDE.md §9 forbids mixing unrelated refactors into a feature PR, and
+CLAUDE.md §3 nominally requires `mypy --strict` to pass on `floatsim/`,
+so this is a genuine pre-existing debt. Recorded here rather than
+silently absorbed; it wants its own `fix-` branch.

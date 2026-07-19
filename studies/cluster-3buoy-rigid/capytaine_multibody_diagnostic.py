@@ -52,8 +52,19 @@ def main() -> None:
                              water_depth=float("inf"), rho=cc.RHO, g=cc.G)
         for w in omegas for d in dofs
     ]
-    print(f"  radiation problems: {len(problems)} "
-          f"({len(dofs)} DOF x {len(omegas)} omega)")
+    # Diffraction at the finite omegas so the saved fixture is a COMPLETE
+    # multi-body BEM dataset (radiation + excitation) -- that is what a real
+    # B4 reader input looks like, and read_capytaine requires excitation.
+    # The radiation problems are unchanged, so the reciprocity measurement
+    # (MD, 1.08e-4) reproduces exactly.
+    problems += [
+        cpt.DiffractionProblem(body=allb, omega=float(w), wave_direction=0.0,
+                               water_depth=float("inf"), rho=cc.RHO, g=cc.G)
+        for w in _OMEGAS
+    ]
+    print(f"  problems: {len(problems)} "
+          f"({len(dofs)} DOF x {len(omegas)} omega radiation + "
+          f"{len(_OMEGAS)} diffraction)")
     t0 = time.perf_counter()
     results = cpt.BEMSolver().solve_all(problems, n_jobs=1)
     dt = time.perf_counter() - t0

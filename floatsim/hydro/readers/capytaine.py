@@ -102,6 +102,10 @@ _PathLike = str | Path
 
 # Capytaine's canonical 6-DOF labels. Case-insensitive comparison;
 # the order in which they appear on disk is arbitrary.
+# Capytaine joins the body name to the DOF name with a double underscore
+# when several bodies are combined into one problem ("buoy1__Heave").
+_BODY_DOF_SEPARATOR: Final[str] = "__"
+
 _REQUIRED_DOF_NAMES: Final[tuple[str, ...]] = (
     "surge",
     "sway",
@@ -158,7 +162,7 @@ def read_capytaine(
     ds = _merge_split_complex(ds)
     _check_required_dims(ds)
 
-    dof_perm = _resolve_dof_permutation(ds)
+    dof_perm, body_labels = _resolve_dof_permutation(ds)
 
     omega_all = np.asarray(ds["omega"].values, dtype=np.float64)
     finite_mask = np.isfinite(omega_all)
@@ -213,6 +217,10 @@ def read_capytaine(
         # See HydroDatabase docstring and floatsim/hydro/hydrostatics.py.
         C_source="buoyancy_only",
         metadata=_collect_metadata(ds, p),
+        # None for single-body (including a lone *named* body), so the
+        # legacy construction is taken and the database is byte-identical
+        # to the unlabeled path (plan Q2).
+        body_labels=body_labels,
     )
 
 
@@ -282,32 +290,88 @@ def _check_required_dims(ds: xr.Dataset) -> None:
         raise ValueError("Capytaine dataset missing required variable 'radiation_damping'.")
 
 
-def _resolve_dof_permutation(ds: xr.Dataset) -> NDArray[np.int_]:
-    """Return a 6-vector mapping disk DOF order -> FloatSim DOF order.
+def _split_dof_label(label: str) -> tuple[str | None, str]:
+    """Split a Capytaine DOF label into ``(body_prefix, dof_name)``.
 
-    Capytaine accepts arbitrary user-defined DOF names; FloatSim's
-    canonical order is ``(surge, sway, heave, roll, pitch, yaw)``.
-    Comparison is case-insensitive. ``radiating_dof`` and
-    ``influenced_dof`` must agree on the same six labels (Capytaine
-    enforces this by construction for rigid-body problems).
+    Capytaine prefixes DOF names with the body name and a double
+    underscore when several bodies are combined (``buoy1__Heave``); a
+    lone body carries the bare DOF name (``Heave``). Splitting on the
+    LAST ``"__"`` keeps body names that themselves contain ``"__"``
+    intact. The DOF name is lower-cased for canonical comparison; the
+    body prefix keeps its original case (it is user-facing identity).
     """
-    rad_disk = [str(s).lower() for s in ds["radiating_dof"].values]
-    inf_disk = [str(s).lower() for s in ds["influenced_dof"].values]
+    if _BODY_DOF_SEPARATOR in label:
+        prefix, _, dof = label.rpartition(_BODY_DOF_SEPARATOR)
+        return prefix, dof.lower()
+    return None, label.lower()
 
-    if sorted(rad_disk) != sorted(inf_disk):
+
+def _resolve_dof_permutation(
+    ds: xr.Dataset,
+) -> tuple[NDArray[np.int_], tuple[str, ...] | None]:
+    """Map disk DOF order -> FloatSim order; detect the body count.
+
+    Returns ``(perm, body_labels)``:
+
+    - ``perm`` reorders the on-disk DOF axis into FloatSim's canonical
+      order ``(surge, sway, heave, roll, pitch, yaw)``, repeated per
+      body for the multi-body case (body ``k`` occupying
+      ``[6k : 6k+6]``).
+    - ``body_labels`` is ``None`` for the single-body case and a tuple
+      of body names for the multi-body case.
+
+    Detection keys on the number of **distinct body prefixes**, not on
+    prefix presence (M8 plan Q2 lock): a single-body Capytaine run with
+    a *named* body emits ``spar_fin__Heave``-style labels but is still
+    ``N = 1``, and must take the legacy construction so its database is
+    byte-identical to the unlabeled path. Bodies are ordered by first
+    appearance on disk; ``body_labels`` records that order, and
+    downstream assembly maps deck bodies to blocks by label rather than
+    by position (plan Q5).
+    """
+    rad_raw = [str(s) for s in ds["radiating_dof"].values]
+    inf_raw = [str(s) for s in ds["influenced_dof"].values]
+
+    if sorted(s.lower() for s in rad_raw) != sorted(s.lower() for s in inf_raw):
         raise ValueError(
             "radiating_dof and influenced_dof label sets disagree: "
             f"{ds['radiating_dof'].values!r} vs {ds['influenced_dof'].values!r}."
         )
-    if sorted(rad_disk) != sorted(_REQUIRED_DOF_NAMES):
-        raise ValueError(
-            f"Capytaine DOF labels must be the six rigid-body names "
-            f"(case-insensitive): {_REQUIRED_DOF_NAMES}. Found "
-            f"{ds['radiating_dof'].values!r}."
-        )
 
-    perm = np.asarray([rad_disk.index(name) for name in _REQUIRED_DOF_NAMES], dtype=np.intp)
-    return perm
+    parsed = [_split_dof_label(s) for s in rad_raw]
+    prefixes = [p for p, _ in parsed]
+    if any(p is None for p in prefixes) and not all(p is None for p in prefixes):
+        raise ValueError(
+            "Capytaine DOF labels mix body-prefixed and bare names "
+            f"({ds['radiating_dof'].values!r}); a dataset must use one or "
+            "the other."
+        )
+    bodies = list(dict.fromkeys(p for p in prefixes if p is not None))
+
+    # --- single body (bare names, or exactly one distinct prefix) ---
+    if len(bodies) <= 1:
+        dof_names = [d for _, d in parsed]
+        if sorted(dof_names) != sorted(_REQUIRED_DOF_NAMES):
+            raise ValueError(
+                f"Capytaine DOF labels must be the six rigid-body names "
+                f"(case-insensitive): {_REQUIRED_DOF_NAMES}. Found "
+                f"{ds['radiating_dof'].values!r}."
+            )
+        perm = np.asarray([dof_names.index(name) for name in _REQUIRED_DOF_NAMES], dtype=np.intp)
+        return perm, None
+
+    # --- multi-body: 6N permutation, blocks in first-appearance order ---
+    index: list[int] = []
+    for body in bodies:
+        block = {dof: i for i, (p, dof) in enumerate(parsed) if p == body}
+        if sorted(block) != sorted(_REQUIRED_DOF_NAMES):
+            raise ValueError(
+                f"Capytaine body {body!r} must carry the six rigid-body names "
+                f"(case-insensitive): {_REQUIRED_DOF_NAMES}. Found "
+                f"{sorted(block)}."
+            )
+        index.extend(block[name] for name in _REQUIRED_DOF_NAMES)
+    return np.asarray(index, dtype=np.intp), tuple(bodies)
 
 
 # ---------------------------------------------------------------------------
@@ -389,11 +453,12 @@ def _extract_hydrostatic(
     only -- gravity ``m*g*z_G`` on roll/pitch is the body's job
     (same convention as WAMIT's ``.hst``).
     """
+    n_dof = int(dof_perm.size)
     if "hydrostatic_stiffness" not in ds.data_vars:
-        return np.zeros((6, 6), dtype=np.float64)
+        return np.zeros((n_dof, n_dof), dtype=np.float64)
     raw = np.asarray(ds["hydrostatic_stiffness"].values, dtype=np.float64)
-    if raw.shape != (6, 6):
-        raise ValueError(f"hydrostatic_stiffness must be 6x6; got shape {raw.shape}.")
+    if raw.shape != (n_dof, n_dof):
+        raise ValueError(f"hydrostatic_stiffness must be {n_dof}x{n_dof}; got shape {raw.shape}.")
     perm_matrix = raw[dof_perm, :][:, dof_perm]
     # Symmetrization moved to HydroDatabase.__post_init__ per M7.5 PR2
     # (Q1 lock). Reader passes the permuted matrix directly; the
@@ -427,9 +492,10 @@ def _resolve_a_inf(
         a_inf_disk = raw[inf_mask, :, :][0]
         a_inf = a_inf_disk[dof_perm, :][:, dof_perm]
     elif a_inf_arg is not None:
+        n_dof = int(dof_perm.size)
         a_inf = np.asarray(a_inf_arg, dtype=np.float64)
-        if a_inf.shape != (6, 6):
-            raise ValueError(f"a_inf must have shape (6, 6); got {a_inf.shape}.")
+        if a_inf.shape != (n_dof, n_dof):
+            raise ValueError(f"a_inf must have shape ({n_dof}, {n_dof}); got {a_inf.shape}.")
     else:
         raise ValueError(
             "Capytaine dataset has no omega=inf sample, and no 'a_inf' argument was "
