@@ -19,6 +19,24 @@ Shape conventions (single body, Phase 1):
     reference_point (3,)            float64, point in inertial frame about which
                                     BEM coefficients are given
 
+Multi-body (M8 PR1, plan Q1 lock)
+---------------------------------
+``body_labels: tuple[str, ...] | None`` selects the shape contract:
+
+- ``None`` (default) -- **legacy single-body path**. The ``6``-DOF
+  shapes above apply and the validating code is the pre-M8 code
+  verbatim, so legacy behaviour is bit-identical *by construction*,
+  not merely by test.
+- a tuple of ``N`` unique labels -- **N-body path**. Every ``6`` above
+  becomes ``6N`` (``A`` is ``(6N, 6N, n_w)``, ``RAO`` is
+  ``(6N, n_w, n_h)``, etc.). Labels name the bodies in DOF-block order:
+  body ``k`` occupies rows/cols ``[6k : 6k+6]``.
+
+``n_bodies`` reads ``len(body_labels)`` and never infers from array
+shape. Downstream assembly maps deck bodies to blocks **by label**,
+never positionally (plan Q5) -- block misalignment otherwise produces
+dimensionally valid, smoke-test-passing, wrong answers.
+
 Phase convention -- the **+i convention** is mandatory for ``RAO``.
 The stored complex coefficient ``X = RAO[dof, omega, heading]`` is such
 that the time-domain wave excitation force at the body is::
@@ -37,8 +55,11 @@ post-mortem at ``docs/post-mortems/m6-epilogue-wave-force-convention-bug.md``
 records the audit-trail.
 
 DOF order throughout is ``(surge, sway, heave, roll, pitch, yaw)`` — see
-ARCHITECTURE.md §3.3. Multi-body extension (block-diagonal with off-diagonal
-coupling when the BEM case was multi-body) is deferred to Milestone 4.
+ARCHITECTURE.md §3.3, repeating per body on the N-body path. The
+coupled multi-body extension (full ``6N x 6N`` with off-diagonal
+body-body coupling) arrives in Milestone 8; this PR (M8 PR1) delivers
+the data model, with the reader, coupled kernels, and excitation
+following in PR2-PR4.
 """
 
 from __future__ import annotations
@@ -160,6 +181,7 @@ class HydroDatabase:
     reference_point: NDArray[np.floating]
     C_source: CSourceLiteral
     metadata: dict[str, str] = field(default_factory=dict)
+    body_labels: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         # --- omega grid ---
@@ -183,17 +205,44 @@ class HydroDatabase:
         n_w = self.omega.size
         n_h = self.heading_deg.size
 
+        # --- body labels (M8 PR1; plan Q1 lock) ---
+        # ``body_labels is None`` selects the LEGACY single-body path: the
+        # shape checks in that branch are the pre-M8 code verbatim, so the
+        # legacy behaviour is bit-identical *by construction* rather than
+        # by test. A non-None tuple selects the N-body path (n_dof = 6N).
+        if self.body_labels is not None:
+            if len(self.body_labels) == 0:
+                raise ValueError("body_labels must be non-empty when provided")
+            if len(set(self.body_labels)) != len(self.body_labels):
+                raise ValueError(f"body_labels must be unique; got {self.body_labels!r}")
+
         # --- matrix shapes ---
-        if self.A.shape != (6, 6, n_w):
-            raise ValueError(f"A must have shape (6, 6, {n_w}); got {self.A.shape}")
-        if self.B.shape != (6, 6, n_w):
-            raise ValueError(f"B must have shape (6, 6, {n_w}); got {self.B.shape}")
-        if self.A_inf.shape != (6, 6):
-            raise ValueError(f"A_inf must have shape (6, 6); got {self.A_inf.shape}")
-        if self.C.shape != (6, 6):
-            raise ValueError(f"C must have shape (6, 6); got {self.C.shape}")
-        if self.RAO.shape != (6, n_w, n_h):
-            raise ValueError(f"RAO must have shape (6, {n_w}, {n_h}); got {self.RAO.shape}")
+        if self.body_labels is None:
+            # LEGACY PATH -- pre-M8 code, untouched.
+            if self.A.shape != (6, 6, n_w):
+                raise ValueError(f"A must have shape (6, 6, {n_w}); got {self.A.shape}")
+            if self.B.shape != (6, 6, n_w):
+                raise ValueError(f"B must have shape (6, 6, {n_w}); got {self.B.shape}")
+            if self.A_inf.shape != (6, 6):
+                raise ValueError(f"A_inf must have shape (6, 6); got {self.A_inf.shape}")
+            if self.C.shape != (6, 6):
+                raise ValueError(f"C must have shape (6, 6); got {self.C.shape}")
+            if self.RAO.shape != (6, n_w, n_h):
+                raise ValueError(f"RAO must have shape (6, {n_w}, {n_h}); got {self.RAO.shape}")
+        else:
+            # N-BODY PATH -- n_dof from the label count, never from shape
+            # arithmetic (a bare 6N x 6N array cannot be split unambiguously).
+            n_d = 6 * len(self.body_labels)
+            if self.A.shape != (n_d, n_d, n_w):
+                raise ValueError(f"A must have shape ({n_d}, {n_d}, {n_w}); got {self.A.shape}")
+            if self.B.shape != (n_d, n_d, n_w):
+                raise ValueError(f"B must have shape ({n_d}, {n_d}, {n_w}); got {self.B.shape}")
+            if self.A_inf.shape != (n_d, n_d):
+                raise ValueError(f"A_inf must have shape ({n_d}, {n_d}); got {self.A_inf.shape}")
+            if self.C.shape != (n_d, n_d):
+                raise ValueError(f"C must have shape ({n_d}, {n_d}); got {self.C.shape}")
+            if self.RAO.shape != (n_d, n_w, n_h):
+                raise ValueError(f"RAO must have shape ({n_d}, {n_w}, {n_h}); got {self.RAO.shape}")
         if self.reference_point.shape != (3,):
             raise ValueError(
                 f"reference_point must have shape (3,); got {self.reference_point.shape}"
@@ -269,6 +318,18 @@ class HydroDatabase:
     def n_headings(self) -> int:
         """Number of wave-heading samples in the RAO grid."""
         return int(self.heading_deg.size)
+
+    @property
+    def n_bodies(self) -> int:
+        """Number of bodies this database describes.
+
+        Derived from ``body_labels`` (``1`` on the legacy single-body
+        path where it is ``None``) and **never** from array-shape
+        arithmetic: a bare ``6N x 6N`` block cannot be split into bodies
+        unambiguously, and any future generalized/flexible modes would
+        make a shape-derived count silently wrong. See M8 plan Q1.
+        """
+        return 1 if self.body_labels is None else len(self.body_labels)
 
     @property
     def dof_order(self) -> tuple[str, ...]:

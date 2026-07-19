@@ -307,3 +307,117 @@ def test_symmetric_C_and_Ainf_always_accepted(C: np.ndarray, Ainf: np.ndarray) -
     hdb = HydroDatabase(**kw)
     np.testing.assert_allclose(hdb.C, C)
     np.testing.assert_allclose(hdb.A_inf, Ainf)
+
+
+# ---------- M8 PR1: N-body extension (body_labels) ----------
+#
+# Q1 lock (docs/m8-coupled-bem-plan.md): HydroDatabase gains
+# `body_labels: tuple[str, ...] | None = None`.
+#   - None      -> LEGACY path, shapes (6,6,n_w) / (6,6). Existing code
+#                  untouched; bit-identical by construction.
+#   - provided  -> N = len(body_labels), shapes (6N,6N,n_w) / (6N,6N).
+# `n_bodies` derives from LABELS, never from shape arithmetic.
+
+
+def _valid_kwargs_nbody(n_bodies: int = 3, n_w: int = 5, n_h: int = 2) -> dict:
+    """Valid constructor args for an N-body (6N x 6N) database."""
+    rng = np.random.default_rng(1)
+    nd = 6 * n_bodies
+    omega = np.linspace(0.1, 3.0, n_w)
+    heading = np.linspace(0.0, 180.0, n_h)
+
+    def _sym(scale: float) -> np.ndarray:
+        m = rng.standard_normal((nd, nd)) * scale
+        return 0.5 * (m + m.T)
+
+    A = np.stack([_sym(1.0) + 10.0 * np.eye(nd) for _ in range(n_w)], axis=-1)
+    B = np.stack([_sym(0.1) + 1.0 * np.eye(nd) for _ in range(n_w)], axis=-1)
+    return {
+        "omega": omega,
+        "heading_deg": heading,
+        "A": A,
+        "B": B,
+        "A_inf": _sym(1.0) + 10.0 * np.eye(nd),
+        "C": _sym(100.0) + 1.0e3 * np.eye(nd),
+        "RAO": rng.standard_normal((nd, n_w, n_h)) + 1j * rng.standard_normal((nd, n_w, n_h)),
+        "reference_point": np.zeros(3),
+        "C_source": "full",
+        "metadata": {"source": "test-nbody"},
+        "body_labels": tuple(f"buoy{i + 1}" for i in range(n_bodies)),
+    }
+
+
+def test_nbody_construction_accepts_6N_shapes() -> None:
+    kw = _valid_kwargs_nbody(n_bodies=3)
+    hdb = HydroDatabase(**kw)
+    assert hdb.n_bodies == 3
+    assert hdb.A.shape == (18, 18, 5)
+    assert hdb.A_inf.shape == (18, 18)
+    assert hdb.RAO.shape == (18, 5, 2)
+    assert hdb.body_labels == ("buoy1", "buoy2", "buoy3")
+
+
+def test_n_bodies_derives_from_labels_not_shape() -> None:
+    """n_bodies must read len(body_labels), never infer from array shape."""
+    kw = _valid_kwargs_nbody(n_bodies=2)
+    hdb = HydroDatabase(**kw)
+    assert hdb.n_bodies == 2
+    assert len(hdb.body_labels) == 2
+
+
+def test_legacy_path_has_none_labels_and_one_body() -> None:
+    """No labels -> legacy single-body database."""
+    hdb = HydroDatabase(**_valid_kwargs())
+    assert hdb.body_labels is None
+    assert hdb.n_bodies == 1
+    assert hdb.A.shape == (6, 6, 5)
+
+
+def test_legacy_path_still_rejects_non_6x6() -> None:
+    """Without labels the (6,6,n_w) requirement is unchanged."""
+    kw = _valid_kwargs_nbody(n_bodies=2)
+    kw.pop("body_labels")
+    with pytest.raises(ValueError, match=r"A must have shape \(6, 6, "):
+        HydroDatabase(**kw)
+
+
+def test_label_count_must_match_array_shape() -> None:
+    kw = _valid_kwargs_nbody(n_bodies=3)
+    kw["body_labels"] = ("buoy1", "buoy2")  # 2 labels vs 18x18 arrays
+    with pytest.raises(ValueError, match="A must have shape"):
+        HydroDatabase(**kw)
+
+
+def test_empty_body_labels_rejected() -> None:
+    kw = _valid_kwargs_nbody(n_bodies=1)
+    kw["body_labels"] = ()
+    with pytest.raises(ValueError, match="body_labels must be non-empty"):
+        HydroDatabase(**kw)
+
+
+def test_duplicate_body_labels_rejected() -> None:
+    kw = _valid_kwargs_nbody(n_bodies=2)
+    kw["body_labels"] = ("buoy1", "buoy1")
+    with pytest.raises(ValueError, match="body_labels must be unique"):
+        HydroDatabase(**kw)
+
+
+def test_nbody_full_matrix_symmetrization_records_residuals() -> None:
+    """Full-matrix symmetrization generalizes to 6N x 6N (program Q2)."""
+    kw = _valid_kwargs_nbody(n_bodies=3)
+    kw["A"] = kw["A"].copy()
+    kw["A"][0, 5, :] += 1.0e-3  # inject a known asymmetry
+    hdb = HydroDatabase(**kw)
+    resid = float(hdb.metadata["symmetrization_max_residual_A"])
+    assert resid == pytest.approx(1.0e-3, rel=1e-6)
+    for k in range(hdb.n_frequencies):  # symmetric post-construction
+        np.testing.assert_allclose(hdb.A[..., k], hdb.A[..., k].T, atol=1e-12)
+
+
+def test_nbody_single_body_with_label_is_n1() -> None:
+    """N=1 WITH a label is legal and reports one body (Q2 detection case)."""
+    kw = _valid_kwargs_nbody(n_bodies=1)
+    hdb = HydroDatabase(**kw)
+    assert hdb.n_bodies == 1
+    assert hdb.body_labels == ("buoy1",)
+    assert hdb.A.shape == (6, 6, 5)
