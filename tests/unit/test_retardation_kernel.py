@@ -460,9 +460,7 @@ def test_asymptote_check_override_kernel_identity() -> None:
     # match its handling exactly for bit-identity.
     if omega[0] > 1.0e-12:
         omega = np.concatenate([[0.0], omega])
-        b_stack = np.concatenate(
-            [np.zeros((6, 6, 1), dtype=np.float64), b_stack], axis=2
-        )
+        b_stack = np.concatenate([np.zeros((6, 6, 1), dtype=np.float64), b_stack], axis=2)
     K_in = filon_trap_cosine(omega, b_stack, k.t)
     K_hand = (2.0 / np.pi) * K_in
 
@@ -491,9 +489,7 @@ def test_asymptote_check_override_none_is_default_behavior() -> None:
     k_default = compute_retardation_kernel(hdb, t_max=60.0, dt=0.1)
     assert isinstance(k_default, RetardationKernel)
     # Explicit None yields the same output.
-    k_none = compute_retardation_kernel(
-        hdb, t_max=60.0, dt=0.1, asymptote_check_override=None
-    )
+    k_none = compute_retardation_kernel(hdb, t_max=60.0, dt=0.1, asymptote_check_override=None)
     np.testing.assert_array_equal(k_default.K, k_none.K)
 
 
@@ -503,9 +499,7 @@ def test_asymptote_check_override_empty_string_raises() -> None:
     """
     hdb = _synthetic_hdb_fails_check_2()
     with pytest.raises(ValueError, match="empty or whitespace-only"):
-        compute_retardation_kernel(
-            hdb, t_max=60.0, dt=0.01, asymptote_check_override=""
-        )
+        compute_retardation_kernel(hdb, t_max=60.0, dt=0.01, asymptote_check_override="")
 
 
 def test_asymptote_check_override_whitespace_only_raises() -> None:
@@ -543,12 +537,246 @@ def test_asymptote_check_override_warning_emitted() -> None:
     hdb = _synthetic_hdb_fails_check_2()
     rationale = "spar-fin small-body geometry; see ITEM25-SMALL-BODY-APPLICABILITY"
     with pytest.warns(UserWarning, match="Item 25 asymptote check bypassed") as caught:
-        compute_retardation_kernel(
-            hdb, t_max=60.0, dt=0.01, asymptote_check_override=rationale
-        )
+        compute_retardation_kernel(hdb, t_max=60.0, dt=0.01, asymptote_check_override=rationale)
     # Rationale string is echoed in the warning (via !r).
     matching = [w for w in caught if rationale in str(w.message)]
     assert len(matching) == 1, (
         f"expected exactly one override warning echoing the rationale; "
         f"got {len(matching)}: {[str(w.message)[:100] for w in caught]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# M8 PR3 — coupled multi-body kernel (plan Q3, Step C re-specified 2026-07-20)
+# ---------------------------------------------------------------------------
+#
+# The production-grid 18-DOF fixture carries a *contaminated frequency
+# slice* at omega~4.934 (a whole-matrix near-singular BEM solve on the
+# cluster-draft spar hull; see tracker
+# BEM-CONTAMINATED-FREQUENCY-SLICE-CLUSTER-DRAFT). The fixture is retained
+# UNMODIFIED. The gate is split:
+#   * POSITIVE gate  -> the fixture with the two contaminated omega
+#     (4.934, 20.909) EXCLUDED from the grid at read/test level (a grid
+#     SELECTION, not a value edit -- a contaminated solve is simply not
+#     used). Exercises full-matrix Filon at 6N=18, single t_max, per-entry
+#     gate with the i==j branch, and PSD passing.
+#   * NEGATIVE gate  -> the UNMODIFIED fixture: PSD fires at 4.934 and the
+#     contamination is proven whole-matrix (not heave-only).
+
+from pathlib import Path  # noqa: E402
+
+from floatsim.hydro.readers.capytaine import read_capytaine  # noqa: E402
+
+_MULTIBODY_NC = (
+    Path(__file__).resolve().parents[2]
+    / "studies"
+    / "cluster-3buoy-rigid"
+    / "capytaine_multibody_18dof.nc"
+)
+_MB_OVERRIDE = "M8 PR3 test: small-body cluster; see ITEM25-SMALL-BODY-APPLICABILITY"
+# The two contaminated frequencies excluded from the POSITIVE gate.
+_CONTAMINATED_OMEGA = (4.934, 20.909)
+
+
+def _multibody_excluding_contaminated() -> HydroDatabase:
+    """The committed 18-DOF fixture with the two contaminated frequencies
+    (omega~4.934, ~20.909) dropped from the grid.
+
+    This is a grid SELECTION -- the contaminated solves are simply not
+    used -- NOT a value modification. Nothing is invented; the fixture on
+    disk is unchanged (the negative gate reads it whole). It is also the
+    detect-and-exclude half of the M11 frequency-slice mitigation.
+    """
+    hdb = read_capytaine(_MULTIBODY_NC)
+    w = np.asarray(hdb.omega)
+    drop = {int(np.argmin(np.abs(w - wc))) for wc in _CONTAMINATED_OMEGA}
+    keep = np.array([k for k in range(w.size) if k not in drop])
+    return HydroDatabase(
+        omega=hdb.omega[keep],
+        heading_deg=hdb.heading_deg,
+        A=hdb.A[:, :, keep],
+        B=hdb.B[:, :, keep],
+        A_inf=hdb.A_inf,
+        C=hdb.C,
+        RAO=hdb.RAO[:, keep, :],
+        reference_point=hdb.reference_point,
+        C_source=hdb.C_source,
+        metadata=dict(hdb.metadata),
+        body_labels=hdb.body_labels,
+    )
+
+
+# ---- POSITIVE gate (contaminated-omega-excluded grid) ----
+
+
+def test_multibody_positive_gate_full_matrix_kernel() -> None:
+    """Full-matrix 18x18 kernel computes end-to-end on the clean grid:
+    Filon at 6N, single t_max, per-entry gate, and PSD PASSING (no raise).
+    Check 3 (kernel decay) also passes at a physical t_max=60 s."""
+    hdb = _multibody_excluding_contaminated()
+    assert hdb.n_bodies == 3
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        k = compute_retardation_kernel(
+            hdb, t_max=60.0, dt=0.01, asymptote_check_override=_MB_OVERRIDE
+        )
+    assert k.K.shape[0] == 18 and k.K.shape[1] == 18
+    assert k.n_dof == 18
+    assert k.K.shape[2] == k.t.size
+    # Check 3 headroom: worst diagonal decayed well below the 0.1% floor
+    # (measured 0.025% at t_max=60 on the excluded grid).
+    peak = np.max(np.abs(k.K), axis=2)
+    end = np.abs(k.K[:, :, -1])
+    worst = float(np.max(np.diag(end) / np.maximum(np.diag(peak), 1e-30)))
+    assert worst < 1.0e-3, worst
+
+
+def test_multibody_positive_gate_reproduces_mb_decay() -> None:
+    """Re-locked MB measurement (plan MB row): heave cross-kernel decays on
+    the same sub-second timescale as the diagonal, so a single t_max is
+    adequate. Measured through the full gated kernel path on the
+    excluded-grid positive-gate input: diag 0.56 s / cross 0.76 s to the
+    10% floor; cross K(0) = 0.74x diagonal K(0)."""
+    hdb = _multibody_excluding_contaminated()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        k = compute_retardation_kernel(
+            hdb, t_max=60.0, dt=0.01, asymptote_check_override=_MB_OVERRIDE
+        )
+    H1, H2 = 2, 8  # buoy1 heave, buoy2 heave
+
+    def t_to_10pct(K: np.ndarray) -> float:
+        a = np.abs(K)
+        below = np.where(a / a[0] < 0.1)[0]
+        return float(k.t[below[0]]) if below.size else float("inf")
+
+    td = t_to_10pct(k.K[H1, H1, :])
+    tc = t_to_10pct(k.K[H1, H2, :])
+    assert 0.45 < td < 0.65, td  # diagonal ~0.56 s
+    assert 0.65 < tc < 0.90, tc  # cross ~0.76 s
+    assert tc < 5.0 * td  # single t_max adequate
+    ratio = k.K[H1, H2, 0] / k.K[H1, H1, 0]
+    assert 0.68 < ratio < 0.80, ratio  # cross K(0)/diag K(0) ~0.74
+
+
+def test_multibody_positive_gate_negative_cross_terms_ok() -> None:
+    """Negative B off-diagonals (physical cross-damping) carry no sign
+    requirement: ingestion + kernel succeed on the clean grid."""
+    hdb = _multibody_excluding_contaminated()
+    off = np.asarray(hdb.B)[~np.eye(18, dtype=bool)]
+    assert float(off.min()) < 0.0, "fixture should contain negative off-diagonals"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        compute_retardation_kernel(
+            hdb, t_max=60.0, dt=0.01, asymptote_check_override=_MB_OVERRIDE
+        )  # must not raise
+
+
+# ---- NEGATIVE gate (UNMODIFIED fixture -- the PSD gate catching a real
+#      defect in real data is worth more than a passing fixture) ----
+
+
+def test_multibody_negative_gate_psd_fires_on_contaminated_slice() -> None:
+    """PSD FIRES on the unmodified 18-DOF fixture: the contaminated
+    frequency slice at omega=4.934 is not positive semi-definite
+    (min eig -0.1201 vs max eig +20.40; min-eig/max|B| = -0.250%)."""
+    hdb = read_capytaine(_MULTIBODY_NC)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(ValueError, match="not positive semi-definite"):
+            compute_retardation_kernel(
+                hdb, t_max=60.0, dt=0.01, asymptote_check_override=_MB_OVERRIDE
+            )
+    # Pin the eigenvalue numbers the finding rests on (independent of the
+    # raise, so a future refactor cannot silently move them).
+    w = np.asarray(hdb.omega)
+    B = np.asarray(hdb.B)
+    k = int(np.argmin(np.abs(w - 4.934)))
+    ev = np.linalg.eigvalsh(0.5 * (B[:, :, k] + B[:, :, k].T))
+    assert ev[0] == pytest.approx(-0.1201, rel=5e-2), ev[0]
+    assert ev[-1] == pytest.approx(20.40, rel=5e-2), ev[-1]
+    assert ev[0] / float(np.max(np.abs(B))) == pytest.approx(-2.50e-3, rel=5e-2)
+
+
+def test_multibody_negative_gate_contamination_is_whole_matrix() -> None:
+    """The omega=4.934 contamination is WHOLE-MATRIX, not heave-only: the
+    large surge/roll/pitch diagonals each deviate >3% from their
+    neighbour midpoints (measured -4.18% / -5.26% / -6.76%). Documents the
+    real scope so the finding is not mistaken for a heave-specific
+    artifact -- heave merely flips sign because its physical magnitude is
+    ~3 orders below the large DOFs."""
+    hdb = read_capytaine(_MULTIBODY_NC)
+    w = np.asarray(hdb.omega)
+    B = np.asarray(hdb.B)
+    k = int(np.argmin(np.abs(w - 4.934)))
+    assert abs(w[k] - 4.934) < 1e-2  # exact grid point
+    for dof, name in [(0, "surge"), (3, "roll"), (4, "pitch")]:
+        lo, mid, hi = B[dof, dof, k - 1], B[dof, dof, k], B[dof, dof, k + 1]
+        midpoint = 0.5 * (lo + hi)
+        dev = (mid - midpoint) / abs(midpoint)
+        assert dev < -0.03, (name, dev)  # coherent >3% undershoot
+
+
+def test_multibody_psd_check_fires_on_gross_corruption() -> None:
+    """Design-purpose coverage: a grossly non-PSD B (block-misassembly
+    signature -- a large negative diagonal in the significant band) must
+    raise. Complements the negative gate above, which fires on the subtle
+    (-0.25%) real defect; this exercises the gross (~-100%) case the gate
+    is designed to catch."""
+    hdb = read_capytaine(_MULTIBODY_NC)
+    B = np.asarray(hdb.B).copy()
+    kpeak = int(np.argmax([np.max(np.abs(B[:, :, k])) for k in range(B.shape[2])]))
+    scale = float(np.max(np.abs(B)))
+    B[0, 0, kpeak] -= 2.0 * scale  # drives an eigenvalue far negative
+    corrupt = HydroDatabase(
+        omega=hdb.omega,
+        heading_deg=hdb.heading_deg,
+        A=hdb.A,
+        B=B,
+        A_inf=hdb.A_inf,
+        C=hdb.C,
+        RAO=hdb.RAO,
+        reference_point=hdb.reference_point,
+        C_source=hdb.C_source,
+        metadata=dict(hdb.metadata),
+        body_labels=hdb.body_labels,
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(ValueError, match="not positive semi-definite"):
+            compute_retardation_kernel(
+                corrupt, t_max=60.0, dt=0.01, asymptote_check_override=_MB_OVERRIDE
+            )
+
+
+def test_single_body_path_has_no_psd_check() -> None:
+    """Non-PSD symmetric B on the SINGLE-body path must still compute a
+    kernel: the PSD gate is multi-body-only, and the single-body kernel
+    math tests deliberately build non-PSD random-symmetric B. Mirrors the
+    well-behaved-rolloff construction of ``test_kernel_is_symmetric_at_
+    each_lag`` (so Check 3 passes) but does NOT force positive diagonals,
+    guaranteeing the matrix is indefinite."""
+    omega = np.linspace(0.05, 20.0, 200)
+    rng = np.random.default_rng(seed=7)
+    m = rng.standard_normal((6, 6))
+    sym_matrix = 0.5 * (m + m.T)  # random symmetric -> indefinite
+    assert float(np.linalg.eigvalsh(sym_matrix)[0]) < 0.0, "should be non-PSD"
+    rolloff = well_behaved_b(omega, band_value=1.0, cutoff_omega=3.0)
+    B_stack = sym_matrix[:, :, None] * rolloff[None, None, :]
+    hdb = make_diagonal_hdb(A_inf_diag=[0.0] * 6, C_diag=[0.0] * 6, omega=list(omega))
+    hdb = HydroDatabase(
+        omega=hdb.omega,
+        heading_deg=hdb.heading_deg,
+        A=hdb.A,
+        B=B_stack,
+        A_inf=hdb.A_inf,
+        C=hdb.C,
+        RAO=hdb.RAO,
+        reference_point=hdb.reference_point,
+        C_source=hdb.C_source,
+        metadata=dict(hdb.metadata),
+    )
+    assert hdb.body_labels is None
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        compute_retardation_kernel(hdb, t_max=200.0, dt=0.1)  # must not raise

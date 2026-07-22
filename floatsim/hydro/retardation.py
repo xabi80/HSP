@@ -99,6 +99,27 @@ _GATE_KERNEL_DECAY_RATIO: Final[float] = 1.0e-3  # |K(t_max)| / max|K| < 0.1%
 # Tail extension upper bound (independent of the gates).
 _TAIL_UPPER_BOUND_FACTOR: Final[float] = 5.0
 
+# Multi-body PSD gate (M8 PR3, plan Q3 iii). The symmetrized damping
+# matrix B(omega) must be positive semi-definite at every frequency where
+# it is physically significant -- the N-body generalization of the
+# single-body B_ii >= 0 invariant. A PSD matrix has non-negative diagonals
+# (subsuming B_ii >= 0) while placing no constraint on off-diagonal signs,
+# which is exactly what the measured cross-damping (down to -3.99e-4)
+# requires. Scoped to multi-body databases only: the single-body kernel
+# unit tests build random *symmetric* B, which is non-PSD by construction;
+# an unconditional gate would break them and the block-misassembly risk
+# this guards against only exists once bodies are coupled.
+#   _PSD_SIGNIFICANCE_FLOOR: only enforce where max|B(omega)| is at least
+#     this fraction of the global max|B| (the excitation-gate noise/noise
+#     lesson: the high-omega tail is mesh-resolution noise; measured
+#     spar-fin min-eigenvalue is -7% of peak at a 1% floor but -6e-6 at a
+#     5% floor -- entirely the omega=20.9 tail).
+#   _PSD_REL_TOL: min-eigenvalue floor is -_PSD_REL_TOL * global max|B|
+#     (~150x margin over the measured ~6e-6 residual on all three
+#     fixtures; still catches gross non-PSD from block misassembly).
+_PSD_SIGNIFICANCE_FLOOR: Final[float] = 0.05
+_PSD_REL_TOL: Final[float] = 1.0e-3
+
 
 # ---------------------------------------------------------------------------
 # kernel dataclass
@@ -207,7 +228,9 @@ def compute_retardation_kernel(
     Parameters
     ----------
     hdb
-        Validated :class:`HydroDatabase`. ``B`` has shape ``(6, 6, n_omega)``.
+        Validated :class:`HydroDatabase`. ``B`` has shape
+        ``(6N, 6N, n_omega)`` for ``N >= 1`` bodies (``N = 1`` legacy
+        single-body path when ``hdb.body_labels is None``).
     t_max
         Maximum lag in seconds. The returned grid spans ``0`` through
         ``t_max`` inclusive in steps of ``dt``.
@@ -234,13 +257,20 @@ def compute_retardation_kernel(
     Returns
     -------
     RetardationKernel
-        Dataclass carrying ``K`` (shape ``(6, 6, N_t)``), the time grid
+        Dataclass carrying ``K`` (shape ``(6N, 6N, N_t)``), the time grid
         ``t`` (shape ``(N_t,)``), and ``dt``.
 
     Raises
     ------
     ValueError
         - If ``t_max`` or ``dt`` are non-positive or if ``dt > t_max``.
+        - **Multi-body PSD gate** (M8 PR3, plan Q3 iii; only when
+          ``hdb.body_labels is not None``): if the symmetrized
+          ``B(omega)`` is not positive semi-definite at any physically
+          significant frequency. This is the N-body generalization of
+          ``B_ii >= 0`` and guards against block misassembly; negative
+          off-diagonal cross-damping is permitted. See
+          :func:`_validate_psd`.
         - If ``asymptote_check_override`` is supplied but is not a
           non-empty rationale string (M7.5 PR1).
         - **Check 2** (asymptote consistency; standard path only): if
@@ -339,9 +369,17 @@ def compute_retardation_kernel(
     omega = np.asarray(hdb.omega, dtype=np.float64)
     b_stack = np.asarray(hdb.B, dtype=np.float64)
 
+    # Multi-body PSD gate (plan Q3 iii). Runs on both the standard and the
+    # override paths -- PSD is a physical invariant of B(omega), independent
+    # of high-frequency asymptote resolution (which is what the override
+    # bypasses). Scoped to multi-body databases; see _validate_psd.
+    if hdb.body_labels is not None:
+        _validate_psd(omega, b_stack)
+
     if omega[0] > _FLOAT_EPS:
+        n_dof = b_stack.shape[0]
         omega = np.concatenate([[0.0], omega])
-        b_stack = np.concatenate([np.zeros((6, 6, 1), dtype=np.float64), b_stack], axis=2)
+        b_stack = np.concatenate([np.zeros((n_dof, n_dof, 1), dtype=np.float64), b_stack], axis=2)
 
     if asymptote_check_override is None:
         # Standard path -- bit-identical to pre-PR1 behavior.
@@ -401,13 +439,14 @@ def _validate_input_gates(omega: NDArray[np.float64], B: NDArray[np.float64]) ->
     Returns
     -------
     NDArray[bool]
-        Shape ``(6, 6)``: True where the entry's tail extension should
-        be zeroed (Check 2 failed OR entry is below the
-        ``_OFFDIAG_REL_THRESHOLD`` of max diagonal). Diagonals are
-        always False (Check 2 failure on a diagonal raises).
+        Shape ``(n_dof, n_dof)`` with ``n_dof = 6N``: True where the
+        entry's tail extension should be zeroed (Check 2 failed OR entry
+        is below the ``_OFFDIAG_REL_THRESHOLD`` of max diagonal).
+        Diagonals are always False (Check 2 failure on a diagonal raises).
     """
+    n_dof = B.shape[0]
     omega_max = float(omega[-1])
-    diag_max = np.array([np.max(np.abs(B[i, i, :])) for i in range(6)], dtype=np.float64)
+    diag_max = np.array([np.max(np.abs(B[i, i, :])) for i in range(n_dof)], dtype=np.float64)
 
     # Check 1 (advisory): |B_ii(omega_max)| / max|B_ii| > 5% warns that
     # the BEM grid is under-resolved. The 1/omega^4 tail extension may
@@ -416,7 +455,7 @@ def _validate_input_gates(omega: NDArray[np.float64], B: NDArray[np.float64]) ->
     # contributor knows to widen the BEM grid if they need a tighter
     # cross-check tolerance.
     check1_offenders: list[tuple[int, float]] = []
-    for i in range(6):
+    for i in range(n_dof):
         if diag_max[i] < _FLOAT_EPS:
             continue
         ratio = abs(B[i, i, -1]) / diag_max[i]
@@ -451,10 +490,10 @@ def _validate_input_gates(omega: NDArray[np.float64], B: NDArray[np.float64]) ->
     omega4_tail = omega_tail**4
     skip_threshold = _OFFDIAG_REL_THRESHOLD * float(np.max(diag_max))
 
-    skip_tail_mask = np.zeros((6, 6), dtype=bool)
+    skip_tail_mask = np.zeros((n_dof, n_dof), dtype=bool)
 
-    for i in range(6):
-        for j in range(6):
+    for i in range(n_dof):
+        for j in range(n_dof):
             is_diag = i == j
             if is_diag:
                 if diag_max[i] < _FLOAT_EPS:
@@ -509,12 +548,13 @@ def _validate_kernel_decay(K: NDArray[np.float64]) -> None:
     peak by t = 200 s even with B(omega_max)/peak ~ 1.7 % (above the
     Check 1 advisory threshold).
     """
+    n_dof = K.shape[0]
     peak = np.max(np.abs(K), axis=2)
     end = np.abs(K[:, :, -1])
     diag_peak = np.diag(peak)
     diag_end = np.diag(end)
     offenders: list[tuple[int, float, float]] = []
-    for i in range(6):
+    for i in range(n_dof):
         if diag_peak[i] <= _FLOAT_EPS:
             continue
         ratio = float(diag_end[i] / diag_peak[i])
@@ -539,6 +579,88 @@ def _validate_kernel_decay(K: NDArray[np.float64]) -> None:
             "more reliable fix. See "
             "docs/diagnostics/m6-pr4-pre3-surge-kernel-quality.png for "
             "the marin_semi reference (passes at ~5e-5)."
+        )
+
+
+def _validate_psd(omega: NDArray[np.float64], B: NDArray[np.float64]) -> None:
+    """Multi-body PSD gate (M8 PR3, plan Q3 iii): the symmetrized damping
+    matrix ``B(omega)`` must be positive semi-definite at every frequency
+    where it is physically significant.
+
+    This is the N-body generalization of the single-body ``B_ii >= 0``
+    invariant. A PSD matrix has non-negative diagonals (subsuming
+    ``B_ii >= 0``) while placing no constraint on off-diagonal signs, so
+    genuine negative cross-damping (measured down to ``-3.99e-4`` on the
+    18-DOF cluster) passes, while a gross non-PSD matrix -- the signature
+    of block misassembly when coupling N single-body databases -- is
+    caught.
+
+    Significance floor. Only frequencies where
+    ``max|B(omega)| >= _PSD_SIGNIFICANCE_FLOOR * global max|B|`` are
+    checked (the excitation-gate noise/noise lesson: the high-omega tail
+    is mesh-resolution noise whose tiny negative eigenvalues are not
+    physical). The min-eigenvalue floor is
+    ``-_PSD_REL_TOL * global max|B|``. See conventions doc / the PR3
+    Step-A audit (``docs/audits/m8-coupled-bem-audit.md``) for the
+    measured tolerances across the three fixtures.
+
+    Parameters
+    ----------
+    omega
+        ``(n_omega,)`` frequency grid (rad/s), used only for the error
+        message.
+    B
+        ``(n_dof, n_dof, n_omega)`` radiation-damping stack.
+
+    Raises
+    ------
+    ValueError
+        If any significant ``B(omega)`` is not positive semi-definite
+        (its smallest eigenvalue is below the tolerance floor). The
+        message names the offending frequency, the min eigenvalue, and
+        the two DOFs dominating the offending eigenvector.
+    """
+    global_max = float(np.max(np.abs(B)))
+    if global_max < _FLOAT_EPS:
+        return  # all-zero B is trivially PSD
+    sig_threshold = _PSD_SIGNIFICANCE_FLOOR * global_max
+    tol = _PSD_REL_TOL * global_max
+
+    offenders: list[tuple[float, float, int, int]] = []
+    for k in range(B.shape[2]):
+        Bk = B[:, :, k]
+        if np.max(np.abs(Bk)) < sig_threshold:
+            continue  # below the significance floor -- noise band
+        Bsym = 0.5 * (Bk + Bk.T)
+        evals, evecs = np.linalg.eigh(Bsym)
+        min_eval = float(evals[0])
+        if min_eval < -tol:
+            # The eigenvector for the most-negative eigenvalue localizes the
+            # offending coupling; its two largest-magnitude components are
+            # the DOF pair a block-misassembly would corrupt.
+            vec = np.abs(evecs[:, 0])
+            top2 = np.argsort(vec)[-2:]
+            i, j = int(min(top2)), int(max(top2))
+            offenders.append((float(omega[k]), min_eval, i, j))
+
+    if offenders:
+        offender_lines = "\n".join(
+            f"  omega = {w:.4f} rad/s: min eigenvalue = {ev:.4e} " f"(dominant DOF pair [{i},{j}])"
+            for w, ev, i, j in offenders
+        )
+        raise ValueError(
+            "Multi-body PSD gate: the radiation-damping matrix B(omega) is "
+            "not positive semi-definite at one or more significant "
+            f"frequencies (min-eigenvalue floor = -{_PSD_REL_TOL:.0e} * "
+            f"global max|B| = {-tol:.4e}):\n{offender_lines}\n"
+            "A physical B(omega) is PSD at every frequency (radiation "
+            "dissipates energy). A negative eigenvalue at a significant "
+            "frequency is the signature of block misassembly -- e.g. a "
+            "body's 6x6 sub-block written into the wrong global slot, or a "
+            "sign error in a cross-coupling term. Negative *off-diagonal* "
+            "cross-damping is fine (PSD permits it); only the eigenvalues "
+            "must stay non-negative. Verify the body-to-global DOF mapping "
+            "(the label-ordered permutation) in the reader."
         )
 
 

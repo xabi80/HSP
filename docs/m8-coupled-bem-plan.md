@@ -54,9 +54,23 @@ validated coupled hydrodynamics.
 |---|---|---|---|
 | **MA** | 18-DOF excitation dataset structure | `excitation_force(omega, wave_direction, influenced_dof)`; 18 `buoyK__DOF` labels; data_vars {`Froude_Krylov_force`, `diffraction_force`, `excitation_force`} | `capytaine_excitation_diagnostic.py` |
 | **MA-gate** | excitation condensation `Tᵀ F₁₈` vs composite, all 6 DOF | excited DOF (β=0): **surge / heave / pitch = 0.0000 %** in magnitude **and phase** (0.0000°) at all 6 ω. Forbidden DOF (sway/roll/yaw) at the numerical floor in **both** models — not compared (magnitude-floor risk row). Heave gate pin 2 %, HARD STOP 5 % — **PASSED**. *Identity, not validation (see box above).* | same |
-| **MB** | cross-term damping-kernel decay | cross `B_ij` peak = **0.981×** diagonal; cross `K(0)` = 74 % of diagonal `K(0)`; decay-to-10 % **0.77 s (cross) vs 0.56 s (diag)** → **single `t_max` adequate**. `B_cross` range includes **−3.99e-04** (negative off-diagonals are physical) | `crosskernel_diagnostic.py` |
+| **MB** | cross-term damping-kernel decay | **RE-LOCKED at PR3 Step C** (see note): cross `B_ij` peak = **0.986×** diagonal; cross `K(0)` = **74 %** of diagonal `K(0)`; decay-to-10 % **0.76 s (cross) vs 0.56 s (diag)** → **single `t_max` adequate**. `B_cross` range includes negative off-diagonals (physical). | `test_retardation_kernel.py` (positive gate) |
 | **MC** | single-body-assumption audit | solver stack already 6N-generic; bottleneck = HydroDatabase + kernel-input + build_system | Step-3 reads |
 | **MD** | 18×18 reciprocity (from program G5) | `max\|A_ij − A_ji\| / max\|A\|` = **1.08e-4** — a genuine physical invariant, *not* a construction identity | 18-DOF diagnostic |
+
+**MB re-lock note (PR3 Step C, 2026-07-20).** The original MB figures
+(cross `B_ij` peak 0.981×, cross `K(0)` 74 %, decay-to-10 % 0.77 s /
+0.56 s) were measured **heave-only, via raw `filon_trap_cosine` with no
+gate, on the coarse `geomspace(0.5, 8, 12)` grid**. They are superseded
+by a fresh measurement through the **full gated
+`compute_retardation_kernel`** path on the PR3 positive-gate input (the
+production-grid 18-DOF fixture with the two contaminated frequencies
+excluded — see PR3 below). The numbers barely moved (heave was
+well-resolved on both grids), but the measurement basis changed: grid
+widened `0.5–8 → 0.1–30`, and raw filon → full kernel path (Filon +
+zero-fill tail + Check 3). The re-locked values are in the MB row above;
+`MD` (reciprocity) is an `A_inf` quantity and is **unchanged** by the
+regrid (bit-identical `1.080e-4`).
 
 **MC detail (file:line).**
 - **Already 6N-generic (F4 legacy):** `CumminsLHS.n_dof` / `n_bodies`
@@ -257,10 +271,38 @@ detection rule need re-cutting mid-milestone, that is the schedule.
 - **Step B (implement).** Full-matrix Filon over `6N×6N`; single
   `t_max`; per-entry gate with `i == j` branch (diagonal non-negativity
   only); **PSD check on `B(ω)`**.
-- **Step C (gate).** Kernel on the 18-DOF fixture reproduces MB's
-  cross-vs-diagonal decay (0.77 s / 0.56 s to the 10 % floor); PSD
-  check passes at every ω; negative cross-terms do **not** trip the
-  gate.
+- **Step C (gate). RE-SPECIFIED mid-PR (2026-07-20).** The locked
+  contract assumed the full kernel runs clean end-to-end on the 18-DOF
+  fixture. It does not: the production-grid regeneration (needed so the
+  non-heave DOFs reach their `B`-peaks and pass Check 3 — the coarse
+  `0.5–8` grid left surge/roll/pitch at 100 % of peak at `ω_max`)
+  exposed a **contaminated frequency slice at ω≈4.934** (and a genuine
+  Capytaine-flagged irregular frequency at ω≈20.909). The PSD check
+  (Q3 iii) **correctly refuses** the full fixture — the one M8 gate that
+  constrains the shared BEM solve caught a real defect in real data on
+  first contact with a production-grid fixture. The fixture is retained
+  **unmodified**; the gate is split:
+
+  - **POSITIVE gate** — on the 18-DOF fixture with the two contaminated
+    ω **excluded from the grid at read/test level** (a grid *selection*,
+    not a value modification: a contaminated solve is simply not used;
+    this is also the detect-and-exclude half of the M11 mitigation).
+    Exercises full-matrix Filon at `6N=18`, single `t_max`, the
+    per-entry gate with the `i==j` branch, and **PSD passing**.
+    *Verified:* excluded-grid Check 3 worst-DOF decay = **0.0249 %** at
+    `t_max = 60 s` (< 0.1 % threshold). Reproduces the re-locked MB
+    decay (0.76 s cross / 0.56 s diag to the 10 % floor).
+  - **NEGATIVE gate** — new and permanent, on the **unmodified** 18-DOF
+    fixture: (i) PSD **fires** at ω=4.934 (min eig **−0.1201** vs max eig
+    **+20.40**; min-eig/max\|B\| = **−0.250 %**); (ii) the contamination
+    is **whole-matrix, not heave-only** — surge / roll / pitch each
+    deviate **> 3 %** from their neighbour midpoints at ω=4.934 (measured
+    **−4.18 % / −5.26 % / −6.76 %**). A test that proves the gate catches
+    a real defect in real data is worth more than a passing fixture.
+
+  See tracker `BEM-CONTAMINATED-FREQUENCY-SLICE-CLUSTER-DRAFT`
+  (`docs/phase2-followups.md`) for the full characterization and the
+  M11 detection-gap note.
 
 ### PR4 — Condensation gates + closure
 
@@ -284,6 +326,7 @@ detection rule need re-cutting mid-milestone, that is the schedule.
 | **excitation phase conventions** | Capytaine vs FloatSim excitation phase/sign (M6 Item-16 factor lesson) | PR2 Step A dedicated audit; PR2 Step C byte-identity gate isolates reader from assembly — sharper than the condensation identity |
 | **cross-model gates: relative error on unexcited DOF** | Relative error on symmetry-forbidden channels is **noise / noise** — measured at M8 Phase 1 as **198 % / 247 % / 71 %** apparent disagreement on sway / roll / yaw at β=0, where **both** models sit at the numerical floor (\|F\| ≈ 0). Same artifact class as `cbc0dc1`. **This was a DIAGNOSTIC REPORTING bug — denominator guard too loose at `1e-12` — not a model disagreement:** corrected per-DOF result is surge / heave / pitch at **0.0000 %** magnitude *and* phase. | floor: **`1e-6 × max\|F_comp\|` per omega**; sub-floor DOF reported "below floor / not compared". Applies to **every cross-model gate in this program**, including **M11 Stage 1** (digitized OrcaFlex plots carry near-zero lateral channels). |
 | **12-buoy-scale array memory** | N=12 (n_dof=72): A/B each `72² × 16 B × N_ω` = 5184 × 16 × 40 ≈ **3.3 MB**; **kernel** `72² × 8 B × N_t` = 5184 × 8 × 3001 ≈ **124 MB**. The BEM *solve* influence matrix (17,856², ~5 GB/ω) is the solver's concern — program risk register. | stored DB is small; 124 MB kernel manageable; monitor at PR3 |
+| **contaminated BEM frequency slice (M11 detection gap)** | PR3 surfaced a whole-matrix contaminated solve at ω≈4.934 on the cluster-draft spar hull (a near-singular boundary-integral operator; **not** a lid-removable irregular frequency — Capytaine does not flag it). PSD caught **this** instance only because heave's near-zero magnitude turned a coherent ~5 % perturbation into a **sign flip**; a less severe pole-straddle would produce ~5 % undershoot with no sign change and **pass PSD undetected**. | Tracker **`BEM-CONTAMINATED-FREQUENCY-SLICE-CLUSTER-DRAFT`** (`docs/phase2-followups.md`). PR3 excludes the contaminated ω from the positive gate and asserts PSD fires on the unmodified fixture (negative gate). **M11 needs frequency-slice smoothness screening (neighbour-trend deviation), not PSD alone**; mitigation candidate is detect-and-re-solve at a perturbed ω (feature width ≪ grid spacing → ~0.1 rad/s shift suffices), since the mesh/lid path demonstrably does not touch it. |
 
 ---
 

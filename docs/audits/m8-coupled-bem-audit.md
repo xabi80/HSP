@@ -163,3 +163,94 @@ CLAUDE.md §9 forbids mixing unrelated refactors into a feature PR, and
 CLAUDE.md §3 nominally requires `mypy --strict` to pass on `floatsim/`,
 so this is a genuine pre-existing debt. Recorded here rather than
 silently absorbed; it wants its own `fix-` branch.
+
+---
+
+# PR3 Step A — coupled-kernel gate audit
+
+**Per plan PR3 Step A.** Confirms the Item-25 override semantics and
+enumerates the Q3 gate changes, with the PSD tolerance re-derived from
+the committed fixtures (measure-before-threshold).
+
+## Override semantics (Q3 i)
+
+`compute_retardation_kernel`'s `asymptote_check_override` is **per-call
+and global** to the computation (retardation.py:346/370): a non-None
+rationale skips `_validate_input_gates` entirely and zero-fills the
+tail; Check 3 (`_validate_kernel_decay`) still runs. There is no
+per-entry override API and the lock says not to build one. **Confirmed
+already correct — no change.**
+
+## 6-hardcodes to generalize (all -> n_dof = B.shape[0])
+
+- prepend `np.zeros((6, 6, 1))` (retardation.py:344)
+- `_validate_input_gates`: `diag_max` loop and both `range(6)` loops
+  (retardation.py:410,419,454-457)
+- `_validate_kernel_decay`: `range(6)` diagonal loop (retardation.py:517)
+
+`filon_trap_cosine` already broadcasts over leading axes, so the kernel
+integral itself is size-generic.
+
+## Sign handling (Q3 ii) — there is no existing B>=0 check
+
+Neither `_validate_input_gates` (std/mean asymptote) nor
+`_validate_kernel_decay` (|K| decay) assumes non-negativity today. So
+Q3(ii) is "add the sign invariant in its correct form", not "un-break"
+an over-strict one. The **PSD check is that correct form**: a PSD
+matrix has non-negative diagonal (subsuming `B_ii >= 0`) while placing
+**no constraint on off-diagonal signs** -- exactly what the measured
+`B_cross` range (down to -3.99e-04) requires. A separate per-entry
+diagonal check would be redundant with PSD.
+
+## PSD check (Q3 iii) — measured tolerance + scope
+
+Eigenvalues of the symmetrized `B(omega)` must be `>= -tol`, but only
+where `B(omega)` is **physically significant** -- the same noise/noise
+lesson as the excitation gate. Measured min-eigenvalue / global-max|B|:
+
+| fixture | 1% floor | 5% floor |
+|---|---|---|
+| 18-DOF cluster | -6.12e-6 | -6.12e-6 |
+| spar-fin single | **-7.15e-2** | -6.26e-6 |
+| marin_semi | +2.4e-7 | +6.3e-5 |
+
+The spar-fin `-7%` at the 1% floor is entirely the omega=20.9 tail
+(B there is ~4% of peak -- the known high-omega mesh-resolution noise);
+it vanishes at a 5% significance floor. **Locked values:**
+`_PSD_SIGNIFICANCE_FLOOR = 0.05` (only enforce where
+`max|B(omega)| >= 5% * global max|B|`); `_PSD_REL_TOL = 1e-3` (~150x
+margin over the measured ~6e-6 residual, still catching gross
+non-PSD).
+
+**Scope: multi-body only** (`hdb.body_labels is not None`). The
+existing single-body kernel tests build *random symmetric* B (e.g.
+`test_retardation_kernel.py:96`), which is non-PSD by construction; an
+unconditional PSD gate would break them. This matches the plan's
+framing ("the multi-body generalization of B >= 0") and puts the check
+exactly where the block-misassembly risk it guards against lives. The
+single-body path retains no PSD check, as before.
+
+## PR3 Step C — the PSD gate caught a real BEM defect (finding)
+
+When the gate first ran on the **production-grid** 18-DOF fixture it
+fired. Diagnosis (Steps 1-2 of the Step-C redirect,
+`defect_diagnostic.py`): a **whole-matrix contaminated frequency slice
+at ω≈4.934** on the cluster-draft spar hull — a near-singular
+boundary-integral solve, **not** a lid-removable irregular frequency.
+Full characterization and the M11 detection-gap note live in tracker
+`BEM-CONTAMINATED-FREQUENCY-SLICE-CLUSTER-DRAFT`
+(`docs/phase2-followups.md`, committed to `main`). Step C was
+re-specified (positive gate on the contaminated-ω-excluded grid;
+permanent negative gate on the unmodified fixture); see the plan.
+
+**Falsified hypothesis (recorded, not struck — it never reached this
+doc; it lived only in a working note).** An early guess framed ω≈4.934
+as the spar's internal free-surface irregular frequency via the
+vertical-cylinder condition `ka ≈ j₀₁ = 2.405`. **Falsified by
+measurement:** the lid waterplane centroid radius is **0.063 m**
+(`defect_diagnostic.py`, `generate_lid` faces_centers), so at ω=4.934
+(`k = ω²/g = 2.48 m⁻¹`) **ka ≈ 0.16** — two orders below 2.405. The
+lid workflow is separately confirmed sound: it removes the *genuine*
+Capytaine-flagged irregular frequency at ω≈20.909 (surge −1.294 →
++6.144) but leaves ω=4.934 **unchanged** (−0.0856 → −0.0856). Mechanism
+**unknown**; see the tracker.
