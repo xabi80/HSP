@@ -1102,6 +1102,89 @@ amendment. Parked (research-scale).
 
 ---
 
+### BEM-CONTAMINATED-FREQUENCY-SLICE-CLUSTER-DRAFT — whole-matrix contaminated BEM solve at an isolated frequency
+
+**Mechanism.** At ω≈4.934 the **entire 18×18 BEM solve is contaminated**
+for the spar hull at **cluster draft** — a near-singular
+boundary-integral operator (pole straddle). The large diagonals
+(surge / roll / pitch) show a coherent ~5 % undershoot; the heave
+diagonal **flips sign** (`B[2,2] → −8.56e-2`, physical peak +2.74e-2)
+only because heave's physical magnitude (~0.01) is ~3 orders below
+surge / roll / pitch (~40), so a shared perturbation of the same
+absolute scale inverts it. Heave is the *most visible symptom*, not a
+heave-specific artifact.
+
+**Measured evidence** (`studies/cluster-3buoy-rigid/defect_diagnostic.py`,
+Diagnostic A). Single hull, cluster draft, `B_heave(ω)` verbatim:
+
+```
+4.700 +1.0833e-02 | 4.800 +1.0237e-02 | 4.900 +9.6271e-03
+4.920 +8.8509e-03 | 4.930 +7.1769e-02 | 4.934 −8.5841e-02
+4.940 +8.3712e-03 | 4.950 +8.4116e-03 | 5.000 +1.0569e-02
+```
+
+The ± dispersive pair at 4.930 (+8× trend) / 4.934 (sign-flipped),
+bracketed by clean values at 4.920 / 4.940, is a **pole-straddle
+signature**, not a random solve failure. Whole-matrix deviation at
+ω=4.934 (neighbour midpoint → value → deviation):
+
+| DOF | neighbours | value | deviation |
+|---|---|---|---|
+| surge | +5.028 / +9.161 | +6.798 | **−4.18 %** |
+| roll  | +3.242 / +6.499 | +4.614 | **−5.26 %** |
+| pitch | +3.201 / +6.927 | +4.722 | **−6.76 %** |
+| heave | +0.0107 / +0.0059 | −0.0856 | −1133 % |
+
+Full 18×18 at ω=4.934: min eig **−0.1201**, max eig **+20.40**,
+min-eig/max\|B\| = **−0.250 %**.
+
+**Feature width.** ~0.02 rad/s (perturbs the fine-grid points 4.930 and
+4.934; clean at 4.920 / 4.940) vs the production grid spacing ~0.34
+rad/s near ω=5 → on any realistic grid it manifests as a **single
+isolated bad ω**.
+
+**Draft dependence** (strongest clue). Clean at the single-buoy
+eqdraft (single-body study BEM: `B_heave(4.934) = +0.0211`), present at
+cluster draft (`−0.0858`), **same hull geometry** — only the DZ2
+sinkage differs.
+
+**Two-phenomena proof** (Diagnostic B). The proper lid workflow
+(`immersed_part()` → `generate_lid` → `lid_mesh=`, 21 faces) **clears
+the genuinely Capytaine-flagged irregular frequency at ω≈20.909**
+(surge −1.294 → +6.144, back on trend) but leaves **ω=4.934 unchanged**
+(−0.0856 → −0.0856). The lid workflow is therefore sound; 4.934's
+lid-immunity is a *measured* property. Capytaine does **not** flag
+4.934 as irregular. A cylinder-internal-irregular-frequency explanation
+is **falsified**: lid waterplane centroid radius 0.063 m → `ka ≈ 0.16`
+at ω=4.934, two orders below `j₀₁ = 2.405`.
+
+**DETECTION GAP (M11).** The PSD gate (M8 PR3, `retardation.py`
+`_validate_psd`) catches **this** instance **only** because heave's
+near-zero magnitude turns a coherent ~5 % perturbation into a **sign
+flip** (which drives a negative eigenvalue). A grid point that straddles
+the pole **less** severely would produce ~5 % undershoot with **no sign
+change** and **pass PSD undetected**. **M11 needs frequency-slice
+smoothness screening — neighbour-trend deviation across the grid — not
+PSD alone.**
+
+**Mechanism status.** UNKNOWN beyond the above measurements. No
+speculation.
+
+**Blocks / M11.** Production 12-buoy BEM (72 DOF) will encounter this
+class at some frequency. Mitigation candidate: **detect-and-re-solve at
+a perturbed ω** — the feature width (~0.02 rad/s) is far below the grid
+spacing, so a ~0.1 rad/s nudge moves the grid point off the pole. The
+mesh/lid path demonstrably does **not** touch it.
+
+**Status.** Open. Surfaced 2026-07-20 by the M8 PR3 PSD gate on first
+contact with a production-grid multi-body fixture. The 18-DOF fixture
+is retained **unmodified**; PR3 excludes the contaminated ω from its
+positive gate and asserts PSD fires on the unmodified fixture (negative
+gate). See `docs/m8-coupled-bem-plan.md` (PR3 Step C, risk register) and
+`docs/audits/m8-coupled-bem-audit.md` (PR3 Step-A finding).
+
+---
+
 ## Resolved entries
 
 *(none yet)*
