@@ -248,7 +248,25 @@ LEVEL2-INTEGRATOR-UNWIRED for the audit-trail discoverability
 
 ---
 
-### B4 — Multi-body BEM cross-coupling ingestion
+### ~~B4~~ — Multi-body BEM cross-coupling ingestion
+
+**Closed 2026-07-21 by M8 PR1 (`a1399b2`) + PR2 (`14a447e`).**
+`HydroDatabase` gained `body_labels: tuple[str, ...] | None` (None =
+legacy 6-DOF branch, pre-M8 code verbatim; labels = `6N` shapes;
+`n_bodies` from labels, never shape arithmetic). `read_capytaine`
+gained the multi-body path keyed on the number of DISTINCT body-label
+prefixes (`buoyK__DOF`), producing a labelled `6N x 6N` database with
+full cross-coupling blocks, radiation + excitation; the lags→leads
+conjugation is shared with the single-body path (one copy — cannot
+diverge). Exercised end-to-end by the 18-DOF cluster fixture
+(`studies/cluster-3buoy-rigid/capytaine_multibody_18dof.nc`,
+production grid) and the M8 PR4 condensation gates
+(`tests/validation/test_m8_condensation_gates.py`). See
+`docs/m8-coupled-bem-closure.md`.
+
+---
+
+### ~~B4~~ (original entry, retained for audit trail)
 
 **Mechanism.** `HydroDatabase` shapes are hard-coded single-body
 ([`database.py:147-156`](../floatsim/hydro/database.py)). All three
@@ -302,7 +320,24 @@ physically near each other.
 
 ---
 
-### B5 — Coupled retardation kernel transform on multi-body BEM
+### ~~B5~~ — Coupled retardation kernel transform on multi-body BEM
+
+**Closed 2026-07-21 by M8 PR3 (`2d59907`).**
+`compute_retardation_kernel` generalized to the full `6N x 6N`
+(four 6-hardcodes → `n_dof = B.shape[0]`; the Filon quadrature was
+already size-generic), with the per-entry `i == j` gate branch and the
+NEW multi-body PSD gate on `B(omega)` (plan Q3 iii) — which caught a
+real whole-matrix contaminated frequency slice on first contact with a
+production-grid fixture (tracker
+BEM-CONTAMINATED-FREQUENCY-SLICE-CLUSTER-DRAFT, still OPEN — an M11
+blocker). Positive gate on the contaminated-omega-excluded grid
+(Check 3 worst 0.025 % at t_max = 60 s); permanent negative gate
+asserts PSD fires on the unmodified fixture. See
+`docs/m8-coupled-bem-closure.md` §S3.3–S4.
+
+---
+
+### ~~B5~~ (original entry, retained for audit trail)
 
 **Mechanism.** `compute_retardation_kernel` takes a single-body
 `HydroDatabase` (shape `(6, 6, n_w)`) and returns `K` of shape
