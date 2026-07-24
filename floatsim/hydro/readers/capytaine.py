@@ -474,6 +474,11 @@ def _resolve_a_inf(
     a_inf_arg: NDArray[np.float64] | None,
 ) -> NDArray[np.float64]:
     """Source A_inf either from the dataset's omega=inf row or from the kwarg."""
+    # Declared type anchors the branches below: the disk branch flows
+    # through untyped xarray .values / ndarray fancy indexing (Any), which
+    # otherwise propagates to the return (mypy --strict no-any-return;
+    # fix-lint-debt-post-m8, M8 closure S6).
+    a_inf: NDArray[np.float64]
     has_inf_row = bool(np.any(inf_mask))
     if has_inf_row and a_inf_arg is not None:
         raise ValueError(

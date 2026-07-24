@@ -219,15 +219,31 @@ def read_wamit(
     if s.suffix in {".1", ".3", ".hst", ".4"}:
         s = s.with_suffix("")
 
-    rescale_kwargs = dict(
+    # Explicit keyword passing (identical calls and values to the former
+    # **kwargs-dict funnel): a dict mixing bool and float values infers as
+    # dict[str, float], which mypy --strict cannot re-narrow per keyword at
+    # the unpack site (fix-lint-debt-post-m8; M8 closure S6).
+    omega, A, B, A_inf = read_added_mass_and_damping(
+        s.with_suffix(".1"),
         assume_dimensional=assume_dimensional,
         rho_water_kg_m3=rho_water_kg_m3,
         ulen_m=ulen_m,
     )
-    excit_kwargs = {**rescale_kwargs, "g_m_s2": g_m_s2}
-    omega, A, B, A_inf = read_added_mass_and_damping(s.with_suffix(".1"), **rescale_kwargs)
-    heading_deg, F_exc = read_excitation_force(s.with_suffix(".3"), omega=omega, **excit_kwargs)
-    C = read_hydrostatic_stiffness(s.with_suffix(".hst"), **excit_kwargs)
+    heading_deg, F_exc = read_excitation_force(
+        s.with_suffix(".3"),
+        omega=omega,
+        assume_dimensional=assume_dimensional,
+        rho_water_kg_m3=rho_water_kg_m3,
+        g_m_s2=g_m_s2,
+        ulen_m=ulen_m,
+    )
+    C = read_hydrostatic_stiffness(
+        s.with_suffix(".hst"),
+        assume_dimensional=assume_dimensional,
+        rho_water_kg_m3=rho_water_kg_m3,
+        g_m_s2=g_m_s2,
+        ulen_m=ulen_m,
+    )
 
     ref = (
         np.zeros(3, dtype=np.float64)
