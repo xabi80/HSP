@@ -72,6 +72,12 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
 "floatsim/solver/**" = ["N803", "N806", "RUF002"]
 "floatsim/waves/**" = ["N803", "N806", "RUF002"]
 "tests/**" = ["N802", "N803", "N806", "N815", "E741", "SIM300"]
+# Study scripts mirror the same scientific naming as the package proper
+# (A, B, K, I_cm, T_n — cited physics symbols, not style violations);
+# E741 matches the tests/** precedent (I = inertia). Gated at
+# fix-lint-debt-post-m8 per M8 closure S6 (all other rule classes in
+# studies/ were fixed for real, not ignored).
+"studies/**" = ["N803", "N806", "E741"]
 # Helper scripts mirror the same scientific naming as the package proper
 # (matrices A/B/C/M, set-theoretic ∪ in docstrings).
 "scripts/**" = ["N802", "N803", "N806", "N815", "RUF002"]

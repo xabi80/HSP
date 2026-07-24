@@ -5,12 +5,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import cluster_study_common as sc
 import numpy as np
 
 from floatsim.solver.equilibrium import solve_static_equilibrium
 from floatsim.solver.newmark import integrate_cummins
-
-import cluster_study_common as sc
 
 _HERE = Path(__file__).resolve().parent
 _RESULTS = _HERE / "results"

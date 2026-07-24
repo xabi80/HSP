@@ -55,7 +55,7 @@ def main() -> None:
     print(f"  Combined body '{allb.name}' with {len(dofs)} DOFs:")
     print(f"    {dofs}")
 
-    omegas = list(_OMEGAS) + [float("inf")]
+    omegas = [*_OMEGAS, float("inf")]
     problems = [
         cpt.RadiationProblem(
             body=allb, omega=float(w), radiating_dof=d, water_depth=float("inf"), rho=cc.RHO, g=cc.G

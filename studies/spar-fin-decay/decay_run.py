@@ -14,11 +14,10 @@ import json
 from pathlib import Path
 
 import numpy as np
+import study_common as sc
 
 from floatsim.solver.equilibrium import solve_static_equilibrium
 from floatsim.solver.newmark import integrate_cummins
-
-import study_common as sc
 
 _HERE = Path(__file__).resolve().parent
 _RESULTS = _HERE / "results"

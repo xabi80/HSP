@@ -7,10 +7,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import cluster_common as cc
 import numpy as np
 import xarray as xr
-
-import cluster_common as cc
 
 _HERE = Path(__file__).resolve().parent
 _RESULTS = _HERE / "results"
@@ -55,7 +54,7 @@ def main() -> None:
     resid = np.abs(key1[order1] - key2[order2]).max()
     # Also the raw |y_i + y_j| over the sorted-matched pairs.
     y_sum = np.abs(h1[order1][:, 1] + h2[order2][:, 1]).max()
-    print(f"\n  Mirror check (buoy1 reflected-in-y vs buoy2):")
+    print("\n  Mirror check (buoy1 reflected-in-y vs buoy2):")
     print(f"    max |vertex mismatch| = {resid:.3e} (expect ~1e-9 round tol)")
     print(f"    max |y_i + y_j| paired = {y_sum:.3e} (expect ~1e-15 if exact mirror)")
 

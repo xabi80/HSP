@@ -12,14 +12,13 @@ import json
 import warnings
 from pathlib import Path
 
+import cluster_common as cc
 import numpy as np
 import xarray as xr
 
 from floatsim.hydro.database import HydroDatabase
 from floatsim.hydro.readers.capytaine import read_capytaine
 from floatsim.hydro.retardation import compute_retardation_kernel
-
-import cluster_common as cc
 
 _HERE = Path(__file__).resolve().parent
 _REF_NC = _HERE / "reference_single_bem.nc"

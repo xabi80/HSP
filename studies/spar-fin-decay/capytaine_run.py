@@ -28,9 +28,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import numpy as np
-
 import capytaine as cpt
+import numpy as np
 
 # ---------------------------------------------------------------------------
 # Locked inputs (per Xabier's spar-fin study spec)
@@ -100,7 +99,7 @@ def main() -> None:
     # Include omega = inf for radiation as the canonical A_inf case --
     # FloatSim's Capytaine reader needs this populated to fill A_inf
     # without requiring a caller-supplied kwarg.
-    omegas_rad = list(omegas) + [float("inf")]
+    omegas_rad = [*omegas, float("inf")]
     radiation_problems = [
         cpt.RadiationProblem(
             body=body,
@@ -188,10 +187,10 @@ def main() -> None:
         print(f"  C33 (Capytaine waterplane): {C33_cap:.3f} N/m "
               f"(expected {expected_C33:.3f}, rel-err {rel_err*100:.2f}%)")
         if rel_err > 0.02:
-            print(f"  CHECK 2 WARNING: C33 deviates >2% from rho*g*pi*r_spar^2.")
-            print(f"  This may reflect spar radius assumption vs actual mesh waterline.")
+            print("  CHECK 2 WARNING: C33 deviates >2% from rho*g*pi*r_spar^2.")
+            print("  This may reflect spar radius assumption vs actual mesh waterline.")
     else:
-        print(f"  Check 2: hydrostatic_stiffness not in dataset; skipped.")
+        print("  Check 2: hydrostatic_stiffness not in dataset; skipped.")
 
     # Check 3: B_heave(omega) non-negative everywhere
     B_h = dataset["radiation_damping"].sel(
@@ -210,7 +209,7 @@ def main() -> None:
         T_n_pred = 2.0 * np.pi * np.sqrt((M_body + A_inf_heave) / C33_cap)
         print(f"\n  Predicted T_n_heave = 2*pi*sqrt((M+A_inf)/C33) = {T_n_pred:.3f} s")
         if not (3.0 < T_n_pred < 4.0):
-            print(f"  NOTE: predicted T_n outside expected 3.0-4.0 s band.")
+            print("  NOTE: predicted T_n outside expected 3.0-4.0 s band.")
 
     print()
     print("Step A + B complete.")

@@ -72,7 +72,7 @@ def main() -> None:
     def t10(K):
         below = np.where(K / K[0] < 0.1)[0] if K[0] != 0 else []
         return td[below[0]] if len(below) else float("nan")
-    print(f"\n  timescale (first t with |K|/|K(0)| < 0.1):")
+    print("\n  timescale (first t with |K|/|K(0)| < 0.1):")
     print(f"    diagonal: {t10(Kdd):.2f} s;  cross: {t10(Kcc):.2f} s")
     print("\n  FINDING (report, not a gate): compare the two decay columns.")
 

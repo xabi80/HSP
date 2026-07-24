@@ -22,10 +22,9 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")  # headless plotting
+import capytaine as cpt
 import matplotlib.pyplot as plt
 import numpy as np
-
-import capytaine as cpt
 
 _HERE = Path(__file__).resolve().parent
 _MESH_PATH = _HERE / "mesh" / "test2_spar_fin.gdf"
@@ -60,8 +59,7 @@ def check_1_visualize(body: cpt.FloatingBody) -> None:
     print(f"  faces: {mesh.nb_faces}")
     print(f"  vertices: {mesh.nb_vertices}")
 
-    # Face centers + vertices for plotting.
-    fc = mesh.faces_centers  # (n_faces, 3)
+    # Vertices for plotting.
     fv = mesh.vertices  # (n_verts, 3)
 
     fig = plt.figure(figsize=(12, 5))
@@ -168,8 +166,8 @@ def check_2_normals(body: cpt.FloatingBody) -> None:
     # to BEM integration.
     print()
     print("  Expected (outward-from-body convention):")
-    print(f"    TOP face nz ~ +1  (outward, away from spar interior)")
-    print(f"    BOT face nz ~ -1  (outward, away from spar interior)")
+    print("    TOP face nz ~ +1  (outward, away from spar interior)")
+    print("    BOT face nz ~ -1  (outward, away from spar interior)")
 
     # Total plate area for a sanity-check vs analytical annulus area.
     A_top = float(fa[top_mask].sum()) if n_top > 0 else 0.0
@@ -242,7 +240,7 @@ def check_3_reference_geometry() -> None:
     A_h = ds["added_mass"].sel(radiating_dof="Heave", influenced_dof="Heave")
     print(f"  Reference A(heave) at omega = {omegas[-1]:.1f} rad/s: "
           f"{float(A_h.isel(omega=-1)):.3f} kg")
-    print(f"  Reference A(heave) sweep:")
+    print("  Reference A(heave) sweep:")
     for i, w in enumerate(omegas):
         print(f"    omega = {w:5.2f}: A = {float(A_h.isel(omega=i)):7.3f} kg")
     print()

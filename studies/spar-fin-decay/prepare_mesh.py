@@ -30,6 +30,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+from waterline_balance import displaced_volume_below_waterline
 
 from floatsim.hydro.mesh_hygiene import (
     GdfMesh,
@@ -39,8 +40,6 @@ from floatsim.hydro.mesh_hygiene import (
     validate_panel_normals,
     write_gdf_panels,
 )
-
-from waterline_balance import displaced_volume_below_waterline
 
 _HERE = Path(__file__).resolve().parent
 _ORIGINAL_MESH = _HERE / "mesh" / "test2_spar_fin_ORIGINAL.gdf"

@@ -27,12 +27,11 @@ import time
 from pathlib import Path
 
 import capytaine as cpt
+import cluster_common as cc
 import numpy as np
+from build_cluster_mesh import build as build_composite
 
 from floatsim.hydro.mesh_hygiene import GdfMesh, load_gdf_panels, write_gdf_panels
-
-import cluster_common as cc
-from build_cluster_mesh import build as build_composite
 
 _HERE = Path(__file__).resolve().parent
 _REF_MESH = _HERE / "mesh" / "single_at_cluster_draft.gdf"
@@ -57,7 +56,7 @@ def _run_bem(mesh_path: Path, cog, out_nc: Path, label: str, omegas) -> None:
     body = cpt.FloatingBody(mesh=mesh, center_of_mass=np.asarray(cog), name=label)
     body.rotation_center = np.asarray(cog)
     body.add_all_rigid_body_dofs()
-    omegas_rad = list(omegas) + [float("inf")]
+    omegas_rad = [*omegas, float("inf")]
     problems = [
         cpt.RadiationProblem(
             body=body, omega=float(w), radiating_dof=d, water_depth=float("inf"), rho=cc.RHO, g=cc.G

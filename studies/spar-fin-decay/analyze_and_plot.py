@@ -18,11 +18,10 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
-from scipy.signal import find_peaks  # noqa: E402
-
-import study_common as sc  # noqa: E402
+import matplotlib.pyplot as plt
+import numpy as np
+import study_common as sc
+from scipy.signal import find_peaks
 
 _HERE = Path(__file__).resolve().parent
 _RESULTS = _HERE / "results"
@@ -76,7 +75,8 @@ def main() -> None:
     # --- Measured (BEM-only) ---
     Tn_meas, zeta_rad_meas, pk_bem = _peaks_period_and_zeta(bem["t"], bem["xi"][:, 2])
     # --- Measured (BEM+Morison, effective, amplitude-dependent) ---
-    Tn_mor, zeta_mor_eff, pk_mor = _peaks_period_and_zeta(mor["t"], mor["xi"][:, 2])
+    Tn_mor, zeta_mor_eff, _pk_mor = _peaks_period_and_zeta(mor["t"], mor["xi"][:, 2])
+    zeta_eff = zeta_mor_eff  # short alias: keeps the summary template line <=100 cols
 
     # --- Cross-DOF magnitudes (measure first, then band) ---
     cross = {}
@@ -211,7 +211,7 @@ exactly for pure heave.
 
 | quantity | value |
 |---|---|
-| effective zeta (first peaks, amplitude-dependent) | {zeta_mor_eff:.4e} ({zeta_mor_eff*100:.2f}% crit) |
+| effective zeta (first peaks, amplitude-dependent) | {zeta_eff:.4e} ({zeta_eff*100:.2f}% crit) |
 | period | {Tn_mor:.4f} s |
 
 Quadratic drag is amplitude-dependent, so this "effective zeta" is not

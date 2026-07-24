@@ -21,6 +21,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -41,17 +42,24 @@ def main() -> None:
     B_heave = ds["radiation_damping"].sel(
         radiating_dof="Heave", influenced_dof="Heave"
     ).values
-    B_heave_finite = B_heave[finite_mask] if B_heave.size == omegas.size else B_heave[:omegas_finite.size]
+    B_heave_finite = (
+        B_heave[finite_mask] if B_heave.size == omegas.size else B_heave[: omegas_finite.size]
+    )
 
     B_surge = ds["radiation_damping"].sel(
         radiating_dof="Surge", influenced_dof="Surge"
     ).values
-    B_surge_finite = B_surge[finite_mask] if B_surge.size == omegas.size else B_surge[:omegas_finite.size]
+    B_surge_finite = (
+        B_surge[finite_mask] if B_surge.size == omegas.size else B_surge[: omegas_finite.size]
+    )
 
     print("=" * 70)
     print("Pre-flight 2 diagnostic: B_heave high-omega behavior")
     print("=" * 70)
-    print(f"omega grid: {omegas_finite.size} finite pts, range [{omegas_finite[0]:.3f}, {omegas_finite[-1]:.3f}]")
+    print(
+        f"omega grid: {omegas_finite.size} finite pts, "
+        f"range [{omegas_finite[0]:.3f}, {omegas_finite[-1]:.3f}]"
+    )
     print()
 
     # (1) Log-log plot of B_heave for omega >= 5 (focus on the regime in question).
@@ -61,13 +69,11 @@ def main() -> None:
     abs_B_surge = np.abs(B_surge_finite[high_mask])
     # Mark sign on the markers.
     sign_heave = np.sign(B_heave_finite[high_mask])
-    sign_surge = np.sign(B_surge_finite[high_mask])
     ax.loglog(omegas_finite[high_mask], abs_B_heave, "o-",
               label="|B_heave|", color="steelblue", markersize=4)
     ax.loglog(omegas_finite[high_mask], abs_B_surge, "s-",
               label="|B_surge|", color="firebrick", markersize=4, alpha=0.6)
     # 1/omega^4 reference line through B_heave at omega = 5 (or first non-zero entry)
-    idx0 = int(np.argmax(omegas_finite[high_mask]))
     # Anchor through smallest omega in the plot range that has finite non-zero data
     finite_nonzero = np.where((omegas_finite[high_mask] > 0) & (abs_B_heave > 0))[0]
     if finite_nonzero.size:
@@ -107,13 +113,15 @@ def main() -> None:
     Bs_mean = np.mean(Bs_w4)
     Bh_std = np.std(Bh_w4)
     Bs_std = np.std(Bs_w4)
-    print("Item 25 metric on last 10 grid points (omega in [{:.2f}, {:.2f}]):".format(
-        last10_w[0], last10_w[-1]))
+    print(
+        f"Item 25 metric on last 10 grid points "
+        f"(omega in [{last10_w[0]:.2f}, {last10_w[-1]:.2f}]):"
+    )
     print(f"  B_heave * omega^4: mean = {Bh_mean:+.4e}, std = {Bh_std:.4e}, "
           f"std/|mean| = {Bh_std / abs(Bh_mean) if abs(Bh_mean) > 1e-30 else float('inf'):.4f}")
     print(f"  B_surge * omega^4: mean = {Bs_mean:+.4e}, std = {Bs_std:.4e}, "
           f"std/|mean| = {Bs_std / abs(Bs_mean) if abs(Bs_mean) > 1e-30 else float('inf'):.4f}")
-    print(f"  Item 25 gate threshold: std/mean < 0.10")
+    print("  Item 25 gate threshold: std/mean < 0.10")
     print()
 
     # (3) Relative noise at the highest 5 omegas via 5-point moving average.
@@ -130,7 +138,10 @@ def main() -> None:
     smooth_Bh = _smooth5(B_heave_finite)
     smooth_Bs = _smooth5(B_surge_finite)
     print("Relative noise (|B - smooth(B)| / |smooth(B)|) at the highest 5 omegas:")
-    print(f"  {'omega':>8} | {'B_heave':>14} | {'noise_heave':>12} | {'B_surge':>12} | {'noise_surge':>12}")
+    print(
+        f"  {'omega':>8} | {'B_heave':>14} | {'noise_heave':>12} "
+        f"| {'B_surge':>12} | {'noise_surge':>12}"
+    )
     for i in range(-5, 0):
         w = omegas_finite[i]
         Bh = B_heave_finite[i]
@@ -154,10 +165,7 @@ def main() -> None:
         m = np.mean(win_w4)
         s = np.std(win_w4)
         ratio = s / abs(m) if abs(m) > 1e-30 else float("inf")
-        if not np.isfinite(ratio):
-            ratio_str = "  inf"
-        else:
-            ratio_str = f"{ratio:12.4f}"
+        ratio_str = "  inf" if not np.isfinite(ratio) else f"{ratio:12.4f}"
         # Print every fifth one to keep output tractable
         if i % 5 == 0 or i in (15, omegas_finite.size):
             print(f"  {omegas_finite[i-1]:10.3f} | {ratio_str}")
@@ -173,10 +181,7 @@ def main() -> None:
         m = np.mean(win_w4)
         s = np.std(win_w4)
         ratio = s / abs(m) if abs(m) > 1e-30 else float("inf")
-        if not np.isfinite(ratio):
-            ratio_str = "  inf"
-        else:
-            ratio_str = f"{ratio:12.4f}"
+        ratio_str = "  inf" if not np.isfinite(ratio) else f"{ratio:12.4f}"
         if i % 5 == 0 or i in (15, omegas_finite.size):
             print(f"  {omegas_finite[i-1]:10.3f} | {ratio_str}")
     print()
@@ -203,8 +208,12 @@ def main() -> None:
     print("=" * 70)
     print(f"|B_heave|  at highest omega:   {abs(B_heave_finite[-1]):.3e} kg/s")
     print(f"|B_surge|  at highest omega:   {abs(B_surge_finite[-1]):.3e} kg/s")
-    print(f"ratio (heave/surge):           "
-          f"{abs(B_heave_finite[-1]) / abs(B_surge_finite[-1]) if abs(B_surge_finite[-1]) > 1e-30 else float('inf'):.3e}")
+    hs_ratio = (
+        abs(B_heave_finite[-1]) / abs(B_surge_finite[-1])
+        if abs(B_surge_finite[-1]) > 1e-30
+        else float("inf")
+    )
+    print(f"ratio (heave/surge):           {hs_ratio:.3e}")
 
 
 if __name__ == "__main__":

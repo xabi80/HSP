@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import cluster_common as cc
 import numpy as np
 from numpy.typing import NDArray
 
@@ -24,8 +25,6 @@ from floatsim.hydro.morison import MorisonElement, make_morison_state_force
 from floatsim.hydro.radiation import CumminsLHS, assemble_cummins_lhs
 from floatsim.hydro.readers.capytaine import read_capytaine
 from floatsim.hydro.retardation import RetardationKernel, compute_retardation_kernel
-
-import cluster_common as cc
 
 _HERE = Path(__file__).resolve().parent
 _COMP_NC = _HERE / "composite_bem.nc"

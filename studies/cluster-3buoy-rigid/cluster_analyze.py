@@ -10,12 +10,11 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
-from scipy.signal import find_peaks  # noqa: E402
-
-import cluster_common as cc  # noqa: E402
-import cluster_study_common as sc  # noqa: E402
+import cluster_common as cc
+import cluster_study_common as sc
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.signal import find_peaks
 
 _HERE = Path(__file__).resolve().parent
 _RESULTS = _HERE / "results"
@@ -70,7 +69,7 @@ def main() -> None:
 
     # Measured.
     Tn_meas, zeta_rad_meas, pk_b = _period_zeta(bem["t"], bem["xi"][:, 2])
-    Tn_mor, zeta_mor, pk_m = _period_zeta(mor["t"], mor["xi"][:, 2])
+    Tn_mor, zeta_mor, _pk_m = _period_zeta(mor["t"], mor["xi"][:, 2])
 
     def rel(a, b):
         return abs(a - b) / abs(b)
@@ -121,8 +120,11 @@ def main() -> None:
     ax.plot(env_t, -env, "k--", lw=0.8)
     ax.set(xlabel="time (s)", ylabel="heave (m)",
            title=f"3-buoy cluster heave decay (IC 0.10 m, R={R:.3f})")
-    ax.legend(); ax.grid(True, alpha=0.3); fig.tight_layout()
-    fig.savefig(_FIG / "heave_decay.png", dpi=120); plt.close(fig)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(_FIG / "heave_decay.png", dpi=120)
+    plt.close(fig)
 
     # (2) log-decrement
     fig, ax = plt.subplots(figsize=(9, 5))
@@ -132,8 +134,11 @@ def main() -> None:
     ax.set(xlabel="time (s)", ylabel="|heave peak| (m, log)",
            title=f"Log-decrement: zeta_rad {zeta_rad_meas*100:.3f}% "
                  f"vs analytical {zeta_pred*100:.3f}%")
-    ax.legend(); ax.grid(True, which="both", alpha=0.3); fig.tight_layout()
-    fig.savefig(_FIG / "decay_envelope_log.png", dpi=120); plt.close(fig)
+    ax.legend()
+    ax.grid(True, which="both", alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(_FIG / "decay_envelope_log.png", dpi=120)
+    plt.close(fig)
 
     # (3) cross-DOF
     fig, ax = plt.subplots(figsize=(9, 5))
@@ -143,8 +148,11 @@ def main() -> None:
         ax.plot(bem["t"], bem["xi"][:, k], lw=0.8, label=n)
     ax.set(xlabel="time (s)", ylabel="off-heave DOF",
            title=f"Cross-DOF (BEM-only); max |xi| = {cross_max:.2e}")
-    ax.legend(ncol=3, fontsize=8); ax.grid(True, alpha=0.3); fig.tight_layout()
-    fig.savefig(_FIG / "cross_dof.png", dpi=120); plt.close(fig)
+    ax.legend(ncol=3, fontsize=8)
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(_FIG / "cross_dof.png", dpi=120)
+    plt.close(fig)
 
     # (4) A33(omega) interaction picture
     w_s, a_s = inter["A33_single_curve"]
@@ -156,8 +164,11 @@ def main() -> None:
     ax.axvline(wn, color="grey", ls=":", lw=0.8, label=f"omega_n={wn:.2f}")
     ax.set(xlabel="omega (rad/s)", ylabel="heave added mass A33 (kg)",
            title=f"3-buoy interaction: R(inf)={R:.4f} (+{(R-1)*100:.1f}%)")
-    ax.legend(); ax.grid(True, alpha=0.3); fig.tight_layout()
-    fig.savefig(_FIG / "interaction_A33.png", dpi=120); plt.close(fig)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(_FIG / "interaction_A33.png", dpi=120)
+    plt.close(fig)
 
     # --- summary.md ---
     band_hi = 10 * cross_max
@@ -247,7 +258,7 @@ level.
 - `figures/interaction_A33.png` -- A33 composite vs 3 x single
 """
     (_RESULTS / "summary.md").write_text(summary)
-    print(f"\n  Wrote results/summary.md + 4 figures.")
+    print("\n  Wrote results/summary.md + 4 figures.")
     assert cross_max < band_hi
     print(f"  Cross-DOF within measurement band (< {band_hi:.2e}).")
 

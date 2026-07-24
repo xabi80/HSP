@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import warnings
 
+import cluster_common as cc
 import numpy as np
 
 from floatsim.hydro.mesh_hygiene import (
@@ -20,8 +21,6 @@ from floatsim.hydro.mesh_hygiene import (
     validate_panel_normals,
     write_gdf_panels,
 )
-
-import cluster_common as cc
 
 
 def build(dz2: float = cc.DZ2) -> GdfMesh:

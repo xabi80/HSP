@@ -112,7 +112,7 @@ def main() -> None:
     print("(a) MANUAL clip at z=0 (divergence theorem, wetted surface):")
     print(f"    displaced volume V_disp = {v_disp:.6e} m^3")
     print(f"    displaced mass  m_disp  = {m_disp:.4f} kg")
-    print(f"    PREDICTION band: 2.35e-2..2.42e-2 m^3 (24.1..24.8 kg)")
+    print("    PREDICTION band: 2.35e-2..2.42e-2 m^3 (24.1..24.8 kg)")
     print()
 
     # (b) Capytaine immersed_part
@@ -133,9 +133,9 @@ def main() -> None:
         m_cpt = _RHO * abs(v_cpt)
         print(f"    immersed volume = {abs(v_cpt):.6e} m^3")
         print(f"    displaced mass  = {m_cpt:.4f} kg")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"    Capytaine path failed ({type(exc).__name__}: {exc});")
-        print(f"    relying on manual clip (a).")
+        print("    relying on manual clip (a).")
         m_cpt = m_disp
 
     print()
@@ -144,7 +144,7 @@ def main() -> None:
     print("(c) Equilibrium sink dz = (M - m_disp) / (rho * A_wp):")
     print(f"    dz = ({_M_BODY} - {m_disp:.4f}) / ({_RHO} * {_A_WP:.6f})")
     print(f"    dz = {dz:.4f} m   (buoy floats this much DEEPER)")
-    print(f"    PREDICTION band: 0.15..0.22 m")
+    print("    PREDICTION band: 0.15..0.22 m")
     print()
 
     # Verdict on bands

@@ -10,12 +10,11 @@ from __future__ import annotations
 
 import json
 
+import cluster_common as cc
 import numpy as np
+from build_cluster_mesh import build
 
 from floatsim.hydro.mesh_hygiene import check_hydrostatic_volume, write_gdf_panels
-
-import cluster_common as cc
-from build_cluster_mesh import build
 
 
 def _skew(v):
@@ -92,7 +91,7 @@ def main() -> None:
     for com in buoy_coms:
         I += _parallel_axis(I_buoy_cm, cc.M_BUOY, com - cog)
     L = cc.ARM_CENTER_TO_TIP
-    for a, com in zip(ang, arm_coms):
+    for a, com in zip(ang, arm_coms, strict=False):
         u = np.array([np.cos(a), np.sin(a), 0.0])         # rod axis
         I_rod_cm = (cc.ARM_MASS_EACH * L**2 / 12.0) * (np.eye(3) - np.outer(u, u))
         I += _parallel_axis(I_rod_cm, cc.ARM_MASS_EACH, com - cog)
@@ -114,7 +113,7 @@ def main() -> None:
     (cc._HERE / "results" / "mass_properties.json").write_text(
         json.dumps(props, indent=2)
     )
-    print(f"\nWrote results/mass_properties.json")
+    print("\nWrote results/mass_properties.json")
 
 
 if __name__ == "__main__":

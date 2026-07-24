@@ -13,9 +13,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import capytaine as cpt
-import numpy as np
-
 import cluster_common as cc
+import numpy as np
 
 _HERE = Path(__file__).resolve().parent
 _SINGLE = _HERE.parent / "spar-fin-decay" / "mesh" / "test2_spar_fin_fullfix_eqdraft.gdf"
