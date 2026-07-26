@@ -316,3 +316,92 @@ Measured value reported verbatim at PR2; permanent test at PR4.
 | dt–stability interaction with the explicit-lag connector floor | decks can mix implicit joints with explicit penalty connectors; the tightest connector floor still governs dt | `check_connector_stability` stays in pre-flight; plan states joints do NOT relax a connector's floor |
 | Q5 schema churn breaking legacy decks | new shared-db + joints fields shift deck validation | byte-identity HARD gate (Q5): sha256 of assembled outputs pre/post on committed decks; no-labels path untouched |
 | KKT overhead scaling with n | dense bordered LU is O((n+m)³); benign at n=24 (MA-timing) but grows faster than the convolution's O(n²·N_K) | measured at PR2 (n=24); M10's articulated-3 provides the second scaling point at no extra cost; two points + O(n³) behavior decide BEFORE M11 planning whether sparse/Schur (program B6) is pulled forward — measurement scheduled, not assumed |
+
+---
+
+## Amendment A1 — Jacobian evaluation point + energy gate re-derivation (2026-07-26, PR2)
+
+**Append-only** (M7.5-Q2-chain precedent). Mirrored in
+`docs/audits/m9-joints-audit.md`. The plan's original Q1/Q2 text
+specified *where* the KKT border inserts but did not name **where the
+constraint Jacobian `G` is evaluated within the step** — a formulation
+decision with a **factor-~800 energy consequence** surfaced at PR2
+prototyping.
+
+### The finding — G's evaluation point governs energy
+
+Enforcing the velocity-level constraint requires `G` at some
+configuration in `[x_n, x_{n+1}]`. Measured amplitude change over 100
+cycles of the hinge gate (rho_inf = 1.0, dt = 0.01, released from
+θ₀ = 0.02 rad):
+
+| G evaluated at | amplitude over 100 cyc | verdict |
+|---|---|---|
+| predictor `x_pred` (the plan-implied first cut) | **−99.7 %** | catastrophic dissipation |
+| endpoint `x_{n+1}` | −99.7 % | catastrophic |
+| **step midpoint `(x_n + x_{n+1})/2`, 2 iterations** | **−0.13 %** | energy-consistent |
+
+**Mechanism.** The discrete constraint force `Gᵀλ` does net work over a
+step unless `G` is evaluated consistently with the trapezoidal balance
+(at rho_inf = 1.0 the generalized-α is the midpoint rule). Off-midpoint
+evaluation (predictor or endpoint) makes `λᵀ G Δx ≠ 0`, bleeding
+energy; midpoint-`G` makes it vanish to second order.
+
+**Isolation evidence (why this is the mechanism, not a stepping bug).**
+The prototype's **unconstrained** stepping conserves energy to
+**3.842e-14**, bit-matching the MC baseline — so the generalized-α
+step is correct and the dissipation is entirely the constraint
+Jacobian's evaluation point.
+
+**Iteration count.** Midpoint-`G` is implicit (`x_{n+1}` unknown);
+fixed-point iteration converged at **2** iterations (measured
+identical at niter 2 = 3 = 4).
+
+**Projection.** Position-only projection onto `φ = 0`. Velocity
+re-projection is **redundant** with the velocity-level enforcement and
+was measured to change nothing (position-only ≡ position+velocity in
+energy and amplitude); it is omitted.
+
+**Q1 lock unchanged in intent** (velocity-level index-1 KKT +
+position projection); this amendment fixes the *evaluation point*, a
+detail the original text left implicit.
+
+### Energy gate — re-derived from the measured floor (supersedes the 1e-6 ceiling)
+
+The original ceiling `(max-min)/mean < 1e-6` came from the **MC
+baseline — a LINEAR oscillator**, where trapezoidal conserves energy
+exactly (3.8e-14). The constrained pendulum has a
+**configuration-dependent `G` (nonlinear)**, so a second-order scheme
+cannot beat its own truncation order; `1e-6` was measuring the wrong
+problem class. Re-derived from the measured behavior, **three clauses,
+all required** (rho_inf = 1.0, dt = 0.01, 100 cycles):
+
+1. **magnitude:** `(max-min)/mean < 5e-3` (measured 2.7e-3);
+2. **numerical damping:** `ζ_num < 1e-5` (measured ~2e-6, from the
+   −0.13 % amplitude change / 100 cycles);
+3. **scaling:** energy variation **decreases O(h)** under dt refinement
+   (measured 5.4e-3 / 2.7e-3 / 1.4e-3 at dt = 0.02 / 0.01 / 0.005).
+
+Clause 3 is load-bearing: a future regression that breaks the midpoint
+iteration and turns dissipation secular could still sit under a static
+magnitude ceiling — but its O(h) scaling signature would die, and
+clause 3 catches it. Setting the gate from the measured floor is
+**correction, not widening** — the same operation as M8's two-tier
+excitation tolerance (a tolerance derived from the physics of the
+problem class, not from convention).
+
+**Option B (energy-momentum / Gonzalez discrete-gradient) rejected:**
+buys `ζ_num` 2e-6 → ~1e-14, unobservable against the platform's ~2.5 %
+critical physical damping, at real ME-class bug risk in the
+load-bearing integrator.
+
+### Method note — the plan's stop condition fired as designed
+
+The plan's Q8 variance-driver named "the constraint formulation
+surviving contact with the integrator," and Q1 carried the stop
+condition "if the first choice injects energy past the MC baseline,
+PR2 re-does the formulation." The plan-implied predictor-`G` was tried
+first, injected catastrophically (−99.7 %), and the formulation was
+re-done **before `newmark.py` was touched** — the prototype-before-
+editing discipline is why re-doing it was cheap. Recorded as method
+for the next constrained-integrator change in this codebase.

@@ -86,7 +86,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 import numpy as np
 from numpy.typing import NDArray
@@ -94,7 +94,16 @@ from numpy.typing import NDArray
 from floatsim.hydro.radiation import CumminsLHS
 from floatsim.hydro.retardation import RadiationConvolution, RetardationKernel
 
+if TYPE_CHECKING:
+    from floatsim.bodies.joints import JointSet
+
 _DT_MATCH_RTOL: Final[float] = 1.0e-12
+# Midpoint-G fixed-point iterations for the constrained (KKT) path. The
+# constraint Jacobian is evaluated at (x_n + x_{n+1})/2 for energy
+# consistency with the trapezoidal balance; the iteration converges at 2
+# (measured 2 = 3 = 4). See docs/m9-joints-plan.md Amendment A1.
+_KKT_MIDPOINT_ITERS: Final[int] = 2
+_GDOT_FD_EPS: Final[float] = 1.0e-7
 
 
 @dataclass(frozen=True)
@@ -120,6 +129,12 @@ class IntegrationResult:
     xi: NDArray[np.float64]
     xi_dot: NDArray[np.float64]
     xi_ddot: NDArray[np.float64]
+    lam: NDArray[np.float64] | None = None
+    """``(N+1, m)`` Lagrange-multiplier history when ``constraints`` were
+    supplied (else ``None``). ``lam[n]`` is the physical constraint force
+    at step ``n`` (N on translational rows, N*m on rotational rows;
+    dt-free -- see the plan's lambda-units derivation). ``lam[0]`` is the
+    initial constrained reaction."""
 
 
 def _zero_force(n_dof: int) -> Callable[[float], NDArray[np.float64]]:
@@ -141,6 +156,57 @@ def _generalized_alpha_coefficients(rho_inf: float) -> tuple[float, float, float
     return alpha_m, alpha_f, gamma, beta
 
 
+def _kkt_solve(
+    a_eff: NDArray[np.float64],
+    g: NDArray[np.float64],
+    rhs: NDArray[np.float64],
+    c: NDArray[np.float64],
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Solve the bordered KKT system ``[[A, -Gᵀ],[G, 0]] [a; Λ] = [rhs; c]``.
+
+    Returns ``(a, Λ)``. ``Λ`` is the physical constraint force (dt-free;
+    plan lambda-units derivation). ``A_eff`` is re-assembled/-factorized
+    per step -- marginal cost against the convolution (Measurement A).
+    """
+    n = a_eff.shape[0]
+    m = g.shape[0]
+    kkt = np.zeros((n + m, n + m), dtype=np.float64)
+    kkt[:n, :n] = a_eff
+    kkt[:n, n:] = -g.T
+    kkt[n:, :n] = g
+    sol = np.linalg.solve(kkt, np.concatenate([rhs, c]))
+    return sol[:n], sol[n:]
+
+
+def _project_position(
+    constraints: JointSet,
+    xi: NDArray[np.float64],
+    w_inv: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """One mass-metric Newton projection of ``xi`` onto ``phi(xi) = 0``.
+
+    ``Δx = -W Gᵀ (G W Gᵀ)⁻¹ phi``, ``W = (M+A_inf)⁻¹`` (the kinetic-energy
+    norm -- the physically-derived weight, not a tuning knob). Position
+    only: velocity re-projection is redundant with the velocity-level
+    enforcement (amendment A1).
+    """
+    g = constraints.jacobian(xi)
+    phi = constraints.phi(xi)
+    s = g @ w_inv @ g.T
+    return xi - w_inv @ g.T @ np.linalg.solve(s, phi)
+
+
+def _gdot_times_u(
+    constraints: JointSet, xi: NDArray[np.float64], u: NDArray[np.float64]
+) -> NDArray[np.float64]:
+    """Finite-difference ``Ġ u`` for the initial constrained acceleration
+    (``G a_0 = -Ġ u_0``). Zero for a rest start (``u_0 = 0``); a first-step
+    O(eps) approximation otherwise (small-angle: config-rate ~ u)."""
+    g0 = constraints.jacobian(xi)
+    g1 = constraints.jacobian(xi + _GDOT_FD_EPS * u)
+    return ((g1 - g0) / _GDOT_FD_EPS) @ u
+
+
 def integrate_cummins(
     *,
     lhs: CumminsLHS,
@@ -154,6 +220,8 @@ def integrate_cummins(
         Callable[[float, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]] | None
     ) = None,
     rho_inf: float = 0.9,
+    constraints: JointSet | None = None,
+    projection_interval: int = 1,
 ) -> IntegrationResult:
     """Integrate the linear Cummins ODE with generalized-alpha.
 
@@ -278,7 +346,23 @@ def integrate_cummins(
         raise ValueError(f"external_force(t) must return shape ({n_dof},); got {F0_time.shape}")
     F0_sd = _eval_state_force(0.0, xi_0, xi_dot_0)
     F0 = F0_time + F0_sd
-    xi_ddot_0 = np.linalg.solve(M_eff, F0 - C @ xi_0)
+
+    # Constrained (KKT) machinery, active only when `constraints` is given.
+    # When None, every path below is the pre-M9 code verbatim.
+    w_inv: NDArray[np.float64] | None = (
+        np.asarray(np.linalg.inv(M_eff), dtype=np.float64) if constraints is not None else None
+    )
+    m_con = constraints.n_constraints if constraints is not None else 0
+    lam_hist = np.empty((n_samples, m_con), dtype=np.float64) if constraints is not None else None
+
+    if constraints is None:
+        xi_ddot_0 = np.linalg.solve(M_eff, F0 - C @ xi_0)
+    else:
+        g0 = constraints.jacobian(xi_0)
+        c0 = -_gdot_times_u(constraints, xi_0, xi_dot_0)
+        xi_ddot_0, lam0 = _kkt_solve(M_eff, g0, F0 - C @ xi_0, c0)
+        assert lam_hist is not None
+        lam_hist[0] = lam0
 
     xi_hist[0] = xi_0
     xi_dot_hist[0] = xi_dot_0
@@ -321,9 +405,29 @@ def integrate_cummins(
             - alpha_f * (C @ xi_n)
             - mu_n
         )
-        xi_ddot_np1 = np.linalg.solve(A_eff, rhs)
+        if constraints is None:
+            xi_ddot_np1 = np.linalg.solve(A_eff, rhs)
+            xi_np1 = xi_pred + (h**2) * beta * xi_ddot_np1
+        else:
+            # Velocity-level index-1 KKT (Q1 lock). G is evaluated at the
+            # step MIDPOINT (x_n + x_{n+1})/2 for energy consistency with the
+            # trapezoidal balance -- fixed-point iterated (converges at 2;
+            # amendment A1). The constraint RHS enforces the discrete
+            # velocity constraint G(x_mid) u_{n+1} = 0.
+            assert w_inv is not None and lam_hist is not None
+            xi_np1 = xi_pred.copy()
+            lam_np1 = np.zeros(m_con, dtype=np.float64)
+            for _ in range(_KKT_MIDPOINT_ITERS):
+                g_mid = constraints.jacobian(0.5 * (xi_n + xi_np1))
+                c = -(1.0 / (h * gamma)) * (g_mid @ (xi_dot_n + h * (1.0 - gamma) * xi_ddot_n))
+                xi_ddot_np1, lam_np1 = _kkt_solve(A_eff, g_mid, rhs, c)
+                xi_np1 = xi_pred + (h**2) * beta * xi_ddot_np1
+            # Position-only projection onto phi = 0 (drift control); velocity
+            # re-projection is redundant with the velocity-level enforcement.
+            if (n + 1) % projection_interval == 0:
+                xi_np1 = _project_position(constraints, xi_np1, w_inv)
+            lam_hist[n + 1] = lam_np1
 
-        xi_np1 = xi_pred + (h**2) * beta * xi_ddot_np1
         xi_dot_np1 = xi_dot_n + h * ((1.0 - gamma) * xi_ddot_n + gamma * xi_ddot_np1)
 
         buffer.push(xi_dot_np1)
@@ -344,4 +448,5 @@ def integrate_cummins(
         xi=xi_hist,
         xi_dot=xi_dot_hist,
         xi_ddot=xi_ddot_hist,
+        lam=lam_hist,
     )

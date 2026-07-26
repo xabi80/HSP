@@ -127,3 +127,34 @@ The M8 closure S6 deferred `fix-`-branch items (4 pre-existing
 `mypy --strict` reader errors were **fixed** in `fix-lint-debt-post-m8`
 `ed04cf1`; `studies/` ruff gated in `29c9b64`). No open lint debt
 remains at M9 start — recorded here so the M9 audit trail is complete.
+
+---
+
+## 6. Amendment A1 mirror — Jacobian evaluation point (2026-07-26, PR2)
+
+Formalised in the plan (Amendment A1). Recorded here as institutional
+knowledge for the next constrained-integrator change in this codebase:
+
+**Where `G` is evaluated within a generalized-α step governs energy by
+a factor ~800.** Measured amplitude over 100 cycles of the hinge gate
+(rho_inf=1.0, dt=0.01, θ₀=0.02): predictor-`G` **−99.7 %**, endpoint-`G`
+**−99.7 %**, **midpoint-`G` (2 iterations) −0.13 %**. Mechanism: the
+discrete constraint force `Gᵀλ` does net work unless `G` is evaluated
+consistently with the trapezoidal balance (midpoint at rho_inf=1.0).
+Isolation: the *unconstrained* stepping conserves to **3.842e-14**
+(bit-matching MC), so the dissipation is entirely the evaluation point,
+not the step. Iteration converges at **2** (2=3=4). Velocity
+re-projection is redundant with velocity-level enforcement (measured
+position-only ≡ position+velocity); position-only projection is used.
+
+**Energy gate re-derived** from the measured floor (the 1e-6 ceiling
+came from the LINEAR MC baseline; the constrained pendulum is nonlinear
+so a 2nd-order scheme is truncation-limited): three clauses — magnitude
+`< 5e-3`, `ζ_num < 1e-5`, and **O(h) decrease under dt refinement** (the
+scaling clause that a magnitude-only ceiling would miss). This is
+tolerance *correction* (M8 two-tier-excitation precedent), not widening.
+
+The plan's stop condition fired as designed: predictor-`G` was tried
+first, injected catastrophically, and the formulation was re-done
+*before* `newmark.py` was edited — the prototype-before-editing method
+made that cheap.
