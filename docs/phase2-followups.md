@@ -590,10 +590,45 @@ references), where high-precision regimes are exercised
 where the empirical-tolerance chain gets stress-tested by
 a hypothesis-strategy change.
 
+**M9 PR2 addendum (2026-07-26) — SECOND tightening event, now
+with a reproducing counterexample.** The M9 PR2 full-suite run
+surfaced a failing hypothesis example on the SAME assertion
+(`test_property_F_ref_equals_T_pullback_of_F_attach`):
+
+- **Counterexample:** `K_attach ~ 5e7` (a stiff penalty
+  spring), values of magnitude `~1e8`; `F_ref = Tᵀ F_attach`
+  vs the hand computation differ by **rel 1.00000002e-8**
+  against `rtol = 1e-8` — the **float64 relative floor at
+  magnitude ~1e8, touched exactly** (a chain of ops on ~1e8
+  values carries ~1e-8 relative rounding).
+- **Why it appeared now, not at PR1 / M8-close:** the
+  full-suite collection order differs from the unit tier,
+  shifting hypothesis's RNG; it explored a stiffer example
+  this run. The counterexample is now cached in
+  `.hypothesis/examples/` and replays deterministically.
+- **Pre-existence verified:** `git diff main` on both
+  `connector.py` and the test is **empty**; the failure
+  reproduces on `main`; M9 touched neither. M9 caused zero
+  regressions (its +21 full-suite delta is exactly the new
+  PR1+PR2 tests).
+- **This is the SECOND tightening event** on this assertion
+  (`bbb5b9b` was the first, 1e-9 → 1e-8). **A third bare rtol
+  bump (→ 1e-7) is explicitly the wrong move** (CLAUDE.md §9):
+  it is another turn of a ratchet that never resolves, and
+  `bbb5b9b` is the recorded precedent for why this entry exists.
+- **Sharpened deferred work:** the fix is a **magnitude-scaled
+  bound** — `atol` scaled by `||K_attach||` (or the transform's
+  condition number `||T||·||Tᵀ||`), giving an analytically
+  defensible floor — NOT another decade on `rtol`. Option (1)
+  above ("derive the real bound") is now the priority; the
+  reproducing counterexample makes it directly verifiable.
+
 **Status.** Open. Surfaced 2026-07-01 (M7.5 pre-milestone
 audit). Empirical tolerance in place at `bbb5b9b`;
 analytical bound derivation and cache-skip investigation
-deferred. Not blocking M7.5.
+deferred. Not blocking M7.5. **Re-surfaced with a cached
+reproducing counterexample at M9 PR2 (2026-07-26); the M9
+branch carries this one pre-existing red, tracked here.**
 
 ---
 
