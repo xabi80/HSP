@@ -422,7 +422,12 @@ def _build_joint_set(deck: Deck, name_to_index: dict[str, int]) -> JointSet | No
 
 
 def _build_coupled_lhs_kernel(
-    deck: Deck, shared_db: HydroDatabase, dt: float, t_max_kernel: float, gravity: float
+    deck: Deck,
+    shared_db: HydroDatabase,
+    dt: float,
+    t_max_kernel: float,
+    gravity: float,
+    asymptote_check_override: str | None = None,
 ) -> tuple[CumminsLHS, RetardationKernel]:
     """Coupled ``6N`` LHS + kernel from a shared N-body database (M9 Q5).
 
@@ -495,7 +500,12 @@ def _build_coupled_lhs_kernel(
         metadata=dict(shared_db.metadata),
         body_labels=tuple(deck_labels),
     )
-    kernel = compute_retardation_kernel(reordered, t_max=t_max_kernel, dt=dt)
+    kernel = compute_retardation_kernel(
+        reordered,
+        t_max=t_max_kernel,
+        dt=dt,
+        asymptote_check_override=asymptote_check_override,
+    )
     return lhs, kernel
 
 
@@ -507,8 +517,18 @@ def build_system(
     t_max_kernel: float,
     solve_equilibrium: bool = True,
     shared_hydro_database: HydroDatabase | None = None,
+    asymptote_check_override: str | None = None,
 ) -> SimulationSetup:
     """Materialise a deck-driven simulation setup.
+
+    ``asymptote_check_override`` (M10 PR0): a non-empty rationale string
+    that bypasses the retardation-kernel high-frequency asymptote gate
+    (M7.5 PR1, ``ITEM25-SMALL-BODY-APPLICABILITY``) on the **coupled**
+    (``shared_hydro_database``) path only. Small-body BEM (e.g. the
+    cluster hulls, L~1.85 m) does not reach the ``1/omega^4`` regime by
+    ``omega_max``; the override is a forcing function — the kernel still
+    raises on an empty / whitespace rationale. ``None`` (default) leaves
+    the gate active and the assembly byte-identical to pre-PR0.
 
     Parameters
     ----------
@@ -560,7 +580,12 @@ def build_system(
                 "load BEM files itself."
             )
         lhs_global, kernel_global = _build_coupled_lhs_kernel(
-            deck, shared_hydro_database, dt, t_max_kernel, deck.environment.gravity
+            deck,
+            shared_hydro_database,
+            dt,
+            t_max_kernel,
+            deck.environment.gravity,
+            asymptote_check_override=asymptote_check_override,
         )
     else:
         for body in deck.bodies:
