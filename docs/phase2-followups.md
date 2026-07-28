@@ -411,7 +411,31 @@ updated post-F4 (M7-Foundation PR1, 2026-05-11).
 
 ---
 
-### BB-OFFSET-CONNECTOR — Body-body LinearConnector with non-zero attachment offset
+### ~~BB-OFFSET-CONNECTOR~~ — Body-body LinearConnector with non-zero attachment offset
+
+**Closed 2026-07-27 by M9 PR4 (velocity-level KKT joints).** The joint
+(Lagrange-multiplier) path is exactly **path 2 ("Free emergence from
+B2")** named in this entry's own Scope below: a body-body constraint
+with different geometric arms on each side simply contributes different
+rows to the constraint Jacobian `G` (`[I, -(R r)~]` per endpoint), and
+the multipliers enforce Newton-III at the attachment point in the
+inertial frame — where it actually holds — not at the reference points.
+No per-endpoint `K` factors, no `LinearConnector` surgery. Closure is
+**tested, not asserted** (plan Q4): the double-pendulum gate's
+inter-body hinge attaches at an offset from body 1's CoG (this entry's
+failure topology), and `tests/validation/test_m9_double_pendulum.py::
+test_bb_offset_penalty_raises_but_joint_path_holds` asserts both halves
+in one place — the penalty `LinearSpring` path still raises
+`NotImplementedError`, while the joint path holds the same offset
+constraint at machine precision (drift < 1e-10) and returns the
+physical multiplier. The penalty `LinearConnector` limit itself
+(`connector.py:172`, `driver.py` `_materialise_linear_spring`) is
+untouched by M9; body-body offset couplings are now expressed as joints
+rather than penalty springs. See `docs/m9-joints-closure.md`.
+
+---
+
+### ~~BB-OFFSET-CONNECTOR~~ (original entry, retained for audit trail)
 
 **Mechanism.** `LinearConnector`
 ([`floatsim/bodies/connector.py`](../floatsim/bodies/connector.py))
