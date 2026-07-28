@@ -219,6 +219,16 @@ slow end-to-end permutation).
   (Xabier, 2026-07-27): leave it for now** — handled in its own pass,
   not folded into M9. The M9 `fix-lint-debt` commit deliberately touched
   only the ruff + mypy debt and did not reformat these files.
+- **Integration by `--no-ff` merge rather than fast-forward.** `main`
+  carried `4c566a6` (docs-only F2-HYPOTHESIS-TOLERANCE-EMPIRICAL tracker
+  addendum, committed directly to `main` 2026-07-26), diverging from
+  `milestone-9-joints` at `694c7ad`. `git merge --ff-only` correctly
+  refused. `--no-ff` was chosen over rebase-then-FF because this closure
+  doc cites the six M9 commit hashes (`cac095b`, `5b7eb9c`, `31c9624`,
+  `22af89f`, `579c6cf`, `64e1516`); a rebase would rewrite all of them
+  and require a citation remap (cf. M8 PR4 Phase B), and would
+  force-push an already-published branch. `merge-tree` verified the
+  merge conflict-free before execution.
 
 ---
 
