@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # --------------------------------------------------------------------------
 # Numeric aliases. ``allow_inf_nan=False`` on every float shuts the door on
@@ -140,15 +140,32 @@ class InitialConditions(_Base):
 
 
 class Body(_Base):
-    """One rigid floating body."""
+    """One rigid floating body.
+
+    Hydro source (exactly one, M9 PR3 / plan Q5):
+    * ``hydro_database`` — a per-body single-body BEM database (the
+      pre-M9 path; block-diagonal assembly), or
+    * ``hydro_body_label`` — a label selecting this body's ``6x6`` block
+      of the deck-level ``shared_hydro_database`` (the coupled path).
+    """
 
     name: Annotated[str, Field(min_length=1)]
     reference_point: Vec3
     mass: PositiveFloat
     inertia: Inertia
-    hydro_database: HydroDatabaseRef
+    hydro_database: HydroDatabaseRef | None = None
+    hydro_body_label: str | None = None
     drag_elements: list[DragElement] = Field(default_factory=list)
     initial_conditions: InitialConditions = Field(default_factory=InitialConditions)
+
+    @model_validator(mode="after")
+    def _exactly_one_hydro_source(self) -> Body:
+        if (self.hydro_database is None) == (self.hydro_body_label is None):
+            raise ValueError(
+                f"body {self.name!r}: exactly one of 'hydro_database' (per-body) "
+                "or 'hydro_body_label' (shared coupled database) must be set"
+            )
+        return self
 
 
 # --------------------------------------------------------------------------
@@ -216,6 +233,36 @@ Connection = Annotated[LinearSpring | Catenary | RigidLink, Field(discriminator=
 
 
 # --------------------------------------------------------------------------
+# Joints — velocity-level KKT constraints (M9 B1/B2).
+# --------------------------------------------------------------------------
+
+
+class HingeJoint(_Base):
+    """Revolute joint: free rotation about ``axis``, all else locked."""
+
+    type: Literal["hinge"]
+    body_a: Annotated[str, Field(min_length=1)]
+    body_b: Annotated[str, Field(min_length=1)]  # a body name or 'earth'
+    attach_a_body: Vec3
+    attach_b_body: Vec3
+    axis: Vec3
+
+
+class YawLockedJoint(_Base):
+    """The 12-buoy joint: 3 translations + yaw locked, roll/pitch free."""
+
+    type: Literal["yaw_locked"]
+    body_a: Annotated[str, Field(min_length=1)]
+    body_b: Annotated[str, Field(min_length=1)]
+    attach_a_body: Vec3
+    attach_b_body: Vec3
+    axis: Vec3 = Field(default_factory=lambda: [0.0, 0.0, 1.0])
+
+
+Joint = Annotated[HingeJoint | YawLockedJoint, Field(discriminator="type")]
+
+
+# --------------------------------------------------------------------------
 # Output
 # --------------------------------------------------------------------------
 
@@ -241,7 +288,34 @@ class Deck(_Base):
     waves: RegularWave
     bodies: Annotated[list[Body], Field(min_length=1)]
     connections: list[Connection] = Field(default_factory=list)
+    shared_hydro_database: HydroDatabaseRef | None = None
+    joints: list[Joint] = Field(default_factory=list)
     output: Output
+
+    @model_validator(mode="after")
+    def _validate_shared_hydro_and_joints(self) -> Deck:
+        labelled = [b for b in self.bodies if b.hydro_body_label is not None]
+        if labelled and self.shared_hydro_database is None:
+            raise ValueError(
+                "bodies use 'hydro_body_label' but the deck declares no " "'shared_hydro_database'"
+            )
+        if self.shared_hydro_database is not None and not labelled:
+            raise ValueError(
+                "'shared_hydro_database' is declared but no body selects a block "
+                "via 'hydro_body_label'"
+            )
+        if labelled:
+            labels = [b.hydro_body_label for b in labelled]
+            if len(set(labels)) != len(labels):
+                raise ValueError(f"duplicate hydro_body_label among bodies: {labels}")
+        names = {b.name for b in self.bodies} | {"earth"}
+        for j in self.joints:
+            for endpoint in (j.body_a, j.body_b):
+                if endpoint not in names:
+                    raise ValueError(f"joint references unknown body {endpoint!r}")
+            if j.body_a == j.body_b:
+                raise ValueError(f"joint connects body {j.body_a!r} to itself")
+        return self
 
 
 def load_deck(path: str | Path) -> Deck:

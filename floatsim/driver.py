@@ -63,16 +63,20 @@ from floatsim.bodies.connector import (
     heave_rigid_link,
     make_connector_state_force,
 )
+from floatsim.bodies.joints import JointSet, hinge_joint, yaw_locked_joint
 from floatsim.bodies.mass_properties import rigid_body_mass_matrix
 from floatsim.hydro.database import HydroDatabase
+from floatsim.hydro.hydrostatics import gravity_restoring_contribution
 from floatsim.hydro.radiation import CumminsLHS, assemble_cummins_lhs
 from floatsim.hydro.retardation import RetardationKernel, compute_retardation_kernel
 from floatsim.io.deck import (
     Body,
     Catenary,
     Deck,
+    HingeJoint,
     LinearSpring,
     RigidLink,
+    YawLockedJoint,
 )
 from floatsim.mooring.catenary_analytic import (
     CatenaryAttachment,
@@ -95,9 +99,7 @@ _EARTH_INDEX: Final[int] = -1
 _EQUILIBRIUM_TOL_N: Final[float] = 1.0
 
 
-_StateForce = Callable[
-    [float, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
-]
+_StateForce = Callable[[float, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]
 
 
 @dataclass(frozen=True)
@@ -139,6 +141,10 @@ class SimulationSetup:
     xi0: NDArray[np.float64]
     xi_dot0: NDArray[np.float64]
     body_name_to_index: dict[str, int]
+    constraints: JointSet | None = None
+    """Velocity-level joint constraints from the deck's ``joints`` section
+    (M9), or ``None`` if the deck declares no joints. Passed to
+    ``integrate_cummins(constraints=...)`` to activate the KKT path."""
 
 
 # ---------------------------------------------------------------------------
@@ -163,15 +169,12 @@ def _validate_body_names(deck: Deck) -> dict[str, int]:
             name_to_index[body.name] = k
     if duplicates:
         raise ValueError(
-            f"duplicate body names in deck: {duplicates}. Body names "
-            "must be unique."
+            f"duplicate body names in deck: {duplicates}. Body names " "must be unique."
         )
     return name_to_index
 
 
-def _resolve_endpoint(
-    name: str, name_to_index: dict[str, int], context: str
-) -> int:
+def _resolve_endpoint(name: str, name_to_index: dict[str, int], context: str) -> int:
     """Map a deck-string body endpoint to an integer index or the earth sentinel."""
     if name == _EARTH_NAME:
         return _EARTH_INDEX
@@ -205,9 +208,7 @@ def _body_mass_matrix(body: Body) -> NDArray[np.float64]:
     )
 
 
-def _per_body_lhs(
-    body: Body, hdb: HydroDatabase, gravity: float
-) -> CumminsLHS:
+def _per_body_lhs(body: Body, hdb: HydroDatabase, gravity: float) -> CumminsLHS:
     """Assemble single-body CumminsLHS, passing gravity inputs only if
     hdb.C_source == 'buoyancy_only'."""
     M = _body_mass_matrix(body)
@@ -298,9 +299,7 @@ def _materialise_linear_spring(
     )
 
 
-def _materialise_catenary(
-    conn: Catenary, name_to_index: dict[str, int]
-) -> CatenaryAttachment:
+def _materialise_catenary(conn: Catenary, name_to_index: dict[str, int]) -> CatenaryAttachment:
     """Catenary -> CatenaryAttachment for the F3 composer.
 
     Body-to-earth only at PR3-locked scope. The deck-side anchor
@@ -365,7 +364,9 @@ def _compose_state_force(
 
     if connector_force is None and catenary_force is None:
 
-        def _zero_force(_t: float, _xi: NDArray[np.float64], _xd: NDArray[np.float64]) -> NDArray[np.float64]:
+        def _zero_force(
+            _t: float, _xi: NDArray[np.float64], _xd: NDArray[np.float64]
+        ) -> NDArray[np.float64]:
             return zeros
 
         return _zero_force
@@ -392,6 +393,111 @@ def _compose_state_force(
 # ---------------------------------------------------------------------------
 
 
+def _build_joint_set(deck: Deck, name_to_index: dict[str, int]) -> JointSet | None:
+    """Materialise the deck's ``joints`` section into a :class:`JointSet`
+    (M9). Body names -> indices; ``'earth'`` -> ``-1``."""
+    if not deck.joints:
+        return None
+
+    def idx(name: str) -> int:
+        return -1 if name == "earth" else name_to_index[name]
+
+    built = []
+    for j in deck.joints:
+        body_a = idx(j.body_a)
+        body_b = idx(j.body_b)
+        attach_a = np.asarray(j.attach_a_body, dtype=np.float64)
+        attach_b = np.asarray(j.attach_b_body, dtype=np.float64)
+        axis = np.asarray(j.axis, dtype=np.float64)
+        if isinstance(j, HingeJoint):
+            built.append(
+                hinge_joint(body_a, body_b, attach_a=attach_a, attach_b=attach_b, axis=axis)
+            )
+        elif isinstance(j, YawLockedJoint):  # pragma: no branch
+            built.append(
+                yaw_locked_joint(body_a, body_b, attach_a=attach_a, attach_b=attach_b, axis=axis)
+            )
+    return JointSet(joints=tuple(built), n_bodies=len(deck.bodies))
+
+
+def _build_coupled_lhs_kernel(
+    deck: Deck, shared_db: HydroDatabase, dt: float, t_max_kernel: float, gravity: float
+) -> tuple[CumminsLHS, RetardationKernel]:
+    """Coupled ``6N`` LHS + kernel from a shared N-body database (M9 Q5).
+
+    Deck body -> database block mapping is **by label** (the M8 contract,
+    ``tests/support/condensation.py`` the reference implementation): the
+    ``hydro_body_label`` of each body selects a ``6x6`` block of the
+    shared database, and the coupled matrices are permuted into deck-body
+    order. Hard-raises on missing / duplicate / unused labels.
+    """
+    labels = shared_db.body_labels
+    if labels is None:
+        raise ValueError(
+            "shared_hydro_database is single-body (no body_labels); a coupled "
+            "deck requires an N-body database (M8 reader with per-body labels)"
+        )
+    if any(b.hydro_body_label is None for b in deck.bodies):
+        raise ValueError(
+            "shared_hydro_database is declared, so EVERY body must select its "
+            "block via hydro_body_label (no mixing per-body and shared)"
+        )
+    deck_labels = [str(b.hydro_body_label) for b in deck.bodies]
+    missing = sorted(set(deck_labels) - set(labels))
+    if missing:
+        raise ValueError(
+            f"hydro_body_label(s) {missing} not found in shared database labels "
+            f"{list(labels)} (M8 label contract)"
+        )
+    unused = sorted(set(labels) - set(deck_labels))
+    if unused:
+        raise ValueError(
+            f"shared database has label(s) {unused} unused by any deck body "
+            f"(deck labels: {deck_labels}); coupling requires a full mapping"
+        )
+
+    # Permutation: deck body k <- database block at labels.index(deck_labels[k]).
+    perm = np.concatenate([6 * labels.index(dl) + np.arange(6) for dl in deck_labels])
+    a_inf = np.asarray(shared_db.A_inf)[np.ix_(perm, perm)]
+    c_mat = np.asarray(shared_db.C)[np.ix_(perm, perm)].copy()
+    a_omega = np.asarray(shared_db.A)[np.ix_(perm, perm)]
+    b_omega = np.asarray(shared_db.B)[np.ix_(perm, perm)]
+    rao = np.asarray(shared_db.RAO)[perm]
+
+    n = len(deck.bodies)
+    rigid = np.zeros((6 * n, 6 * n), dtype=np.float64)
+    for k, body in enumerate(deck.bodies):
+        rigid[6 * k : 6 * k + 6, 6 * k : 6 * k + 6] = _body_mass_matrix(body)
+    m_plus_ainf = rigid + a_inf
+
+    # Per-block gravity restoring (M5 hydrostatic-gravity lesson) when the
+    # database carries buoyancy-only C.
+    if shared_db.C_source == "buoyancy_only":
+        for k, body in enumerate(deck.bodies):
+            c_mat[6 * k : 6 * k + 6, 6 * k : 6 * k + 6] += gravity_restoring_contribution(
+                mass=body.mass,
+                cog_offset_from_bem_origin=np.zeros(3, dtype=np.float64),
+                gravity=gravity,
+            )
+
+    lhs = CumminsLHS(M_plus_Ainf=m_plus_ainf, C=c_mat)
+    reordered = HydroDatabase(
+        omega=shared_db.omega,
+        heading_deg=shared_db.heading_deg,
+        A=a_omega,
+        B=b_omega,
+        A_inf=a_inf,
+        C=c_mat,
+        RAO=rao,
+        reference_point=shared_db.reference_point,
+        C_source=shared_db.C_source,
+        metadata=dict(shared_db.metadata),
+        body_labels=tuple(deck_labels),
+    )
+    kernel = compute_retardation_kernel(reordered, t_max=t_max_kernel, dt=dt)
+    return lhs, kernel
+
+
 def build_system(
     deck: Deck,
     *,
@@ -399,6 +505,7 @@ def build_system(
     dt: float,
     t_max_kernel: float,
     solve_equilibrium: bool = True,
+    shared_hydro_database: HydroDatabase | None = None,
 ) -> SimulationSetup:
     """Materialise a deck-driven simulation setup.
 
@@ -442,25 +549,36 @@ def build_system(
     """
     # --- Body bookkeeping ---------------------------------------------------
     name_to_index = _validate_body_names(deck)
-    for body in deck.bodies:
-        if body.name not in bem_databases:
-            raise ValueError(
-                f"bem_databases missing entry for body {body.name!r}. The "
-                "driver does not load BEM files itself; caller must pre-load "
-                "each body's database and pass it via the bem_databases dict."
-            )
 
-    # --- LHS + kernel per body ---------------------------------------------
-    per_body_lhs = [
-        _per_body_lhs(body, bem_databases[body.name], gravity=deck.environment.gravity)
-        for body in deck.bodies
-    ]
-    per_body_kernel = [
-        compute_retardation_kernel(bem_databases[body.name], t_max=t_max_kernel, dt=dt)
-        for body in deck.bodies
-    ]
-    lhs_global = assemble_global_lhs(per_body_lhs)
-    kernel_global = assemble_global_kernel(per_body_kernel)
+    # --- LHS + kernel: coupled (shared database) or per-body block-diagonal --
+    if deck.shared_hydro_database is not None:
+        if shared_hydro_database is None:
+            raise ValueError(
+                "deck declares 'shared_hydro_database' but none was passed to "
+                "build_system(shared_hydro_database=...). The driver does not "
+                "load BEM files itself."
+            )
+        lhs_global, kernel_global = _build_coupled_lhs_kernel(
+            deck, shared_hydro_database, dt, t_max_kernel, deck.environment.gravity
+        )
+    else:
+        for body in deck.bodies:
+            if body.name not in bem_databases:
+                raise ValueError(
+                    f"bem_databases missing entry for body {body.name!r}. The "
+                    "driver does not load BEM files itself; caller must pre-load "
+                    "each body's database and pass it via the bem_databases dict."
+                )
+        per_body_lhs = [
+            _per_body_lhs(body, bem_databases[body.name], gravity=deck.environment.gravity)
+            for body in deck.bodies
+        ]
+        per_body_kernel = [
+            compute_retardation_kernel(bem_databases[body.name], t_max=t_max_kernel, dt=dt)
+            for body in deck.bodies
+        ]
+        lhs_global = assemble_global_lhs(per_body_lhs)
+        kernel_global = assemble_global_kernel(per_body_kernel)
     n_dof = lhs_global.n_dof
 
     # --- Connection materialisation ----------------------------------------
@@ -472,9 +590,7 @@ def build_system(
 
     for conn in deck.connections:
         if isinstance(conn, RigidLink):
-            connectors.append(
-                _materialise_rigid_link(conn, name_to_index, penalty_k_scale)
-            )
+            connectors.append(_materialise_rigid_link(conn, name_to_index, penalty_k_scale))
         elif isinstance(conn, LinearSpring):
             connectors.append(_materialise_linear_spring(conn, name_to_index))
         elif isinstance(conn, Catenary):
@@ -482,9 +598,7 @@ def build_system(
         else:  # pragma: no cover -- pydantic discriminator forbids unknown types
             raise TypeError(f"unknown Connection type: {type(conn).__name__}")
 
-    connector_force = (
-        make_connector_state_force(connectors, n_dof=n_dof) if connectors else None
-    )
+    connector_force = make_connector_state_force(connectors, n_dof=n_dof) if connectors else None
     catenary_force = (
         make_catenary_state_force(catenary_attachments, n_dof=n_dof)
         if catenary_attachments
@@ -518,4 +632,5 @@ def build_system(
         xi0=xi0,
         xi_dot0=xi_dot0_packed,
         body_name_to_index=name_to_index,
+        constraints=_build_joint_set(deck, name_to_index),
     )
