@@ -31,7 +31,8 @@ Locked scope (M7-Foundation PR4):
     :func:`floatsim.bodies.connector.heave_rigid_link` (M4 PR3
     heave-only). General N-DOF rigid link is queued as tracker
     entry A1.
-  - Deck ``Catenary`` connection -> :func:`floatsim.mooring.catenary_analytic.make_catenary_state_force`
+  - Deck ``Catenary`` connection ->
+    :func:`floatsim.mooring.catenary_analytic.make_catenary_state_force`
     via :class:`CatenaryAttachment`. Body-to-earth only (PR3
     locked scope); body-to-body catenaries raise
     ``NotImplementedError`` here.

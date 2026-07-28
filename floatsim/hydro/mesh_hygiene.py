@@ -359,10 +359,12 @@ def _panel_normal(panel: NDArray[np.float64]) -> NDArray[np.float64] | None:
     v0, v1, v2, v3 = panel
     n = np.cross(v1 - v0, v3 - v0)
     if np.linalg.norm(n) > 1.0e-15:
-        return n / np.linalg.norm(n)
+        unit: NDArray[np.float64] = n / np.linalg.norm(n)
+        return unit
     n = np.cross(v1 - v0, v2 - v0)
     if np.linalg.norm(n) > 1.0e-15:
-        return n / np.linalg.norm(n)
+        unit = n / np.linalg.norm(n)
+        return unit
     return None
 
 
