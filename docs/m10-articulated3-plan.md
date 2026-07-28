@@ -206,10 +206,16 @@ way.** (Known context: `integrate_cummins` accepts a time-domain
 
 Threshold fixed: **`|θ| < 0.1 rad`** (conventions Item 2).
 
-### Q7 — PR/step sequence (LOCKED)
-- **PR0** — capability: Item-25 override exposure + dry-body/mixed-deck
-  support in the coupled path; gate = the mixed deck assembles;
-  byte-identity on existing committed decks (M8/M9 N=1 pattern).
+### Q7 — PR/step sequence (LOCKED; PR0 split per Amendment A1)
+- **PR0** — capability (this session): Item-25 `asymptote_check_override`
+  exposure through the coupled `build_system` path only. Purely
+  additive; gate = byte-identity on every committed deck path + the
+  override reaches the kernel with its rationale intact + empty
+  rationale still raises.
+- **PR0.5** — capability: structural (hydro-free) body support in the
+  coupled assembly (scatter placement + zero blocks + kernel embedding
+  + the HydroDatabase no-block-representation question). Its own
+  pre-flight and scoped plan next session (Amendment A1).
 - **PR1** — assemble the articulated-3 model; equilibrium + the **heave
   cross-check gate** (Measurement E) + the **zero-pitch symmetry
   check**.
@@ -260,3 +266,73 @@ Q5). A near-threshold result also triggers the drag revisit (Q4).
 | IC-dependence of the LEVEL2 answer | a decay amplitude depends on the chosen IC; service rotations differ | Q6 — wave case if the driver supports it, else the answer ships PROVISIONAL |
 | KKT scaling | (n=24, m=12) repeats M9's **n=24** with a larger m | informs **m-scaling** only; the **n-scaling** question (n=72) stays **open for M11 planning** — stated honestly |
 | carried fix- debt | black-conformance (3 files); the F2 magnitude-scaled hypothesis-red bound | **non-blocking**; tracked for their own branches (M9 closure S6) |
+
+---
+
+## Amendment A1 — Q4 resize: PR0 split (2026-07-28, PR0 pre-flight)
+
+**Append-only** (M7.5-Q2 precedent). Recorded before implementing.
+
+### (a) The resize (measured at PR0 pre-flight)
+The Q4 lock assumed a structural (hydro-free) body was a **skip** in the
+coupled assembly. It is **not**. `_build_coupled_lhs_kernel`
+(`driver.py:424-499`) assumes a **bijection deck-bodies ↔ db-blocks**:
+`perm = concatenate([6*labels.index(dl)+arange(6) for dl in deck_labels])`
+(`:461`); `a_inf = A_inf[np.ix_(perm, perm)]` (`:462`) sized `6·n_deck`;
+`m_plus_ainf = rigid + a_inf` (`:472`) requiring `n_deck == n_db_blocks`;
+the missing/unused checks (`:447-458`) **enforce** the bijection; the
+`reordered` db carries `body_labels = deck_labels` (`:485-496`) and the
+kernel is computed on it (`:496, :498`). Supporting a hydro-free body
+needs **scatter placement**, **zero structural blocks** (asserted, not
+assumed), **kernel embedding**, and a path that builds the global
+matrices **outside** the single-reordered-db construction — because
+`HydroDatabase`'s N-body contract (`body_labels` a unique tuple matching
+the block count) has **no representation for a body with no block**.
+State layout is unaffected: `pack_state` (`state.py:44`) already stacks
+every body's 6 DOF in deck order, so the structural body's DOF are
+present in the global state regardless.
+
+### (b) The split
+- **Q4-a (override) → PR0** (this session). Purely additive: thread
+  `asymptote_check_override` through `build_system` /
+  `_build_coupled_lhs_kernel` to `compute_retardation_kernel`
+  (`driver.py:498`, the call site that omits it).
+- **Q4-c (structural body) → PR0.5** — its own pre-flight + scoped plan
+  next session (the four sub-problems above).
+- **Q4-d (drag) — unchanged**, still deferred with its existing
+  rationale (BEM-only overestimates rotation → sub-threshold is
+  conservative for LEVEL2).
+
+### (c) Declaration mechanism (carried into PR0.5's scope)
+A structural body is declared **explicitly** via an opt-in field; the
+validator becomes **exactly one of {`hydro_database`, `hydro_body_label`,
+structural declaration}**. **Typo-protection rationale (verbatim):**
+relaxing `_exactly_one_hydro_source` (`deck.py:161`) to permit ABSENCE
+would make a misspelled hydro key (`hydro_databse:`) stop raising and
+instead produce a body with no hydrodynamics that assembles cleanly and
+runs **wrong** — the exact silent-failure class this project guards
+against. The discriminated-union alternative (a separate `StructuralBody`
+variant) was considered and **rejected as more invasive without being
+clearly better** — `Body` is a single model with optional hydro fields,
+so an opt-in field is idiom-consistent and smaller.
+
+### Override placement decision (PR0)
+**`build_system` parameter**, not a deck schema field. A deck field on
+`HydroDatabaseRef` would be **silently ignored** on any path that does
+not honour it (the per-body path) — the same silent-failure class (c)
+guards against — unless threaded through both paths, which exceeds
+M10's coupled-path need. The parameter is purely additive, touches only
+the coupled path, has no silent-ignore surface, and preserves Item 25's
+forcing function (the rationale string is still validated in the kernel;
+empty → raise). Deck-level durability is reconsidered at PR0.5 / M11.
+
+### PR0.5 planning input (record only — do NOT design now)
+The scatter map `S (6·n_deck, 6·n_hydro)` giving
+`A_inf_global = S · A_inf · Sᵀ` is structurally the **same object as M8
+PR4's condensation map `T`**, whose label-keyed reference implementation
+(raise on mismatch / missing / duplicate) is
+`tests/support/condensation.py`. Open design question for PR0.5's
+pre-flight, **decided by measurement**: **embed** the kernel to global
+size (simple; grows the M8-risk-register ~124 MB 12-buoy kernel by the
+structural DOF) **vs** keep it hydro-sized and apply the scatter at
+**convolution time** (memory-efficient; touches the convolution path).
