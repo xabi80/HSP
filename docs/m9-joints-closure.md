@@ -47,7 +47,7 @@ Both within rtol 1e-3. `test_m9_double_pendulum.py`. (θ₀ = 0.01 rather
 than the single hinge's 0.02 — the second bob swings √2× larger, so the
 faster mode's finite-amplitude term sits at ~9e-4 at θ₀ = 0.02, right
 at the gate; 0.01 gives a 2× margin. Point masses need a tiny
-`I_c = m l²·1e-6` KKT regularization — see S3.)
+`I_c = m l²·1e-6` mass-matrix regularization — see S3.)
 
 ### Gate 2 — energy conservation (three clauses, re-derived from the measured floor — Amendment A1)
 Constrained conservative hinge, dt = 0.01, `ρ∞ = 1.0`, 100 cycles:
@@ -127,12 +127,27 @@ the MC baseline, PR2 re-does the formulation") fired as designed — and
 the re-do happened **before `newmark.py` was touched**, via
 prototype-before-editing.
 
-### PR4 — point masses need a KKT regularization (period-insensitive)
-A point mass has a singular rotational-inertia block; the bordered KKT
-solve is `LinAlgError: Singular matrix` at `I_c = 0`. A tiny isotropic
-`I_c = m l²·1e-6` restores well-posedness with **no measurable effect
-on the periods** (5-sig-fig-identical at `I_c = 1e-6` and `1e-5` — the
-mode inertia is carried by CoM translation, not the body's own spin).
+### PR4 — point masses need a mass-matrix regularization (period-insensitive)
+A point mass has a singular rotational-inertia block, so `M_plus_Ainf`
+is rank-deficient at `I_c = 0` and the integrator raises
+`LinAlgError: Singular matrix`. **Correction (M10 Phase-1 measurement,
+2026-07-28):** the failure is NOT the bordered KKT solve. That solve is
+a *direct* solve of `[[A_eff, −Gᵀ], [G, 0]]` (`newmark.py:159`) and its
+matrix is **full-rank (22/22) even at `I_c = 0`** (measured on the PR4
+double pendulum at rest and swung). The `LinAlgError` comes from the
+position projection's mass-metric inverse
+`w_inv = np.linalg.inv(M_plus_Ainf)` (`newmark.py:352`), precomputed
+once when constraints are present — it needs `M_plus_Ainf` invertible
+*on its own*. A tiny isotropic `I_c = m l²·1e-6` restores full rank with
+**no measurable effect on the periods** (5-sig-fig-identical at
+`I_c = 1e-6` and `1e-5` — the mode inertia is carried by CoM
+translation, not the body's own spin). **General consequence for dry /
+low-inertia bodies:** the predictive check is **`rank(M_plus_Ainf)`,
+NOT KKT conditioning** — a body with no `A_inf` contributes only its
+rigid mass, so a zero rotational-inertia block makes the projection
+metric singular before any step is taken. (Carried into M10: the dry
+hub uses its physical rod-derived inertia, keeping
+`rank(M_plus_Ainf) = 24`.)
 
 ### KKT cost (measured, PR2)
 Unconstrained baseline `10.49 ms/step` at n_dof = 24 (kernel
