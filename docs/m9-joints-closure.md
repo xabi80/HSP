@@ -69,6 +69,33 @@ physical hinge reaction `(0, 0, +mg) = (0, 0, 9.81) N`, dt-free
 Position projection every step holds `‖φ‖` at machine precision
 (measured 1.1e-16 single-body; ≤ 2e-15 double pendulum).
 
+### Full-suite counts at M9 close (both scopes, measured)
+
+Two scopes, one selection, stated explicitly so the headline KPI is
+not scope-ambiguous:
+
+| scope | invocation | passed | skipped | xfailed | failed | collected |
+|-------|-----------|--------|---------|---------|--------|-----------|
+| **full (incl. slow)** | `pytest -q` | **728** | 50 | 20 | 1 | 799 |
+| non-slow (PR gate) | `pytest -q -m "not slow"` | 638 | 46 | 16 | 1 | 799 (98 deselected) |
+
+The two differ only by the **98 slow tests** deselected under the
+marker (90 passed + 4 skipped + 4 xfailed); the single `failed` is the
+same pre-existing hypothesis red in both (S6). Runtime: full 1:30:05,
+non-slow ~0:15–0:23 on this machine.
+
+**Reconciliation to M8-close** (`docs/m8-coupled-bem-closure.md` §3.5:
+`688 / 50 / 20 / 0`, full scope): full-suite passed `688 → 728 = +40`;
+`+41` M9 tests added (collection `758 → 799`, monotonic — **no tests
+lost**) minus the one existing property test that flipped pass→fail
+(the hypothesis red). The M9-internal "708" figure quoted mid-milestone
+was the **full-suite** count after PR1+PR2 (`688 + 21 − 1`); PR3 (+17)
+and PR4 (+3) carry it to 728. The PR3/PR4 "635 → 638" figures were the
+**non-slow** scope — not a regression from 708, a different selection.
+For any external KPI, the correct number is **728 automated checks
+passing at M9 close, full suite including slow tests** (50 skipped, 20
+xfailed, 1 tracked-failing).
+
 ---
 
 ## S3 — Empirical findings
@@ -155,15 +182,25 @@ slow end-to-end permutation).
 
 ## S6 — Deviations from plan / process
 
-- **Pre-existing red carried through M9 (not introduced here).**
+- **Pre-existing red carried through M9 (M9 did NOT cause it).**
   `test_connector_attachment_transform.py::test_property_F_ref_equals_T_pullback_of_F_attach`
   fails on a hypothesis counterexample: `rel = 1.00000002e-8` vs
   `rtol = 1e-8` — one float64 ULP over threshold at K ~ 5e7, in the
-  connector module M9 never touches. Present on `main`; tracked as
-  **F2-HYPOTHESIS-TOLERANCE-EMPIRICAL**. The non-slow suite is
-  therefore `1 failed / 635+ passed`; the failure is this red, not an
-  M9 regression. Fixing it (a magnitude-scaled bound) is deferred to
-  its own `fix-` branch.
+  connector module M9 never touches. **Pre-existence evidence:**
+  `git diff main` on both the test file and
+  `floatsim/bodies/connector.py` is **empty** (byte-identical to
+  `main`), so the property fails identically on `main` — it is not
+  reachable by any M9 change; and the rtol was **already loosened once**,
+  1e-9 → 1e-8, at commit `bbb5b9b` ("tests: loosen F_ref pullback
+  identity tolerance 1e-9 -> 1e-8", whose own message documents the same
+  hypothesis-FP-floor mode with counterexamples that "just barely
+  exceed" the gate). This is therefore the next iteration of a known
+  float64-floor issue, not an M9 regression. Tracked as
+  **F2-HYPOTHESIS-TOLERANCE-EMPIRICAL**; the fix is a magnitude-scaled
+  bound (explicitly NOT a third rtol bump), deferred to its own `fix-`
+  branch. It is the **sole** failure in every suite scope (non-slow:
+  638 passed / 1 failed; full suite: 728 passed / 1 failed — see the
+  S2 "Full-suite counts" table).
 - **Double-pendulum amplitude θ₀ = 0.01** (vs the single hinge's 0.02),
   and the **`I_c = m l²·1e-6` point-mass regularization** — both
   documented in S2/S3; neither perturbs the validated periods.
@@ -172,11 +209,16 @@ slow end-to-end permutation).
   `fix-lint-debt 29c9b64` never covered the top-level `driver.py`).
   Fixed on a dedicated branch, FF-merged — kept out of the feature PRs
   per CLAUDE.md §9.
-- **Deferred black-conformance debt.** `black --check floatsim/`
-  (black 24.10.0) would reformat three files — `connector.py`,
-  `catenary_analytic.py`, `mesh_hygiene.py` — with manually
-  over-wrapped lines. Separate, broader question (possibly a 24.x
-  point-version drift); left untouched at Xabier's direction.
+- **Deferred black-conformance debt (a recorded decision, not an
+  omission).** `black --check floatsim/` (black 24.10.0) would reformat
+  three files — `floatsim/bodies/connector.py`,
+  `floatsim/mooring/catenary_analytic.py`,
+  `floatsim/hydro/mesh_hygiene.py` — which carry manually over-wrapped
+  lines black collapses. This is a separate, broader question (possibly
+  a black 24.x point-version drift rather than true debt). **Decision
+  (Xabier, 2026-07-27): leave it for now** — handled in its own pass,
+  not folded into M9. The M9 `fix-lint-debt` commit deliberately touched
+  only the ruff + mypy debt and did not reformat these files.
 
 ---
 
