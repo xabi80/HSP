@@ -142,11 +142,19 @@ class InitialConditions(_Base):
 class Body(_Base):
     """One rigid floating body.
 
-    Hydro source (exactly one, M9 PR3 / plan Q5):
+    Hydro source (exactly one, M9 PR3 / plan Q5; ``structural`` M10 PR0.5):
     * ``hydro_database`` — a per-body single-body BEM database (the
       pre-M9 path; block-diagonal assembly), or
     * ``hydro_body_label`` — a label selecting this body's ``6x6`` block
-      of the deck-level ``shared_hydro_database`` (the coupled path).
+      of the deck-level ``shared_hydro_database`` (the coupled path), or
+    * ``structural: true`` — a hydro-free rigid body (an articulation
+      hub / arm structure): rigid mass + inertia only, ZERO contribution
+      to A_inf, B, the retardation kernel and hydrostatic C. Permitted
+      only in a coupled deck (with a ``shared_hydro_database``).
+
+    The "exactly one" rule is a forcing function: a body that declares
+    NONE (e.g. a misspelled ``hydro_databse:`` key) raises rather than
+    silently becoming a hydro-free body (M10 plan Amendment A1).
     """
 
     name: Annotated[str, Field(min_length=1)]
@@ -155,15 +163,22 @@ class Body(_Base):
     inertia: Inertia
     hydro_database: HydroDatabaseRef | None = None
     hydro_body_label: str | None = None
+    structural: bool = False
     drag_elements: list[DragElement] = Field(default_factory=list)
     initial_conditions: InitialConditions = Field(default_factory=InitialConditions)
 
     @model_validator(mode="after")
     def _exactly_one_hydro_source(self) -> Body:
-        if (self.hydro_database is None) == (self.hydro_body_label is None):
+        n_set = (
+            (self.hydro_database is not None)
+            + (self.hydro_body_label is not None)
+            + bool(self.structural)
+        )
+        if n_set != 1:
             raise ValueError(
-                f"body {self.name!r}: exactly one of 'hydro_database' (per-body) "
-                "or 'hydro_body_label' (shared coupled database) must be set"
+                f"body {self.name!r}: exactly one of 'hydro_database' (per-body), "
+                "'hydro_body_label' (shared coupled database), or 'structural: true' "
+                f"(a hydro-free rigid body) must be set; got {n_set}"
             )
         return self
 
@@ -308,6 +323,15 @@ class Deck(_Base):
             labels = [b.hydro_body_label for b in labelled]
             if len(set(labels)) != len(labels):
                 raise ValueError(f"duplicate hydro_body_label among bodies: {labels}")
+        # Structural (hydro-free) bodies are supported only in the coupled
+        # assembly (M10 PR0.5): they need a shared_hydro_database context.
+        structural = [b.name for b in self.bodies if b.structural]
+        if structural and self.shared_hydro_database is None:
+            raise ValueError(
+                f"structural (hydro-free) bodies {structural} require a coupled deck "
+                "declaring a 'shared_hydro_database'; they are supported only in the "
+                "coupled assembly (M10 PR0.5)"
+            )
         names = {b.name for b in self.bodies} | {"earth"}
         for j in self.joints:
             for endpoint in (j.body_a, j.body_b):

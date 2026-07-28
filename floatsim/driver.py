@@ -421,6 +421,112 @@ def _build_joint_set(deck: Deck, name_to_index: dict[str, int]) -> JointSet | No
     return JointSet(joints=tuple(built), n_bodies=len(deck.bodies))
 
 
+def _build_coupled_mixed(
+    deck: Deck,
+    shared_db: HydroDatabase,
+    dt: float,
+    t_max_kernel: float,
+    gravity: float,
+    asymptote_check_override: str | None = None,
+) -> tuple[CumminsLHS, RetardationKernel]:
+    """Coupled ``6*n_deck`` LHS + kernel for a deck mixing hydro (labelled)
+    bodies with structural (hydro-free) bodies (M10 PR0.5, plan Q4-c).
+
+    FORK 1 (driver-local; no ``HydroDatabase`` contract change): the hydro
+    bodies' blocks are permuted by label out of ``shared_db`` and
+    **scattered** into the global matrices at their deck-body DOF slots;
+    each structural body contributes its rigid mass/inertia only, and
+    exactly ZERO to ``A_inf`` / ``B`` / the kernel / hydrostatic ``C``. The
+    kernel is computed on the hydro-only sub-database (contract-valid) and
+    **embedded** to global size (option i -- the integrator requires
+    ``lhs.n_dof == kernel.n_dof``, ``newmark.py``).
+    """
+    labels = shared_db.body_labels
+    assert labels is not None  # caller checked
+    n = len(deck.bodies)
+
+    for b in deck.bodies:
+        if b.hydro_body_label is None and not b.structural:
+            raise ValueError(
+                f"coupled deck body {b.name!r} has neither 'hydro_body_label' nor "
+                "'structural: true'; a shared_hydro_database deck cannot also carry "
+                "a per-body 'hydro_database'"
+            )
+
+    hydro = [
+        (k, str(b.hydro_body_label))
+        for k, b in enumerate(deck.bodies)
+        if b.hydro_body_label is not None
+    ]
+    deck_hydro_labels = [lab for _, lab in hydro]
+    missing = sorted(set(deck_hydro_labels) - set(labels))
+    if missing:
+        raise ValueError(
+            f"hydro_body_label(s) {missing} not found in shared database labels "
+            f"{list(labels)} (M8 label contract)"
+        )
+    unused = sorted(set(labels) - set(deck_hydro_labels))
+    if unused:
+        raise ValueError(
+            f"shared database has label(s) {unused} unused by any deck body "
+            f"(deck hydro labels: {deck_hydro_labels}); coupling requires a full "
+            "mapping of the hydro bodies"
+        )
+
+    # Hydro-only permutation (db block order -> deck hydro-body order).
+    perm = np.concatenate([6 * labels.index(lab) + np.arange(6) for lab in deck_hydro_labels])
+    a_inf_h = np.asarray(shared_db.A_inf)[np.ix_(perm, perm)]
+    c_h = np.asarray(shared_db.C)[np.ix_(perm, perm)].copy()
+    a_h = np.asarray(shared_db.A)[np.ix_(perm, perm)]
+    b_h = np.asarray(shared_db.B)[np.ix_(perm, perm)]
+    rao_h = np.asarray(shared_db.RAO)[perm]
+
+    # Scatter map: the global 6-DOF slots of the hydro bodies, in
+    # hydro-body order (same order as ``perm`` / the hydro blocks above).
+    hydro_dof = np.concatenate([6 * k + np.arange(6) for k, _ in hydro])
+
+    # Global LHS (6*n_deck): rigid mass/inertia for EVERY body; hydro A_inf
+    # and C scattered in by label; structural blocks stay hydro-zero.
+    m_plus_ainf = np.zeros((6 * n, 6 * n), dtype=np.float64)
+    c_mat = np.zeros((6 * n, 6 * n), dtype=np.float64)
+    for k, body in enumerate(deck.bodies):
+        m_plus_ainf[6 * k : 6 * k + 6, 6 * k : 6 * k + 6] = _body_mass_matrix(body)
+    m_plus_ainf[np.ix_(hydro_dof, hydro_dof)] += a_inf_h
+    c_mat[np.ix_(hydro_dof, hydro_dof)] += c_h
+    if shared_db.C_source == "buoyancy_only":
+        for k, _lab in hydro:  # gravity restoring only for the hydro (floating) bodies
+            c_mat[6 * k : 6 * k + 6, 6 * k : 6 * k + 6] += gravity_restoring_contribution(
+                mass=deck.bodies[k].mass,
+                cog_offset_from_bem_origin=np.zeros(3, dtype=np.float64),
+                gravity=gravity,
+            )
+    lhs = CumminsLHS(M_plus_Ainf=m_plus_ainf, C=c_mat)
+
+    # Kernel: compute on the hydro-only sub-database (N-body-contract-valid),
+    # then embed into the global 6*n_deck kernel (structural rows/cols zero).
+    reordered = HydroDatabase(
+        omega=shared_db.omega,
+        heading_deg=shared_db.heading_deg,
+        A=a_h,
+        B=b_h,
+        A_inf=a_inf_h,
+        C=c_h,
+        RAO=rao_h,
+        reference_point=shared_db.reference_point,
+        C_source=shared_db.C_source,
+        metadata=dict(shared_db.metadata),
+        body_labels=tuple(deck_hydro_labels),
+    )
+    kernel_h = compute_retardation_kernel(
+        reordered, t_max=t_max_kernel, dt=dt, asymptote_check_override=asymptote_check_override
+    )
+    k_h = np.asarray(kernel_h.K)
+    k_global = np.zeros((6 * n, 6 * n, k_h.shape[-1]), dtype=np.float64)
+    k_global[np.ix_(hydro_dof, hydro_dof)] = k_h
+    kernel = RetardationKernel(K=k_global, t=kernel_h.t, dt=kernel_h.dt)
+    return lhs, kernel
+
+
 def _build_coupled_lhs_kernel(
     deck: Deck,
     shared_db: HydroDatabase,
@@ -442,6 +548,14 @@ def _build_coupled_lhs_kernel(
         raise ValueError(
             "shared_hydro_database is single-body (no body_labels); a coupled "
             "deck requires an N-body database (M8 reader with per-body labels)"
+        )
+    # M10 PR0.5: a deck mixing hydro (labelled) bodies with structural
+    # (hydro-free) bodies takes the scatter/embed path. Decks with NO
+    # structural body take the original M9 PR3 path below, UNCHANGED
+    # (byte-identity, the M8/M9 N=1 pattern).
+    if any(b.structural for b in deck.bodies):
+        return _build_coupled_mixed(
+            deck, shared_db, dt, t_max_kernel, gravity, asymptote_check_override
         )
     if any(b.hydro_body_label is None for b in deck.bodies):
         raise ValueError(
