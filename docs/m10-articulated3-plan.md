@@ -336,3 +336,59 @@ pre-flight, **decided by measurement**: **embed** the kernel to global
 size (simple; grows the M8-risk-register ~124 MB 12-buoy kernel by the
 structural DOF) **vs** keep it hydro-sized and apply the scatter at
 **convolution time** (memory-efficient; touches the convolution path).
+
+---
+
+## Amendment A2 — joint/coupled state-convention gap; PR0.75 (2026-07-28, PR1 STEP 1)
+
+**Append-only** (M7.5-Q2 precedent). PR1's STEP-1 `phi(rest)` precondition
+caught this before the gates ran.
+
+### (a) The gap, measured
+The M9 joint layer (`JointSet.phi` via `_body_pose`, `joints.py`) treats
+`xi[6k:6k+3]` as the body's **ABSOLUTE world position**. The coupled
+Cummins system (M8 / M9-PR3) uses `xi` as **DISPLACEMENT from the
+reference** configuration -- `xi = 0` is equilibrium and `C @ xi` is the
+restoring force about it. At `xi = 0` the two disagree by the reference
+arm separation: for the real M10 topology (3 buoys R=0.5 z=-1.19567 + hub
+z=+0.49337, `yaw_locked` at the buoy-end attach) **`max|phi| =
+1.689037`**, per-joint `[-0.5, 0, +1.689, 0]` = `r_buoy - r_hub`.
+Verified both ways: with `xi` set to the absolute body positions,
+`max|phi| = 0.0`.
+
+### (b) Why latent (CLAUDE.md §13)
+Every M9 joint test used `C = 0` (pure constraint, absolute-`xi`); the
+coupled hydro path was never run **with joints** until M10 PR1. First
+cross-module contact surfaced it -- the recurring "correct in isolation,
+wrong on first full-scenario activation" shape.
+
+### (c) Consequence when unchecked
+The position projection (`newmark.py:352` metric, `:194` residual)
+enforced the wrong (absolute) configuration and the heave decay diverged
+(`z -> -6000`, pitch 18.5 rad). The failure was **LOUD**, and STEP 1's
+`phi(rest)` precondition is what gated it before GATE A / GATE B ran.
+
+### (d) `G` is convention-independent
+`G` relates velocities via `R @ attach`; adding a constant reference does
+not change `dphi/dxi`. `rank(G) = 12` was correct throughout; only `phi`
+carried the bug. Confirmed: the M9 PR1 finite-difference Jacobian gate
+and all M9 numerical gates reproduce unchanged.
+
+### (e) The fix: Option A (reference-aware `JointSet`)
+`pa = ref_a + xi_a[0:3] + R_a @ attach_a` (likewise `b`); `body_references
+= None` defaults to the M9 absolute convention (all references at the
+origin) -- unchanged. **A vs B (recorded):** Option B (subtract the rest
+value from `phi`) is a smaller diff and mathematically **equivalent to A
+for correctly-specified geometry** (when world attach points coincide at
+reference, `ref_a - ref_b = attach_b - attach_a`, so `phi_A = phi_B` --
+verified against the actual attach points). They differ only when the
+geometry is WRONG: A yields `phi(rest) != 0` and the precondition fires;
+B zeroes it by construction and silently holds the bodies at a
+nonexistent offset. **B destroys the check that caught this bug**, so B
+was rejected on diagnostic grounds -- the same reasoning as PR0.5's
+refusal to let the hydro validator permit absence.
+
+### (f) Sequence update
+`PR0 -> PR0.5 -> **PR0.75** -> PR1 -> PR2 -> PR3`. PR0.75 (this
+reference-aware `JointSet`) lands before PR1; PR1's gates fire on the
+fixed foundation.

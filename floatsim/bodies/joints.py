@@ -180,10 +180,25 @@ class JointSet:
     Assembles the stacked position residual ``phi(xi)`` (shape
     ``(m,)``) and the velocity Jacobian ``G(xi)`` (shape ``(m, 6N)``),
     ``m = sum(joint.n_rows)``.
+
+    ``body_references`` (M10 PR0.75, plan Amendment A2): the world
+    reference position of each body (length ``n_bodies``), so the state
+    ``xi[6k:6k+3]`` is interpreted as a **displacement from the
+    reference** rather than an absolute position. The absolute attach
+    point of body ``k`` is then ``ref_k + xi_k[0:3] + R_k @ attach``.
+    This is required whenever the joint layer is combined with the
+    coupled Cummins system, where ``xi`` is displacement-from-equilibrium
+    (``C @ xi`` is the restoring about ``xi = 0``). ``None`` (default) is
+    the M9 absolute-position convention (equivalent to all references at
+    the origin) -- unchanged. Note: only ``phi`` uses the reference; the
+    velocity Jacobian ``G`` is a derivative w.r.t. ``xi`` and so is
+    reference-independent (adding a constant ``ref`` does not change
+    ``dphi/dxi``).
     """
 
     joints: tuple[Joint, ...]
     n_bodies: int
+    body_references: tuple[NDArray[np.float64], ...] | None = None
 
     def __post_init__(self) -> None:
         if self.n_bodies < 1:
@@ -194,6 +209,18 @@ class JointSet:
                     raise ValueError(
                         f"joint body index {idx} outside [0, {self.n_bodies}) (earth = -1)"
                     )
+        if self.body_references is not None and len(self.body_references) != self.n_bodies:
+            raise ValueError(
+                f"body_references has {len(self.body_references)} entries; expected "
+                f"n_bodies = {self.n_bodies}"
+            )
+
+    def _ref(self, idx: int) -> NDArray[np.float64]:
+        """World reference position of body ``idx`` (zero for earth or when
+        no references were supplied -- the M9 absolute convention)."""
+        if idx == _EARTH or self.body_references is None:
+            return np.zeros(3, dtype=np.float64)
+        return self.body_references[idx]
 
     @property
     def n_dof(self) -> int:
@@ -216,15 +243,15 @@ class JointSet:
 
         xa, Ra = _body_pose(xi, j.body_a)
         arm_a = Ra.apply(j.attach_a)  # R_A r_A (world)
-        pa = xa + arm_a
+        pa = self._ref(j.body_a) + xa + arm_a
         if j.body_b == _EARTH:
-            pb = j.attach_b  # fixed world anchor
+            pb = j.attach_b  # fixed world anchor (earth reference = origin)
             Rb: Rotation | None = None
             arm_b = np.zeros(3)
         else:
             xb, Rb = _body_pose(xi, j.body_b)
             arm_b = Rb.apply(j.attach_b)
-            pb = xb + arm_b
+            pb = self._ref(j.body_b) + xb + arm_b
 
         # --- translational rows 0:3 (exact at any configuration) ---
         phi[0:3] = pa - pb

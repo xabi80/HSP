@@ -418,7 +418,11 @@ def _build_joint_set(deck: Deck, name_to_index: dict[str, int]) -> JointSet | No
             built.append(
                 yaw_locked_joint(body_a, body_b, attach_a=attach_a, attach_b=attach_b, axis=axis)
             )
-    return JointSet(joints=tuple(built), n_bodies=len(deck.bodies))
+    # M10 PR0.75: supply each body's world reference position so the joint
+    # layer reads xi as displacement-from-reference (the coupled Cummins
+    # convention), not absolute position (Amendment A2).
+    refs = tuple(np.asarray(b.reference_point, dtype=np.float64) for b in deck.bodies)
+    return JointSet(joints=tuple(built), n_bodies=len(deck.bodies), body_references=refs)
 
 
 def _build_coupled_mixed(
