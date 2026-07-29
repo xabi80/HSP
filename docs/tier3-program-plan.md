@@ -298,3 +298,54 @@ response IN.
   → M11 planning).
 - **Next session = M8's own Q&A-lock plan.** Do not open M8 planning,
   branches, or B4 scoping from this document.
+
+---
+
+## Amendment (append-only) — M10 PR2 measurement: drag capability now REQUIRED for M11 (2026-07-29)
+
+The Q8 exclusion list marked **"Morison Cd calibration — OUT; consumed
+from the tank campaign, not produced."** M10 PR2 (`docs/m10-articulated3-plan.md`
+Amendment A4) measured an **in-band, drag-free rotational resonance**
+(`T_rot = 3.257 s`, `zeta = 0.373 %`, `Q ~ 134`, adjacent to the 3.106 s
+heave resonance; robust across the Q2 arm-mass split at `3.26-3.43 s`).
+Near it, the drag-free BEM rotation reaches the Item-2 `0.1 rad` threshold
+at a `~4.5 mm` wave amplitude (vs `5.4 m` off resonance) — the BEM-only
+model cannot bound the near-resonance rotation the LEVEL2 gate consumes.
+
+**Amendment (this does NOT edit the Q8 lock text; it appends a
+distinction the lock did not draw):**
+
+- **Drag *capability* in the coupled assembly is now a REQUIRED M11
+  item**, not deferred. This is the *code* that assembles a Morison /
+  quadratic drag `state_force` onto the coupled 18-DOF (and 12-buoy)
+  model — `build_system` assembles no `drag_elements` today (gap (d) in
+  the M10 plan, deferred there for the period-only heave gate).
+- **This is distinct from `Cd` *calibration***, which remains **OUT /
+  consumed** from the tank campaign per the original Q8 lock. Capability
+  (the drag term exists and is wired) vs calibration (its `Cd` value):
+  the former is FloatSim code and is now on M11's critical path; the
+  latter is an external tank input and is unchanged.
+- **LEVEL2 decision gate reordering.** Q1's chain
+  `M10 -> LEVEL2 gate -> M11` assumed M10 would *measure* the rotation
+  amplitudes the gate needs. M10 measured that **those amplitudes are
+  undeterminable without drag** near resonance. The true chain is
+  **drag capability -> rotational-drag characterisation -> re-measure ->
+  LEVEL2 decision** — LEVEL2 is **subordinate to drag**. (LEVEL2 itself
+  remains tracker `LEVEL2-INTEGRATOR-UNWIRED`.)
+
+**Open question for Xabier — the tank campaign ask (Q6 Stage 2).** The
+existing ask is a **heave decay** for the **heave-plate `Cd`**. The
+in-band rotational mode needs its **own** characterisation: the plate's
+drag in **buoy-pitch-about-the-joint** is a different problem from its
+drag in **heave** (different local velocity field, different `Cd`). Two
+consequences to confirm, not assume:
+1. The rotational-drag characterisation exists as a tank measurement
+   **only if the physical model has working joints** — the
+   **rigid-cluster** configuration has no rotational mode to excite. Does
+   the campaign include an articulated build?
+2. If not, the near-resonance LEVEL2 input stays undetermined and the
+   `M10 -> LEVEL2` gate cannot close on schedule. Flagged as a
+   program-schedule risk, not an assumption.
+
+Tracker: `INBAND-ROTATIONAL-RESONANCE` (measured values + Q2 sensitivity
+range + the M11 dependency).

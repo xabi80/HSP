@@ -449,3 +449,113 @@ the hub's C stays exactly zero.
 
 ### (f) Sequence update
 `PR0 -> PR0.5 -> PR0.75 -> **PR0.85** -> PR1`.
+
+---
+
+## Amendment A4 — wave forcing delivered; in-band drag-free rotational resonance makes LEVEL2 undeterminable without drag; PR2 (2026-07-29)
+
+**Append-only.** PR2's Q6 fork resolved SUPPORTED (wave forcing composes,
+convention verified); the measurement then surfaced a Q4 lock
+inconsistency. This is the rotation MEASUREMENT + the LEVEL2 write-up
+(the STEP-(d) dependency statement below).
+
+### (a) Wave forcing is delivered (Q6: supported, composable)
+The regular-wave excitation path runs on the coupled 18-DOF model:
+- **Builder** `make_regular_wave_force` (`floatsim/hydro/excitation.py:134`)
+  is dimension-agnostic — `interpolate_rao` returns `rao[:, ...]`, i.e.
+  the full first axis, so a coupled 18-DOF RAO yields an 18-vector force
+  (the docstring's "(6,)" is single-body prose, not a code limit).
+- **Hook** `integrate_cummins(external_force=...)`
+  (`floatsim/solver/newmark.py:218`).
+- **Scatter** to the assembled 24-DOF system is trivial: the 3 buoys are
+  contiguous global DOF `[0:18]`, the structural hub is `[18:24]` and
+  carries zero wave force.
+- The **driver declines turnkey wiring** (`floatsim/driver.py:18-22,48-49`,
+  a Q1 scope decline) — the caller composes — so "supported" means
+  *composable by the caller*, not *assembled by `build_system`*.
+
+**Convention verified, not assumed (the §13 gate on first activation).**
+The coupled Capytaine RAO is **origin-referenced**
+(`reference_point = (0,0,0)`), so `body_position = (0,0,0)` is the correct
+composition (the per-body spatial phase is baked into the complex RAO).
+Decisive check for heading 0 deg: `arg(heave_b0) - arg(heave_b1)` equals
+the origin-referenced prediction `-k*(x0 - x1)` to 3-4 sig figs at three
+frequencies — measured `-0.0435 / -0.2137 / -0.3300` vs predicted
+`-0.0436 / -0.2134 / -0.3291` (omega = 0.755 / 1.671 / 2.075), with
+`k = omega^2/g` (deep water) and `b1 == b2` exactly (y-mirror symmetry).
+A per-body-referenced RAO would have shown `arg(b0) == arg(b1)`; it does
+not.
+
+### (b) The finding, measured — an in-band lightly-damped rotational mode
+Free rotational decay (buoy pitch IC 0.02 rad, no wave):
+- **Locked split:** `T_rot = 3.257 s`, `zeta = 0.373 %` (radiation-only),
+  `Q = 1/(2 zeta) ~ 134`. In-band and **adjacent to the 3.106 s heave
+  resonance**.
+- The decay is **stable and bounded** — 36 peaks, the pitch amplitude
+  never exceeds its 0.02 rad IC, it decays. **So the integrator and the
+  KKT/projection constraint handling are sound.** The wave-case runaway
+  (hundreds of rad at T ~ 3.1-6 s, still building at 180 s) is therefore
+  **genuine resonant buildup** (`Q ~ 134` needs ~800 cycles to saturate;
+  the small-angle constraint linearisation is invalid long before then),
+  **not numerical instability.** This distinction is the whole finding:
+  the number is unphysical because the *physics* (drag-free resonance) is
+  unphysical, not because the solver failed.
+
+**Q2 sensitivity (bounds the finding's precision).** `T_rot` depends on
+rotational inertia, which depends on the Q2 arm-mass split the record
+does not determine. Re-running the decay under the **alternative** split
+(each buoy carries its 4 kg arm via parallel axis; bare regularised hub,
+`rank(M+A_inf) = 24`): `T_rot = 3.431 s (+5.3 %)`, `zeta = 0.449 %`,
+`Q ~ 111`. The mode stays **in-band and adjacent** either way — the
+finding is **robust to the split**, not split-dependent.
+
+### (c) The Q4 lock inconsistency, named
+Q4 deferred drag on the reasoning that a BEM-only model **overestimates**
+rotation (no dissipation), so a **sub-threshold BEM-only result is
+conservative**. **That holds off resonance only.** With an in-band
+drag-free resonance at `Q ~ 134` the overestimate is **unbounded**, so
+BEM-only **cannot certify sub-threshold rotation near resonance**. Q4's
+own escape clause — "if measured rotations land near 0.1 rad, drag gets
+revisited" — **fires**. Drag moves from **DEFERRED to REQUIRED** for any
+near-resonance rotation claim.
+
+Amplitude arithmetic (measured; the drag-free wave amplitude that reaches
+the Item-2 threshold `|theta| = 0.1 rad`):
+- **Off resonance** (worst valid joint, buoy0, `T = 10 s`): sensitivity
+  `0.0185 rad/m` -> `A_crit = 5.4 m` (`H ~ 10.8 m`). Safe by a wide
+  margin at model scale.
+- **Near resonance** (`T_rot`, via the measured `Q` and the measured
+  excitation-moment rise): `A_crit ~ 0.0045 m` (`H ~ 9 mm`) — inside any
+  tank/service condition.
+- **Contrast ~1200x.** *Correction to the PR2-request estimate:* the
+  quick estimate `A_crit_near ~ 0.04 m` used `off_sens x Q` with a
+  frequency-flat excitation. The buoy pitch-excitation RAO is **not**
+  flat — it rises `8.96x` from `omega = 0.61` to `omega = 1.93`, tracking
+  `omega^2` (wave slope; `(1.93/0.61)^2 = 10.0`). Including it,
+  `A_crit_near = off_sens x F_ratio x Q ~ 0.0045 m`, ~9x below the flat
+  estimate. The record wins; the conclusion is **strengthened**, not
+  weakened.
+
+### (d) The dependency — M10's actual output on LEVEL2 (the write-up)
+**LEVEL2 cannot be determined by M10 without drag.** Precisely:
+- **NOT "LEVEL2 deferred"** — that claims rotations are safely small, but
+  near resonance we cannot show that without drag.
+- **NOT "LEVEL2 required"** — that claims rotations are large, but the
+  drag-free number that says so is unphysical.
+- **Validity domain, stated:** off resonance (`T >= 10 s`, the energetic
+  long-period band) the linear model is valid and rotations are small
+  (`A_crit = 5.4 m`); near the 3.1-3.4 s band the measurement is
+  **undetermined** pending drag.
+
+**Ordering (the real dependency chain):**
+`drag capability (coupled assembly) -> rotational-drag characterisation
+(tank) -> re-measure rotation -> decide LEVEL2`. **LEVEL2
+nonlinear-restoring is subordinate to drag** — drag gates the very
+measurement LEVEL2's decision consumes. See the program-plan Q8
+amendment (drag capability now REQUIRED M11, distinct from Cd
+calibration) and tracker `INBAND-ROTATIONAL-RESONANCE`.
+
+### (e) Sequence
+`... -> PR1 -> **PR2** -> PR3 (closure)`. PR2 delivers the rotation gate
+as a MEASUREMENT with its validity domain; the LEVEL2 recommendation is
+(d) above.

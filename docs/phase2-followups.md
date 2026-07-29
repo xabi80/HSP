@@ -1279,6 +1279,61 @@ gate). See `docs/m8-coupled-bem-plan.md` (PR3 Step C, risk register) and
 
 ---
 
+### INBAND-ROTATIONAL-RESONANCE — Coupled-cluster buoy-pitch mode needs drag before its wave rotation can be measured
+
+**Mechanism.** The articulated-3 cluster (M10) has a buoy-pitch-about-
+the-joint rotational mode with `T_rot = 3.257 s`, `zeta = 0.373 %`
+(radiation-only), `Q ~ 134`, **in-band and adjacent to the 3.106 s heave
+resonance**. Under regular waves near this mode the **drag-free** BEM
+rotation reaches the Item-2 `0.1 rad` threshold at a `~4.5 mm` wave
+amplitude (vs `5.4 m` off resonance — a `~1200x` contrast). The free
+decay is stable and bounded, so the integrator/KKT handling is sound;
+the wave-case runaway is genuine resonant buildup, not numerical
+instability (M10 plan Amendment A4). Therefore the wave rotation the
+LEVEL2 gate consumes **cannot be measured near resonance without a drag
+term** in the coupled assembly.
+
+**Audit reference.** `docs/m10-articulated3-plan.md` Amendment A4
+(measurement + Q4 lock inconsistency); `docs/tier3-program-plan.md`
+append-only amendment 2026-07-29 (drag capability -> REQUIRED M11).
+Measured by `tests/validation/test_m10_pr2_wave_rotation.py` (convention
+gate + off-resonance sensitivity + in-band-mode characterisation).
+
+**Why latent / visibility.** Invisible through PR1: the M2-PR1 gates are
+free-decay **periods** (`M+A+C`-dominated, damping-insensitive) and a
+**symmetric** heave IC (excites no rotation). The mode only surfaces on
+first **directional wave** activation of the coupled model (PR2) — the
+CLAUDE.md §13 "correct in isolation, wrong on first full-scenario
+activation" shape.
+
+**Scope.**
+- Drag **capability** (Morison / quadratic drag `state_force`) assembled
+  onto the coupled 18-DOF (and 12-buoy) model — `build_system` assembles
+  no `drag_elements` today (M10 plan gap (d)).
+- Rotational-drag **characterisation** for the buoy-pitch-about-joint
+  mode (tank; distinct from the heave-plate heave `Cd`).
+- Re-measure the near-resonance rotation, then decide LEVEL2.
+
+**Q2 sensitivity (finding precision).** `T_rot` is **robust to the Q2
+arm-mass split**: alternative split (buoy carries its 4 kg arm) gives
+`T_rot = 3.431 s (+5.3 %)`, `zeta = 0.449 %`, `Q ~ 111` — in-band and
+adjacent either way. Not split-dependent.
+
+**Estimated effort.** Capability ~1-2 wk (coupled drag `state_force` +
+gate); characterisation is tank-campaign-gated (outside program control).
+
+**Blocks.** The `M10 -> LEVEL2 decision gate -> M11` sequencing (Q1): the
+gate's rotation-amplitude input is undetermined near resonance until drag
+lands. **LEVEL2 is subordinate to drag** (drag gates the measurement
+LEVEL2 consumes).
+
+**Status.** Open. Surfaced 2026-07-29 (M10 PR2, first directional-wave
+activation of the coupled articulated model). Depends on M11 drag
+capability + the tank-campaign open question (does the campaign include
+an articulated build? — program-plan amendment).
+
+---
+
 ## Resolved entries
 
 *(none yet)*
