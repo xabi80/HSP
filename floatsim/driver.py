@@ -425,6 +425,50 @@ def _build_joint_set(deck: Deck, name_to_index: dict[str, int]) -> JointSet | No
     return JointSet(joints=tuple(built), n_bodies=len(deck.bodies), body_references=refs)
 
 
+def _inject_hydrostatic_c(
+    c_mat: NDArray[np.float64],
+    hydro: list[tuple[int, str]],
+    shared_db: HydroDatabase,
+    hydrostatic_database: HydroDatabase | None,
+) -> None:
+    """Add per-body block-diagonal buoyancy stiffness into ``c_mat`` in
+    place, resolved BY LABEL from a hydrostatic reference (M10 PR0.85).
+
+    ``hydro`` is a list of ``(global_body_index, hydro_body_label)``. A
+    single-body reference (``body_labels is None``) is broadcast to every
+    body (M8's ``kron(I, c_single)`` degenerate case); a labelled
+    reference resolves each body's ``6x6`` block by label. Hydrostatic
+    stiffness is per-body block-diagonal and cannot live in a coupled
+    (cross-coupled) BEM, so a coupled ``C`` that is all-zero means "no
+    restoring" -- never "provided as zero": with no reference supplied
+    this raises rather than assembling a silently non-oscillating system.
+    """
+    if hydrostatic_database is None:
+        if not np.any(np.asarray(shared_db.C)):
+            raise ValueError(
+                "coupled shared_hydro_database carries zero hydrostatic C (a coupled "
+                "BEM is inter-body radiation/excitation only; hydrostatic stiffness "
+                "is per-body block-diagonal and cannot live there) and no "
+                "'hydrostatic_database' was provided. Supply a per-body hydrostatic "
+                "reference (M10 PR0.85)."
+            )
+        return
+    labels = hydrostatic_database.body_labels
+    c_ref = np.asarray(hydrostatic_database.C, dtype=np.float64)
+    for k, label in hydro:
+        if labels is None:
+            blk = c_ref  # single-body 6x6 reference, broadcast to every body
+        else:
+            if label not in labels:
+                raise ValueError(
+                    f"hydro_body_label {label!r} not found in hydrostatic_database "
+                    f"labels {list(labels)} (M10 PR0.85 label contract)"
+                )
+            j = labels.index(label)
+            blk = c_ref[6 * j : 6 * j + 6, 6 * j : 6 * j + 6]
+        c_mat[6 * k : 6 * k + 6, 6 * k : 6 * k + 6] += blk
+
+
 def _build_coupled_mixed(
     deck: Deck,
     shared_db: HydroDatabase,
@@ -432,6 +476,7 @@ def _build_coupled_mixed(
     t_max_kernel: float,
     gravity: float,
     asymptote_check_override: str | None = None,
+    hydrostatic_database: HydroDatabase | None = None,
 ) -> tuple[CumminsLHS, RetardationKernel]:
     """Coupled ``6*n_deck`` LHS + kernel for a deck mixing hydro (labelled)
     bodies with structural (hydro-free) bodies (M10 PR0.5, plan Q4-c).
@@ -504,6 +549,8 @@ def _build_coupled_mixed(
                 cog_offset_from_bem_origin=np.zeros(3, dtype=np.float64),
                 gravity=gravity,
             )
+    # M10 PR0.85: per-body block-diagonal buoyancy stiffness from a reference.
+    _inject_hydrostatic_c(c_mat, hydro, shared_db, hydrostatic_database)
     lhs = CumminsLHS(M_plus_Ainf=m_plus_ainf, C=c_mat)
 
     # Kernel: compute on the hydro-only sub-database (N-body-contract-valid),
@@ -538,6 +585,7 @@ def _build_coupled_lhs_kernel(
     t_max_kernel: float,
     gravity: float,
     asymptote_check_override: str | None = None,
+    hydrostatic_database: HydroDatabase | None = None,
 ) -> tuple[CumminsLHS, RetardationKernel]:
     """Coupled ``6N`` LHS + kernel from a shared N-body database (M9 Q5).
 
@@ -559,7 +607,13 @@ def _build_coupled_lhs_kernel(
     # (byte-identity, the M8/M9 N=1 pattern).
     if any(b.structural for b in deck.bodies):
         return _build_coupled_mixed(
-            deck, shared_db, dt, t_max_kernel, gravity, asymptote_check_override
+            deck,
+            shared_db,
+            dt,
+            t_max_kernel,
+            gravity,
+            asymptote_check_override,
+            hydrostatic_database,
         )
     if any(b.hydro_body_label is None for b in deck.bodies):
         raise ValueError(
@@ -604,6 +658,12 @@ def _build_coupled_lhs_kernel(
                 gravity=gravity,
             )
 
+    # M10 PR0.85: per-body block-diagonal buoyancy stiffness from a reference
+    # (or raise if the coupled C is zero and no reference was supplied).
+    _inject_hydrostatic_c(
+        c_mat, [(k, deck_labels[k]) for k in range(n)], shared_db, hydrostatic_database
+    )
+
     lhs = CumminsLHS(M_plus_Ainf=m_plus_ainf, C=c_mat)
     reordered = HydroDatabase(
         omega=shared_db.omega,
@@ -636,6 +696,7 @@ def build_system(
     solve_equilibrium: bool = True,
     shared_hydro_database: HydroDatabase | None = None,
     asymptote_check_override: str | None = None,
+    hydrostatic_database: HydroDatabase | None = None,
 ) -> SimulationSetup:
     """Materialise a deck-driven simulation setup.
 
@@ -697,12 +758,19 @@ def build_system(
                 "build_system(shared_hydro_database=...). The driver does not "
                 "load BEM files itself."
             )
+        if deck.hydrostatic_database is not None and hydrostatic_database is None:
+            raise ValueError(
+                "deck declares 'hydrostatic_database' but none was passed to "
+                "build_system(hydrostatic_database=...). The driver does not load "
+                "BEM files itself (M10 PR0.85)."
+            )
         lhs_global, kernel_global = _build_coupled_lhs_kernel(
             deck,
             shared_hydro_database,
             dt,
             t_max_kernel,
             deck.environment.gravity,
+            hydrostatic_database=hydrostatic_database,
             asymptote_check_override=asymptote_check_override,
         )
     else:

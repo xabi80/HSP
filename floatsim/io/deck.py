@@ -304,6 +304,7 @@ class Deck(_Base):
     bodies: Annotated[list[Body], Field(min_length=1)]
     connections: list[Connection] = Field(default_factory=list)
     shared_hydro_database: HydroDatabaseRef | None = None
+    hydrostatic_database: HydroDatabaseRef | None = None
     joints: list[Joint] = Field(default_factory=list)
     output: Output
 
@@ -331,6 +332,14 @@ class Deck(_Base):
                 f"structural (hydro-free) bodies {structural} require a coupled deck "
                 "declaring a 'shared_hydro_database'; they are supported only in the "
                 "coupled assembly (M10 PR0.5)"
+            )
+        # A 'hydrostatic_database' (per-body block-diagonal buoyancy C source,
+        # M10 PR0.85) is meaningful only for the coupled path.
+        if self.hydrostatic_database is not None and self.shared_hydro_database is None:
+            raise ValueError(
+                "'hydrostatic_database' is declared but there is no "
+                "'shared_hydro_database'; the per-body hydrostatic C source applies "
+                "only to the coupled assembly (M10 PR0.85)"
             )
         names = {b.name for b in self.bodies} | {"earth"}
         for j in self.joints:

@@ -392,3 +392,60 @@ refusal to let the hydro validator permit absence.
 `PR0 -> PR0.5 -> **PR0.75** -> PR1 -> PR2 -> PR3`. PR0.75 (this
 reference-aware `JointSet`) lands before PR1; PR1's gates fire on the
 fixed foundation.
+
+---
+
+## Amendment A3 — coupled path has no hydrostatic-C source; PR0.85 (2026-07-28, PR1 GATE A)
+
+**Append-only** (M7.5-Q2 precedent). PR1's GATE A (heave decay) surfaced
+this; STEP 5's diagnostic order isolated it to the coupled hydrostatics.
+
+### (a) The gap, measured
+The committed 18-DOF **coupled** fixture
+(`capytaine_multibody_18dof.nc`) carries A / B / A_inf / RAO but
+**`C = 0`** (`max|C| = 0.0`). The coupled `build_system` path uses
+`shared_db.C` verbatim and adds only the **gravity metacentric** term
+(zero in heave), so the assembled system has **no buoyancy restoring
+force**. Measured consequence: the heave decay did not oscillate --
+z held at 0.10, peaks = 0, T_n = nan, lambda = 0.
+
+### (b) The validated reference
+M8's condensation path injects hydrostatics from the **single-buoy
+reference** BEM, block-diagonally: `c_18 = kron(I3, c_single)` with
+`c_single[2,2] = 221.0806700382738`, giving
+`3 x 221.0806700 = 663.2420101148214` -- **exactly** the committed
+`interaction.json C33_composite = 663.2420101` (re-derived at drafting;
+matches). Hydrostatic stiffness is **per-body and block-diagonal**
+(it does not couple between bodies), so a *coupled* database -- which is
+inter-body cross-coupled radiation/excitation -- has nowhere to put it.
+
+### (c) Why latent (CLAUDE.md §13, second instance this milestone)
+The coupled path's byte-identity tests used **synthetic** fixtures with
+nonzero C; PR0.5's GATE 1 used the real fixture but asserted structure,
+rank, mass and the structural zeros -- **never dynamics**. The real
+fixture's `C=0` was not exercised through `build_system`'s dynamics
+until PR1's heave gate.
+
+### (d) The lesson (general)
+**STRUCTURAL ASSERTIONS DO NOT CATCH A MISSING RESTORING FORCE.**
+Capability gates for dynamics-bearing code must exercise **dynamics**,
+not assembly. PR0.85's own GATE 1 is therefore a *decay*, not an
+assembly check; carry this into PR2's and M11's gate design.
+
+### (e) The fix: Option A -- per-body, label-resolved hydrostatic C
+A hydrostatic reference database supplies each coupled body's `6x6`
+buoyancy C, **resolved BY LABEL** (the same contract as PR0.5's scatter
+and M8's mapping), placed block-diagonally; a single-body reference is
+the degenerate broadcast case (M8's `kron(I3, c_single)`). Built as the
+**general N-body form**, not M8's special case, so M11's non-identical
+clusters do not rediscover it. **B rejected** (baking a block-diagonal
+quantity into a cross-coupled BEM forces every off-diagonal to be
+exactly zero, and modifies a committed fixture already carrying a
+contaminated-frequency finding). **C rejected** (hand-entering a
+quantity the single-body reference already contains, with nothing
+checking agreement). Prototype: injecting `c_single` block-diagonal
+makes the decay oscillate (peaks = 16, T_n = 3.1053 s, rel 2.4e-4);
+the hub's C stays exactly zero.
+
+### (f) Sequence update
+`PR0 -> PR0.5 -> PR0.75 -> **PR0.85** -> PR1`.

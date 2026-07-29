@@ -44,6 +44,7 @@ from floatsim.io.deck import (
 
 REPO = Path(__file__).resolve().parents[2]
 _NC = REPO / "studies" / "cluster-3buoy-rigid" / "capytaine_multibody_18dof.nc"
+_REF = REPO / "studies" / "cluster-3buoy-rigid" / "reference_single_bem.nc"
 _CONTAM = (4.934, 20.909)  # M8 PR3 contaminated-frequency exclusion (grid selection)
 _R = 0.5
 _ANG = np.deg2rad([0.0, 120.0, 240.0])
@@ -184,8 +185,18 @@ def _m10_deck() -> Deck:
         waves=RegularWave(type="regular", height=1.0, period=10.0, heading=0.0),
         bodies=[*buoys, hub],
         shared_hydro_database=HydroDatabaseRef(format="capytaine", path=str(_NC)),
+        hydrostatic_database=HydroDatabaseRef(format="capytaine", path=str(_REF)),
         output=Output(file="out.h5", channels=["heave"], sample_rate=10.0),
     )
+
+
+def _ref() -> HydroDatabase:
+    """Single-buoy reference BEM -- its 6x6 buoyancy C is broadcast to every
+    buoy (M8's kron(I, c_single); M10 PR0.85). The coupled 18-DOF fixture
+    carries C=0, so without this the coupled assembly has no restoring."""
+    from floatsim.hydro.readers.capytaine import read_capytaine
+
+    return read_capytaine(_REF)
 
 
 @pytest.mark.slow
@@ -203,6 +214,7 @@ def test_m10_mixed_assembly_structural_hub() -> None:
             t_max_kernel=30.0,
             solve_equilibrium=False,
             shared_hydro_database=_hdb18(),
+            hydrostatic_database=_ref(),
             asymptote_check_override="M10 cluster small-body hulls; ITEM25-SMALL-BODY",
         )
 
