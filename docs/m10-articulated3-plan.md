@@ -559,3 +559,43 @@ calibration) and tracker `INBAND-ROTATIONAL-RESONANCE`.
 `... -> PR1 -> **PR2** -> PR3 (closure)`. PR2 delivers the rotation gate
 as a MEASUREMENT with its validity domain; the LEVEL2 recommendation is
 (d) above.
+
+---
+
+## Amendment A5 — two resolutions received before PR3 (2026-07-29)
+
+**Append-only.** Both close open items A4 raised; recorded at M10 close.
+
+### (a) WORKING JOINTS CONFIRMED
+The physical model has working joints (closes the PR2 open question —
+"does the campaign include an articulated build?"). Consequences:
+- The in-band rotational mode is **experimentally excitable**, so M11's
+  rotational-drag characterisation has an **empirical anchor** and the
+  LEVEL2 dependency chain (A4(d)) can complete.
+- `T_rot = 3.257 s` becomes a **falsifiable prediction** against tank
+  data — the **first external check available to this programme** before
+  the 12-buoy comparison. (Every M8-M10 gate has been internal or
+  analytic; this is the first tool-vs-experiment claim.)
+
+### (b) Q2 CONFIRMED BY INSPECTION (joints at the buoy top end)
+The joints seat at the **buoy top end**; the arms are **hub-side
+structure** and the buoys hang from the arm tips, free in roll/pitch
+(yaw locked). The Q2 **locked split is correct** (hub carries the 12 kg
+arm structure; buoys 28.67 kg each). Status: **assumed -> confirmed
+against the build.** Consequences:
+- The **+5.3 % alternative-split uncertainty on `T_rot` is removed**;
+  `T_rot = 3.257 s` is now **single-valued** (the A4(b) `3.431 s`
+  alternative is retired — it was a sensitivity bound, never a
+  competing model).
+- **Retroactive point (worth recording).** PR1 **GATE A could not
+  discriminate the split** — with all joint translations locked, only
+  the cluster *totals* (M, CoG, I) enter the heave period, which both
+  splits reproduce by construction. So GATE A's pass was **necessary but
+  not sufficient** evidence for the mass distribution; the inspection
+  supplies the rest. The **rotational** results (A4) *do* depend on the
+  split (`T_rot` shifts with buoy rotational inertia) and are now on
+  **confirmed** footing, not sensitivity-bounded.
+
+### (c) Sequence
+`... -> PR2 -> **PR3 (closure)**`. See `docs/m10-articulated3-closure.md`
+and the program-plan campaign-scope amendment (2026-07-29).

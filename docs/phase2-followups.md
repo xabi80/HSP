@@ -1314,10 +1314,27 @@ activation" shape.
   mode (tank; distinct from the heave-plate heave `Cd`).
 - Re-measure the near-resonance rotation, then decide LEVEL2.
 
-**Q2 sensitivity (finding precision).** `T_rot` is **robust to the Q2
-arm-mass split**: alternative split (buoy carries its 4 kg arm) gives
-`T_rot = 3.431 s (+5.3 %)`, `zeta = 0.449 %`, `Q ~ 111` — in-band and
-adjacent either way. Not split-dependent.
+**Q2 sensitivity -> CONFIRMED (M10 close, A5(b)).** The Q2 arm-mass split
+is **confirmed by inspection** (joints at the buoy top end; arms are
+hub-side structure), so `T_rot = 3.257 s` is **single-valued**. The
+earlier `+5.3 %` alternative split (`T_rot = 3.431 s`, `zeta = 0.449 %`,
+`Q ~ 111`) was a sensitivity bound and is **retired** — the rotational
+finding was robust to the split and is now on confirmed footing.
+
+**Working joints CONFIRMED (M10 close, A5(a)).** The physical model has
+working joints, so the mode is experimentally excitable: `T_rot = 3.257 s`
+is a **falsifiable prediction** vs tank data (the programme's first
+external check). The tank campaign will sweep wave **height and period**
+(not heave decay only), so:
+- the wave-height sweep **is** the rotational-drag experiment
+  (response-per-height falls near resonance -> `Cd`);
+- drag capability is needed to **predict the cluster tests**, not only to
+  resolve LEVEL2 (program-plan amendment 2b-2e);
+- **NEW open question (2f):** the heave-plate `Cd = 5.0` (disc broadside
+  to vertical flow) cannot be reused for the rotational mode (plate
+  edge-on, horizontal flow) — the rotational damping must be measured,
+  not inferred; the drag-widened resonance bandwidth is unknown until
+  then.
 
 **Estimated effort.** Capability ~1-2 wk (coupled drag `state_force` +
 gate); characterisation is tank-campaign-gated (outside program control).
@@ -1325,12 +1342,14 @@ gate); characterisation is tank-campaign-gated (outside program control).
 **Blocks.** The `M10 -> LEVEL2 decision gate -> M11` sequencing (Q1): the
 gate's rotation-amplitude input is undetermined near resonance until drag
 lands. **LEVEL2 is subordinate to drag** (drag gates the measurement
-LEVEL2 consumes).
+LEVEL2 consumes). Drag is also required to predict the staged cluster
+wave-response tests (program-plan 2a-2b).
 
 **Status.** Open. Surfaced 2026-07-29 (M10 PR2, first directional-wave
-activation of the coupled articulated model). Depends on M11 drag
-capability + the tank-campaign open question (does the campaign include
-an articulated build? — program-plan amendment).
+activation of the coupled articulated model); updated 2026-07-29 (M10
+close) with working-joints + Q2 resolutions and the campaign scope.
+Depends on M11 drag capability. See `docs/m10-articulated3-closure.md`
+S4/S7 and the program-plan campaign-scope amendment.
 
 ---
 

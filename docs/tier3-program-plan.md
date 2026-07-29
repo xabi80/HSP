@@ -349,3 +349,86 @@ consequences to confirm, not assume:
 
 Tracker: `INBAND-ROTATIONAL-RESONANCE` (measured values + Q2 sensitivity
 range + the M11 dependency).
+
+---
+
+## Amendment (append-only) — M10 close: two resolutions + campaign-scope change (2026-07-29)
+
+### Resolutions received (M10 plan Amendment A5)
+- **Working joints CONFIRMED** — closes the PR2 open question. The
+  in-band rotational mode is experimentally excitable, so M11's
+  rotational-drag characterisation has an empirical anchor and the
+  LEVEL2 chain can complete. `T_rot = 3.257 s` is now a **falsifiable
+  prediction** vs tank data — the programme's **first external check**
+  before the 12-buoy comparison.
+- **Q2 CONFIRMED by inspection** (joints at the buoy top end; arms are
+  hub-side structure) — the locked split is correct. The `+5.3 %`
+  alternative-split uncertainty on `T_rot` is **removed**; `T_rot`
+  single-valued. Retroactive: PR1 GATE A could not discriminate the
+  split (locked translations -> only totals enter the heave period), so
+  its pass was necessary-not-sufficient for the mass distribution; the
+  rotational results *do* depend on the split and are now confirmed.
+
+### Campaign-scope change — the tank will sweep wave HEIGHT and PERIOD
+(not heave decay only). This changes the program plan materially:
+
+- **(2a) Staged validation opportunity (new).** The campaign produces
+  **cluster-scale wave-response data before any 12-buoy data exists** ->
+  calibrate + validate at 3-buoy scale, then scale to 12-buoy. Stronger
+  than the plan's single jump to the 12-buoy terminal.
+- **(2b) Drag escalation.** Drag capability is now required to **predict
+  the cluster tests**, not only to resolve M11 LEVEL2. The sweep covers
+  the band containing both resonances (heave 3.106 s, rotational
+  3.257 s), where drag-free prediction is unphysical (PR2: 4.5 mm vs
+  5.4 m to reach 0.1 rad, ~1200x). Drag capability sits **earlier** on
+  M11's critical path than the LEVEL2 gate alone implied.
+- **(2c) The wave-HEIGHT sweep IS the drag experiment.** Quadratic drag
+  makes response amplitude-dependent: response-per-unit-wave-height
+  **falls** with increasing height near resonance. That sub-linearity is
+  the signature `Cd` is extracted from — a **falsifiable prediction the
+  tool makes now**, before the data exists.
+- **(2d) Architecture (permanently settled).** A linear frequency-domain
+  RAO solver **cannot** represent amplitude-dependent response;
+  **time-domain regular-wave runs per `(H, T)` pair** are both the
+  correct architecture and a direct mirror of the experiment. This
+  closes the frequency-domain question PR2 rejected (M10 plan A4;
+  a constrained freq-domain solve buys exactness on a peak that is
+  unphysical without drag).
+- **(2e) Campaign recommendation for Xabier to forward.** Sweep **finely
+  in period around the two resonances**, coarse elsewhere, **multiple
+  wave heights per period**. Band arithmetic (re-derived; the Q2
+  confirmation removes the alternative-split ~3.43 s concern, so the
+  earlier upper edge comes down):
+  - drag-free half-power width of the rotational mode:
+    `dT ~ T_rot / Q = 3.257 / 134 = 0.024 s`. A coarse 0.25 s step is
+    ~10x this -> **steps over the mode entirely**. Drag will widen the
+    peak substantially, but the model cannot say how much until drag
+    exists, so size the step to the **drag-free** width to be safe.
+  - **Core fine band `[3.05, 3.30] s`, step `<= 0.025 s`** — brackets
+    both resonances (3.106, 3.257) tightly; step = the drag-free
+    half-power width so the narrow peak is resolved even in the
+    weak-drag limit.
+  - **Shoulder band `[2.8, 3.6] s`, step ~0.1 s** — margin `~+-10 %`
+    (`~+-0.33 s`) for model-vs-tank frequency error (the rotational mode
+    is untested against any tool; M6 saw few-% agreement on heave, worse
+    on pitch) plus the drag-induced peak-frequency shift and broadening.
+  - **Coarse `[1, 20] s` elsewhere, step ~1 s.**
+  - The band is **not** collapsed to the two resonance values; the
+    shoulder margin is retained deliberately for the model-vs-tank and
+    drag-shift uncertainties the tool cannot quantify.
+- **(2f) NEW OPEN PHYSICS QUESTION (a question, not a finding — no
+  rotational `Cd` is estimated here).** `Cd = 5.0` is the plate's
+  **heave** drag coefficient: a disc **broadside** to vertical flow,
+  which is why it is large. The rotational mode is a **different flow
+  problem** — the buoy swings about a joint at its top, so the plate
+  well below it moves predominantly **horizontally** (edge-on,
+  presenting its ~4 mm thickness), with a smaller tilting component
+  where outer regions move vertically. Consequence: the **rotational
+  damping coefficient cannot be inferred from the heave `Cd`** —
+  different flow regimes on the same geometry. This **strengthens** the
+  case that the tank's **rotational** decay/response is *essential*, not
+  confirmatory, and means the drag-widened bandwidth of the rotational
+  resonance is **unknown until measured**. Flag for M11 drag scoping.
+
+Tracker `INBAND-ROTATIONAL-RESONANCE` updated with the working-joints
+resolution, the Q2 confirmation, and the campaign implications.
