@@ -262,3 +262,15 @@ slow end-to-end permutation).
   4-row joint assembles and solves in the KKT path; constraint holds,
   energy conserved — `test_m9_kkt_integrator.py::test_yaw_locked_joint_holds_and_conserves`).
   The full articulated 12-body platform is M10+.
+
+**Scope qualification (M10 PR0.75, 2026-07-28).** Every M9 joint gate
+above validates the layer under the **absolute-position state
+convention** its tests used (each body's `xi[6k:6k+3]` IS its world
+position; `C = 0`, no hydrostatic restoring). M10 PR1 surfaced that the
+**coupled** Cummins system uses `xi` as **displacement from the
+reference** configuration, so the M9 `JointSet.phi` (`ref = 0`) computed
+a nonzero rest residual there. This is a convention gap, not a physics
+defect — `G` was correct throughout, and all M9 numerical gates
+reproduce unchanged (`ref = None` is the absolute special case). Fixed
+by the reference-aware `JointSet` (`body_references`) in M10 PR0.75; see
+`docs/m10-articulated3-plan.md` **Amendment A2**.
