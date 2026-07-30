@@ -68,6 +68,7 @@ from floatsim.bodies.joints import JointSet, hinge_joint, yaw_locked_joint
 from floatsim.bodies.mass_properties import rigid_body_mass_matrix
 from floatsim.hydro.database import HydroDatabase
 from floatsim.hydro.hydrostatics import gravity_restoring_contribution
+from floatsim.hydro.morison import MorisonElement, make_morison_state_force
 from floatsim.hydro.radiation import CumminsLHS, assemble_cummins_lhs
 from floatsim.hydro.retardation import RetardationKernel, compute_retardation_kernel
 from floatsim.io.deck import (
@@ -355,15 +356,21 @@ def _materialise_catenary(conn: Catenary, name_to_index: dict[str, int]) -> Cate
 def _compose_state_force(
     connector_force: _StateForce | None,
     catenary_force: _StateForce | None,
+    drag_force: _StateForce | None,
     n_dof: int,
 ) -> _StateForce:
-    """Sum the (optional) connector and catenary force closures.
+    """Sum the (optional) connector, catenary and drag force closures.
 
-    Returns a zero-vector closure if both are None.
+    Additive-generic over the present sources (order:
+    connector, catenary, drag). Returns a zero-vector closure if all are
+    None. With only connector + catenary present the result is
+    ``connector(...) + catenary(...)`` -- byte-identical to the pre-M11a
+    two-source path (drag_force=None adds nothing).
     """
-    zeros = np.zeros(n_dof, dtype=np.float64)
+    sources = [f for f in (connector_force, catenary_force, drag_force) if f is not None]
 
-    if connector_force is None and catenary_force is None:
+    if not sources:
+        zeros = np.zeros(n_dof, dtype=np.float64)
 
         def _zero_force(
             _t: float, _xi: NDArray[np.float64], _xd: NDArray[np.float64]
@@ -372,21 +379,69 @@ def _compose_state_force(
 
         return _zero_force
 
-    if catenary_force is None:
-        return connector_force  # type: ignore[return-value]
-
-    if connector_force is None:
-        return catenary_force
-
-    cf = connector_force
-    af = catenary_force
+    if len(sources) == 1:
+        return sources[0]
 
     def _composed(
         t: float, xi: NDArray[np.float64], xi_dot: NDArray[np.float64]
     ) -> NDArray[np.float64]:
-        return cf(t, xi, xi_dot) + af(t, xi, xi_dot)
+        total = sources[0](t, xi, xi_dot)
+        for f in sources[1:]:
+            total = total + f(t, xi, xi_dot)
+        return total
 
     return _composed
+
+
+def _build_drag_state_force(deck: Deck, n_dof: int, *, rho: float) -> _StateForce | None:
+    """Compose the deck's Morison ``drag_elements`` into a state-force
+    closure (M11a PR1 / plan Q3-i). WIRING only -- no new physics.
+
+    Drag ONLY: the BEM database already carries added mass and
+    Froude-Krylov, so a Morison inertia term would double-count. This is
+    made **impossible**, not merely avoided -- each element is constructed
+    with ``include_inertia=False`` and ``include_inertia=True`` in the deck
+    is rejected with a clear error. ``Ca`` feeds only the inertia term and
+    is therefore inert on this path (permitted but unused; matches the
+    committed ``two_body_semisub_barge.yml`` element's ``Ca=1.0``).
+
+    Fluid is still water (calm) -- the free-decay convention the M10/M9
+    studies used. Wave-orbital-velocity-relative drag is a follow-on that
+    couples to the wave field (composed separately, M10 A4).
+
+    Returns ``None`` when no body declares ``drag_elements`` (the
+    common case), so a drag-free deck's ``state_force`` is untouched.
+    """
+    elements: list[MorisonElement] = []
+    for k, body in enumerate(deck.bodies):
+        for e in body.drag_elements:
+            if e.include_inertia:
+                raise ValueError(
+                    f"body {body.name!r} drag element: include_inertia=True is not "
+                    "supported by build_system's drag wiring (M11a PR1 is drag-only). "
+                    "The BEM database already carries added mass + Froude-Krylov, so the "
+                    "Morison inertia term would double-count. Set include_inertia=False."
+                )
+            elements.append(
+                MorisonElement(
+                    body_index=k,
+                    node_a_body=np.asarray(e.node_a, dtype=np.float64),
+                    node_b_body=np.asarray(e.node_b, dtype=np.float64),
+                    diameter=e.diameter,
+                    Cd=e.Cd,
+                    Ca=e.Ca,  # inert: include_inertia is forced False below
+                    include_inertia=False,
+                )
+            )
+    if not elements:
+        return None
+
+    calm = np.zeros(3, dtype=np.float64)
+
+    def _calm_fluid(_point: NDArray[np.float64], _t: float) -> NDArray[np.float64]:
+        return calm
+
+    return make_morison_state_force(elements, n_dof=n_dof, fluid_velocity_fn=_calm_fluid, rho=rho)
 
 
 # ---------------------------------------------------------------------------
@@ -816,7 +871,12 @@ def build_system(
         if catenary_attachments
         else None
     )
-    state_force = _compose_state_force(connector_force, catenary_force, n_dof)
+    # M11a PR1 (Q3-i): compose the deck's Morison drag_elements into the
+    # state-force alongside connector/catenary. Common to both the coupled
+    # and per-body assembly paths. Drag-only (no inertia double-count);
+    # None when no body declares drag_elements (drag-free decks untouched).
+    drag_force = _build_drag_state_force(deck, n_dof, rho=deck.environment.water_density)
+    state_force = _compose_state_force(connector_force, catenary_force, drag_force, n_dof)
 
     # --- Initial conditions -------------------------------------------------
     xi0_packed = pack_state(
