@@ -472,3 +472,28 @@ Measurements A-E + Xabier's platform topology
   `BEM-CONTAMINATED-FREQUENCY-SLICE-CLUSTER-DRAFT`, 2026-07-29): Measurement
   E falsified the output-smoothness screen for the 4.934-class → the M11
   detector is **solve-time conditioning monitoring**, its own PR.
+
+---
+
+## Amendment (append-only) — inter-cluster coupling MEASURED (M11a PR3, 2026-07-30)
+
+The empirical preamble flagged **cluster-to-cluster coupling at 12-buoy
+scale as UNMEASURED** (one-paragraph read; G2/G4 caveat). **M11a PR3
+measured it** (2-cluster probe at the real 1.414 m separation; plan
+Finding F2): for the closest cross-cluster pair (0.620 m), added-mass
+coupling **1.49 %** (near-field 1/d^3) and B33 coupling **0.960**
+(sub-wavelength coherent, d/lambda ~ 0.04); 6-body composite B33 =
+**33x single (92 % of N^2)**.
+- **The B4/B5 coupled-BEM justification is now empirically closed on the
+  inter-cluster side:** damping coupling is strong and coherent, so the
+  coupled model is essential and 12-buoy damping is a QUALITATIVE
+  amplification (toward N^2=144), not a modest extrapolation. Added-mass
+  coupling stays modest (~few %).
+- **New M11b risk (budget for it):** the strong coherent coupling makes
+  B(omega) near-singular (anti-coherent modes radiate ~nothing), so the
+  symmetrised B dips ~-5 to -9 % negative in min-eigenvalue across the 2-3
+  band (vs -0.6 to -1.6 % on the 3-buoy fixture; systematic, NOT an
+  irregular-frequency contamination). The 12-buoy retardation-kernel PSD
+  gate (M8 `_validate_psd`) and the kernel Filon transform will face a more
+  strongly near-singular B; the PSD significance floor may need revisiting
+  at 72 DOF.

@@ -279,3 +279,74 @@ plan A4(c)). The quadratic drag also makes the effective lever arms weakly
 amplitude-dependent (drag loads the spar differently along its length than
 inertia does); the linearization is stated at `Theta = 0.02 rad` and this
 is a known second-order approximation, not treated as exact.
+
+### F1 addendum — one canonical damping number, amplitude explicit (M11a PR3, 2026-07-30)
+The PR2 reports quoted two figures — "removes 34 % of Q (141 -> 93)" and
+"~half (141 -> 68)". These are **one result at two amplitudes**, not two
+results. Quadratic drag makes `zeta_drag ∝ amplitude`, so:
+- **Canonical number: at `Theta = 0.02 rad` (the stated linearization
+  amplitude), `zeta_drag = 0.379 %`, `Q ~ 68` (~half of the drag-free
+  134).** This is the corrected prediction, matched by the code.
+- The **whole-decay-averaged MEASURED** `zeta_drag = 0.185 %` (`Q ~ 93`,
+  34 %) is lower only because the log-decrement averages over the decaying
+  amplitude (0.02 -> 0); as the amplitude falls, `zeta_drag` falls and `Q`
+  rises back toward 134.
+The record carries **`Q ~ 68 at Theta = 0.02 rad`** as the single number,
+with the amplitude dependence stated. Both earlier figures are consistent
+with it.
+
+---
+
+## Finding F2 — inter-cluster hydrodynamic coupling MEASURED (M11a PR3, 2026-07-30)
+
+**Append-only.** The programme's first inter-cluster number. Predictions
+were pinned BEFORE the solve (below); both hit. Probe: 2 adjacent clusters
+at the real 1.414 m centre separation (closest cross-cluster buoy pair
+0.620 m), 6-body / 36-DOF radiation BEM at cluster draft (8928 panels,
+0 inward, reciprocity 1.09e-4 = the 18-DOF fixture's 1.08e-4).
+
+### Predictions (pinned) vs measurements
+| quantity | pinned prediction | measured |
+|----------|-------------------|----------|
+| intra A_inf off/diag (0.866 m) | baseline (G4 0.56%) | **0.5628%** (reproduces the record) |
+| **cross-cluster A_inf (0.620 m)** | ~1.5% (near-field 1/d^3 dipole) | **1.49%** ✓ |
+| intra B33 off/diag @ omega_n | 0.947 (from G6 x8.68) | **0.9531** (reproduces) |
+| **cross-cluster B33 (0.620 m)** | 0.95-0.98 (sub-wavelength coherent) | **0.960** ✓ |
+| 6-body composite B33 / single | ~35 (toward N^2=36) | **33.1 (92% of N^2)** |
+
+Both priors confirmed: **added-mass coupling is a near-field 1/d^3 effect**
+(so it grows at the tighter inter-cluster spacing but stays small, ~1.5%),
+and **radiation-damping coupling is sub-wavelength coherent** (d/lambda =
+0.041-0.058 at lambda = 15.1 m; off/diag ~0.96, near the fully-coherent
+limit) and DOMINATES.
+
+### Consequence for M11b (this resolves an open program-plan item)
+- **The coupled BEM is essential, and 12-buoy DAMPING is a QUALITATIVE
+  amplification, not a modest extrapolation.** Inter-cluster B33 coupling
+  (0.960) is nearly as strong as intra (0.953); 6 buoys already radiate
+  92 % coherently. 12 buoys -> radiation damping toward the N^2 = 144
+  coherent ceiling. This closes the program plan's "cluster-to-cluster
+  coupling UNMEASURED" caveat (the B4/B5 justification): it is measured,
+  and it is strong.
+- **Added mass stays modest** (~few %; the 6-body composite A33 =
+  2 x the 3-body cluster + ~1 %, i.e. two weakly-coupled clusters).
+- **NEW M11b concern:** the strong coherent coupling makes B(omega)
+  NEAR-SINGULAR (the anti-coherent heave modes radiate ~nothing), so the
+  symmetrised B's smallest eigenvalue dips slightly negative (~-5 to -9 %
+  of max|B| across the 2-3 band, vs -0.6 to -1.6 % on the 3-buoy 18-DOF
+  fixture -- systematic, smoothness-clean, NOT an irregular-frequency
+  contamination). The 12-buoy retardation-kernel and PSD gates will face a
+  more strongly near-singular B; budget for it (tracker note).
+
+### Consequence for the campaign band and the orientation lever
+- **Campaign band: preserved.** The coupling shifts resonance frequencies
+  negligibly (added mass ~1 %); it raises radiation damping, but that stays
+  small in absolute terms (drag dominates, Q ~ 68 with spar drag F1), so
+  the fine-sweep band derived at cluster scale holds.
+- **Orientation lever (geometry §3.6): NOT decisive for coupling.** At the
+  20-deg option (gap 0.728 m) the added-mass coupling drops ~1.49 % ->
+  ~0.94 % (near-field 1/d^3), but added mass is already minor; the DOMINANT
+  B33 coupling is coherent-saturated at both gaps (both deep sub-wavelength)
+  and barely changes. The lever buys a small reduction in a minor coupling
+  -- hydrodynamically not a reason to rotate the clusters before
+  fabrication.

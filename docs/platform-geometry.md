@@ -114,15 +114,18 @@ B -> (0.5, 1), (-0.25, 1.433), (-0.25, 0.567)
 - **Intra-cluster spacing = 2 × 0.5 × sin60° = 0.866 m.**
 - ⇒ the platform's **tightest hydrodynamic pairs are INTER-cluster,
   ~28 % closer (0.620 vs 0.866 m)** than anything the cluster study
-  measured, and **inter-cluster coupling is UNMEASURED**.
+  measured. **MEASURED at M11a PR3** (2026-07-30; plan Finding F2).
 
-**Consequence.** The program plan's intra-cluster **R = 1.011** (G2, added
-mass at 0.866 m) is a **lower bound** on platform coupling, not
-representative. The cluster study measured the **damping** coupling at
-0.866 m as **B33 ×8.68** (G6) — so the stakes sit in **B33 (radiation
-damping), not added mass**. First real inter-cluster number comes from
-**M11a PR3** (the 2-cluster probe rebuilt at the actual 1.414 m centre
-separation; 8928 panels already timed at 0.75 s/problem, Measurement C).
+**Consequence — MEASURED (M11a PR3, F2).** The 2-cluster probe at the real
+1.414 m separation gives, for the closest cross-cluster pair (0.620 m):
+**added-mass coupling 1.49 %** (near-field 1/d^3; vs intra 0.56 % at
+0.866 m) and **B33 coupling off/diag 0.960** (sub-wavelength coherent; vs
+intra 0.953). The 6-body composite B33 is **33x single (92 % of N^2=36)**.
+⇒ **radiation-damping coupling (not added mass) dominates and is strong**;
+12-buoy damping is a **qualitative** coherent amplification, resolving the
+program plan's "cluster-to-cluster coupling UNMEASURED" (G2/G6). The
+orientation lever above barely changes the (dominant, coherent-saturated)
+B33 coupling — see F2.
 
 **Design observation (flag for Xabier — NOT a change).** The min
 cross-cluster gap depends on cluster **orientation**: sweeping a common
