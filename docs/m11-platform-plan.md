@@ -223,3 +223,59 @@ finding that reshapes M11b's BEM/validation.
 2. **C4-a** arrangement (90°/C4v) + the **cluster-orientation design lever**
    (§3.6: gap 0.56–0.73 m; ~20° widens the tightest pair ~17 %).
 3. **C4-c** arms/platform mass split (sum < 60 kg fixed; split open).
+
+---
+
+## Finding F1 — the fixed-joint pendulum idealization overestimates articulated-mode drag ~8x (M11a PR2, 2026-07-30)
+
+**Append-only.** Surfaced when M11a PR2's STEP-2 hand-derivation (a
+pre-implementation prediction, per the reference-first discipline) missed
+the measured spar-drag damping by **16x**. Diagnosed; the *reference* was
+wrong, not the code.
+
+### The idealization and why it fails
+The natural hand-estimate for viscous drag on an articulated rotational
+mode treats the buoy as a rigid pendulum about its **fixed top joint**: a
+strip at distance `s` below the joint moves at `s*theta_dot`, giving a drag
+moment `M = 0.5*rho*D*Cd*|theta_dot|*theta_dot * INT s^3 ds`. For the
+buoy-vs-hub mode this predicts `zeta_drag(Theta=0.02) = 2.99 %`, `Q ~ 15`.
+
+**But the mode is not a fixed-joint pendulum.** A constrained
+eigenanalysis of the drag-free system (independent of the drag code)
+gives the true mode shape: **the hub surges 1.36x the buoy pitch-rate**,
+so the instantaneous rotation centre sits at `z_b = +0.33 m` — **near the
+buoy CoG**, not the joint 1.69 m above it. The lever arms collapse
+(`beta = buoy surge/pitch = -0.330` vs the fixed-joint `-1.689`), cutting
+the effective spar velocities ~3x and the drag (∝ v²) ~**8x**.
+
+### The corrected reference (energy-equivalent, drag-free mode shape)
+Integrating quadratic drag against the **true** local velocities and
+dividing by the true modal energy (`I_eff_modal = 118.9 kg m^2`, mode
+`T = 3.214 s` vs record 3.257): **`zeta_drag(Theta=0.02) = 0.379 %`,
+`Q ~ 68`** (kinematic factor 0.127 vs fixed-joint). **Sanity:** the same
+energy machinery evaluated with fixed-joint lever arms + `I_eff = 105.79`
+returns **2.99 %**, confirming the correction is purely kinematic and the
+arithmetic is sound. The code (PR2 spar elements) reproduces the corrected
+reference within ~15 % (amplitude-matched), inside the derivation's own
+approximations.
+
+### Consequence for M11 (the point worth more than the gate)
+**Any hand-derived drag estimate on an ARTICULATED mode must use the modal
+kinematics, not a fixed-pivot idealization.** The error is not small
+(~8x here) and grows with a more compliant support / larger radius —
+so it applies **more strongly** to:
+- **PR4 (the plate extension):** the plate is deepest (largest `s` in the
+  wrong idealization), so a fixed-joint plate estimate would be the most
+  over-optimistic of all.
+- **the cluster-vs-platform family (Q1, the new 8-mode family):** larger
+  radius (1 m cluster arm) and a more compliant support (the whole
+  platform), where the fixed-pivot error would be even larger.
+
+### The discipline succeeding
+Derive-before-implement caught a wrong **reference** this time, not wrong
+code — the second time in this milestone family that a hand-derivation lost
+to measurement (M10 PR2's near-resonance amplitude estimate was the first,
+plan A4(c)). The quadratic drag also makes the effective lever arms weakly
+amplitude-dependent (drag loads the spar differently along its length than
+inertia does); the linearization is stated at `Theta = 0.02 rad` and this
+is a known second-order approximation, not treated as exact.

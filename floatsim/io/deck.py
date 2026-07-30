@@ -129,6 +129,52 @@ class MorisonMember(_Base):
 DragElement = Annotated[MorisonMember, Field(discriminator="type")]
 
 
+def distributed_cylinder_drag(
+    *,
+    z_bottom: float,
+    z_top: float,
+    diameter: float,
+    cd: float,
+    n_segments: int,
+) -> list[MorisonMember]:
+    """Build ``n_segments`` stacked vertical Morison members spanning the
+    body-frame z-range ``[z_bottom, z_top]`` (M11a PR2, plan Q3-ii).
+
+    Each member is a short vertical cylinder segment on the body axis
+    (``node_a = [0,0,z_lo]``, ``node_b = [0,0,z_hi]``). Because the axis is
+    vertical, the member-normal drag responds ONLY to the body's LATERAL
+    velocity -- in pure heave (motion along the axis) it contributes
+    nothing. The same elements damp BOTH articulated rotational families
+    (buoy-vs-hub and cluster-vs-platform), since each moves the spar
+    laterally.
+
+    Distributing the drag along the span (rather than one lumped element)
+    matters because the drag moment weights as ``s^3`` along the member:
+    a single element underpredicts by ~26 % on the spar geometry; the
+    midpoint-rule error falls as ``1/N^2`` (M11a PR2 STEP 2c). This is the
+    CORRECT use of the existing member-normal cylinder model for a slender
+    vertical spar (no new physics); the heave-plate mis-model stays PR4.
+
+    ``Ca``/inertia are omitted (drag-only): the BEM carries added mass, and
+    ``build_system`` rejects ``include_inertia=True`` (M11a PR1).
+    """
+    if n_segments < 1:
+        raise ValueError(f"n_segments must be >= 1; got {n_segments}")
+    if z_top <= z_bottom:
+        raise ValueError(f"z_top ({z_top}) must exceed z_bottom ({z_bottom})")
+    edges = [z_bottom + (z_top - z_bottom) * k / n_segments for k in range(n_segments + 1)]
+    return [
+        MorisonMember(
+            type="morison_member",
+            node_a=[0.0, 0.0, edges[k]],
+            node_b=[0.0, 0.0, edges[k + 1]],
+            diameter=diameter,
+            Cd=cd,
+        )
+        for k in range(n_segments)
+    ]
+
+
 class InitialConditions(_Base):
     """Initial 6-DOF position (from equilibrium) and velocity.
 

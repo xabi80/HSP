@@ -1381,6 +1381,46 @@ S4/S7 and the program-plan campaign-scope amendment.
 
 ---
 
+### PER-BODY-ITEM25-OVERRIDE-UNEXPOSED — build_system per-body path cannot build a small-body BEM deck
+
+**Mechanism.** `build_system`'s **per-body** assembly path calls
+`compute_retardation_kernel(bem_databases[body.name], t_max=..., dt=...)`
+at **`floatsim/driver.py:844`** WITHOUT an `asymptote_check_override`
+argument. A small-body BEM (whose `B(ω)` has not reached the `1/ω^4`
+asymptote by `ω_max`, e.g. the spar-fin hull, `std/mean of B·ω^4 = 0.60 >
+0.10` gate) therefore cannot be built end-to-end through the per-body
+path -- `compute_retardation_kernel` raises on the asymptote gate. The
+**coupled** path DID get the override (M10 PR0, threaded at
+`driver.py:626,736`); the per-body path did not.
+
+**History (third appearance).** M8's closure recorded this as an
+ergonomic gap (`docs/m8-coupled-bem-closure.md:175`,
+`ITEM25-SMALL-BODY-APPLICABILITY`). M11 Phase 2 (`365b344`, plan Q3)
+threaded the override through the **coupled** path only. **M11a PR1**
+(`9017b0d`) surfaced that the **per-body** path still lacks it: the
+spar-fin heave+drag regression (GATE 1) had to use the study's own
+hand-assembled lhs/kernel rather than a full `build_system` per-body
+build, exactly as the study documents (`studies/spar-fin-decay/
+study_common.py:3-7`).
+
+**Scope.** Small (thread `asymptote_check_override` through the per-body
+branch of `build_system`, mirroring the coupled branch) and **orthogonal
+to drag**. **Not blocking M11a** -- the completed studies hand-assemble,
+and the coupled path (M11's actual 12-buoy target) is already threaded.
+
+**Estimated effort.** < 0.5 d (parameter threading + a small-body per-body
+build gate).
+
+**Blocks.** Nothing on M11's critical path; a convenience so future
+small-body single-body decks build through the driver rather than
+hand-assembling.
+
+**Status.** Open. Surfaced 2026-07-30 (M11a PR1). Candidate for a `fix-`
+branch alongside the carried black-conformance (3 files) and the F2
+magnitude-scaled hypothesis-red bound.
+
+---
+
 ## Resolved entries
 
 *(none yet)*
