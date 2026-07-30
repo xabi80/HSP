@@ -22,9 +22,11 @@ Supplied verbatim in the M11 Phase-1 session (image + statement),
 | S4 | platform arms | **the platform arms (central cross-truss) are RIGID** |
 | S5 | structural mass budget | **the mass of the cluster arms and platform is < 60 kg in total** |
 | S6 | overall configuration (image) | a rigid central cross-truss with 4 clusters of 3 vertical spar-buoys (heave plates at the base) suspended from the four arm-ends via articulated joints |
+| S7 | cluster↔platform articulation type (2026-07-29) | **the cluster↔platform joint is `yaw_locked`** — the same articulation as buoy↔hub (R3). Resolves confirmable C4-b. |
+| S8 | platform structure waterline (2026-07-29) | **the platform structure (cross-truss + arms) is fully ABOVE water at equilibrium** — contributes structural mass only, no buoyancy or hydrodynamics. Was inferred from S6 in the Phase-1 draft; now supplied. |
 
 *Note on S6:* the image itself is not committed here (only this textual
-transcription of what it shows). The numeric platform data is S1-S5.
+transcription of what it shows). The numeric platform data is S1-S5, S7, S8.
 
 ---
 
@@ -60,10 +62,14 @@ assumptions (§4).
 
 ### §3.2 Body / DOF / constraint count
 - **Bodies = 17:** 12 buoys (hydro) + 4 cluster-hubs (dry, R6/R7) + 1
-  platform cross (dry, S4). ⇒ **n = 6 × 17 = 102 DOF.**
-- **Joints = 16 `yaw_locked`** (**ASSUMES C4-b: cluster↔platform joint is
-  `yaw_locked`**): 12 intra-cluster (4 × 3 buoy↔hub, R3) + 4 cluster↔platform
-  (S3). At 4 rows each: **m = 16 × 4 = 64 constraints.**
+  platform cross (**dry — confirmed fully above water, S8**). ⇒ **n = 6 ×
+  17 = 102 DOF.**
+- **Joints = 16 IDENTICAL `yaw_locked`** (**per S7, resolved**): 12
+  intra-cluster (4 × 3 buoy↔hub, R3) + 4 cluster↔platform (S3+S7 — same
+  articulation as buoy↔hub, so the platform is **topologically uniform**).
+  At 4 rows each: **m = 16 × 4 = 64 constraints.** *(Capability
+  consequence: M9's `yaw_locked` constraint-Jacobian builder covers the
+  ENTIRE platform — no new joint physics in M11.)*
 - **Free DOF = n − m = 102 − 64 = 38** = platform 6 + 4 hubs × 2 rot +
   12 buoys × 2 rot.
 
@@ -78,12 +84,13 @@ assumptions (§4).
   cluster draft).
 
 ### §3.4 Rotational-mode census (derived; drives the drag scope)
-Jointing clusters to the platform (S3, not rigid) yields **three**
+The cluster↔platform `yaw_locked` articulation (S7) yields **three**
 rotational families in the wave band:
 1. **buoy-vs-hub** roll/pitch — 12 buoys × 2 = 24 (the M10 mode, R8,
    T_rot = 3.257 s).
-2. **cluster-vs-platform** roll/pitch — 4 clusters × 2 = **8** (NEW; exists
-   only because the cluster↔platform joint is articulated, C4-b).
+2. **cluster-vs-platform** roll/pitch — 4 clusters × 2 = **8** (NEW;
+   **confirmed real by S7** — the `yaw_locked` joint frees each cluster's
+   roll/pitch relative to the platform).
 3. **platform rigid-body** — 6.
 ⇒ several lightly-damped rotational modes → **strengthens drag-REQUIRED**
 (M11 plan Q3) and multiplies the rotational-`Cd` characterisation.
@@ -95,14 +102,58 @@ rotational families in the wave band:
 - **KKT** at (n + m) = 166 projects to **~84 µs = 0.4 % of a step** → B6
   sparse treatment stays deferred even at n = 102.
 
+### §3.6 Inter-cluster spacing (derived under C4-a; verified 2026-07-29)
+Cluster centres at (±1, 0), (0, ±1) m; buoys at 0/120/240° radius 0.5 m,
+identical orientation. Buoy coordinates (adjacent clusters A@(1,0), B@(0,1)):
+```
+A -> (1.5, 0), (0.75, +0.433), (0.75, -0.433)
+B -> (0.5, 1), (-0.25, 1.433), (-0.25, 0.567)
+```
+- **Closest cross-cluster buoy pair = 0.620 m** (A@(0.75,0.433) ↔
+  B@(0.5,1)); **adjacent cluster-centre separation = 1.414 m**.
+- **Intra-cluster spacing = 2 × 0.5 × sin60° = 0.866 m.**
+- ⇒ the platform's **tightest hydrodynamic pairs are INTER-cluster,
+  ~28 % closer (0.620 vs 0.866 m)** than anything the cluster study
+  measured, and **inter-cluster coupling is UNMEASURED**.
+
+**Consequence.** The program plan's intra-cluster **R = 1.011** (G2, added
+mass at 0.866 m) is a **lower bound** on platform coupling, not
+representative. The cluster study measured the **damping** coupling at
+0.866 m as **B33 ×8.68** (G6) — so the stakes sit in **B33 (radiation
+damping), not added mass**. First real inter-cluster number comes from
+**M11a PR3** (the 2-cluster probe rebuilt at the actual 1.414 m centre
+separation; 8928 panels already timed at 0.75 s/problem, Measurement C).
+
+**Design observation (flag for Xabier — NOT a change).** The min
+cross-cluster gap depends on cluster **orientation**: sweeping a common
+rotation of all clusters, it ranges **0.557 m (40°) → 0.728 m (20°)**; the
+assumed identical-0° orientation (C4-a) gives 0.620 m — **not** the
+maximum. A ~20° rotation would widen the tightest pair ~17 %, reducing
+inter-cluster coupling. Worth raising before the mesh is fixed.
+
 ---
 
-## §4 — PENDING CONFIRMABLES (OPEN; assumption in force + effect if wrong)
+## §4 — CONFIRMABLES
 
+### Resolved (2026-07-29)
+- **C4-b — RESOLVED → S7.** The cluster↔platform articulation is
+  `yaw_locked` (m = 64, 38 free, the 8-mode cluster-vs-platform family is
+  real). **Framing correction:** the alternative was **never "rigid"** —
+  S3 already supplies *articulated*, and S4's rigidity refers to the
+  **arms** (the cross-truss members), a different object from the joint.
+  The genuine open question was **which articulation** (yaw_locked vs
+  hinge vs ball); S7 closes it to `yaw_locked`. (The "rigid → m = 72,
+  30 free" line in the Phase-1 draft was an illustrative what-if, not a
+  live option.)
+- **Platform-above-water — RESOLVED → S8.** The platform structure is
+  fully above the waterline at equilibrium (was inferred from S6 in
+  Phase-1; now supplied) — confirms the platform cross is a **dry**
+  structural mass (§3.2/§3.3), no buoyancy or hydrodynamics.
+
+### Still open (assumption in force + effect if wrong)
 | id | assumption IN FORCE | if wrong → |
 |----|---------------------|-----------|
-| **C4-a** | 4 clusters at **90° spacing**, identical orientation (C4v point-group) | cluster/buoy positions and the BEM mesh change; the plan's symmetry-reduction option changes |
-| **C4-b** | cluster↔platform joint = **`yaw_locked`** (4 rows) ⇒ **m = 64, free = 38**, includes the **8-mode cluster-vs-platform family** (§3.4-2) | **RIGID** cluster↔platform (6 rows) ⇒ **m = 72, free = 30**, and **removes the 8-mode cluster-vs-platform family** (the platform + 4 hubs become one rigid body; only buoy-vs-hub + platform rigid-body modes remain). A hinge/ball joint gives yet another (m, free). This is the **highest-impact** confirmable — it changes the articulation topology and the mode census. |
+| **C4-a** | 4 clusters at **90° spacing**, identical orientation (C4v point-group) | cluster/buoy positions and the BEM mesh change; the plan's symmetry-reduction option changes; also the min cross-cluster gap (§3.6) — orientation is a design lever, gap ranges 0.56–0.73 m |
 | **C4-c** | arms/platform split = **48 kg arms (R6) + ~10 kg platform**; S5 fixes only the **sum < 60 kg** | a different split shifts total mass and the per-buoy draft (§3.3); the buoyancy balance / mesh draft re-derive |
 
 ---

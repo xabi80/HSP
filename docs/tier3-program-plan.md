@@ -432,3 +432,43 @@ range + the M11 dependency).
 
 Tracker `INBAND-ROTATIONAL-RESONANCE` updated with the working-joints
 resolution, the Q2 confirmation, and the campaign implications.
+
+---
+
+## Amendment (append-only) — M11 locked, split M11a/M11b (2026-07-29)
+
+M11's own plan is locked (`docs/m11-platform-plan.md`, Q1-Q8) on Phase-1
+Measurements A-E + Xabier's platform topology
+(`docs/platform-geometry.md`). Program-level consequences:
+
+- **M11 splits into M11a + M11b** — on the **deliverable-boundary**
+  argument (Q1 is answered, so it is not a "blocked" split). **M11a** =
+  drag capability (wire → spar elements → plate extension) + the first
+  **inter-cluster coupling measurement** + cluster-scale calibration —
+  everything on confirmed 3-buoy/cluster geometry where the tank data
+  lands first. **M11b** = 12-buoy mesh + assembly + scale-up + terminal
+  gate. Compute is **not** the split driver (Measurements C/D: BEM not
+  memory-bound, KKT ~0.4 % of a step at n=102).
+
+- **Terminal-gate Stage 1 UPGRADED to like-for-like.** Xabier confirms the
+  OrcaFlex results describe the **same topology** (not a rigid-cluster
+  proxy), so Stage 1 may be **partially falsifiable** (RAO peaks locate the
+  rotational families), not merely a consistency screen — with the
+  two-sided caveat that OrcaFlex's own drag/joint modelling is unknown to
+  us. Still requires the **plot inventory** from Xabier (which plots, wave
+  conditions, DOF, reference body); does not block M11a.
+
+- **Inter-cluster coupling gap named and scheduled.** The platform's
+  tightest hydrodynamic pairs are **inter-cluster (0.620 m, ~28 % closer**
+  than the 0.866 m intra-cluster spacing the studies measured), and
+  cluster-to-cluster coupling is **UNMEASURED** — the program plan's
+  R = 1.011 (G2) is a **lower bound**, with the stakes in **B33 damping**
+  (G6: ×8.68 intra-cluster). **Measured in M11a PR3** (2-cluster probe at
+  the actual 1.414 m centre separation; 8928 panels, 0.75 s/problem,
+  Measurement C) — the programme's first inter-cluster number, predictions
+  pinned before the run.
+
+- **Contaminated-slice detector recommendation revised** (tracker
+  `BEM-CONTAMINATED-FREQUENCY-SLICE-CLUSTER-DRAFT`, 2026-07-29): Measurement
+  E falsified the output-smoothness screen for the 4.934-class → the M11
+  detector is **solve-time conditioning monitoring**, its own PR.

@@ -1270,11 +1270,39 @@ a perturbed ω** — the feature width (~0.02 rad/s) is far below the grid
 spacing, so a ~0.1 rad/s nudge moves the grid point off the pole. The
 mesh/lid path demonstrably does **not** touch it.
 
+**M11 Phase-1 UPDATE (2026-07-29) — Measurement E FALSIFIED this entry's
+own recommendation.** The "DETECTION GAP (M11)" paragraph above recommended
+**"frequency-slice smoothness screening — neighbour-trend deviation across
+the grid."** M11 Phase-1 Measurement E built and validated that screen on
+the committed 18-DOF fixture (five statistics: A per-entry, A
+significance-filtered, B Frobenius, B local-robust-z, coherent
+signed-diagonal). Result:
+- **Genuine irregular frequency ω=20.909 — cleanly detected** (B
+  local-robust-z = 30.2 vs clean ≤ 11.6, ~30× separation).
+- **This entry's own ω=4.934 near-singular class — NOT detected** (z=0.5;
+  separation < 1× across all five). It is a modest (~3–7 %) coherent
+  whole-matrix perturbation sitting where B legitimately ramps toward its
+  9.5–10 rad/s peaks, so it does not separate from real curvature.
+**Consequence, stated plainly:** the 4.934-class contamination is currently
+**UNDETECTABLE by any proposed output-smoothness method** at 12-buoy scale.
+PSD caught the 18-DOF instance only because heave's near-zero magnitude
+turned ~5 % into a sign flip; at 72+ DOF **there is no guarantee of a
+comparably near-zero channel**, so PSD may miss it too.
+**Revised recommendation:** the robust detector is **solve-time
+conditioning monitoring** (flag ω where the Capytaine influence-matrix
+solve is ill-conditioned — upstream, a different signal), **not** post-hoc
+output smoothness. Keep the cheap output-smoothness screen as a
+**complementary** check for the irregular-frequency class (which it does
+catch). This is its **own M11 PR** (M11 plan Q7), sequenced with the BEM
+work. Measured in `M11 Phase-1` (scripts under the session scratchpad);
+see `docs/m11-platform-plan.md` Measurement E.
+
 **Status.** Open. Surfaced 2026-07-20 by the M8 PR3 PSD gate on first
 contact with a production-grid multi-body fixture. The 18-DOF fixture
 is retained **unmodified**; PR3 excludes the contaminated ω from its
 positive gate and asserts PSD fires on the unmodified fixture (negative
-gate). See `docs/m8-coupled-bem-plan.md` (PR3 Step C, risk register) and
+gate). Recommendation revised 2026-07-29 (M11 Phase-1 Measurement E — see
+above). See `docs/m8-coupled-bem-plan.md` (PR3 Step C, risk register) and
 `docs/audits/m8-coupled-bem-audit.md` (PR3 Step-A finding).
 
 ---
