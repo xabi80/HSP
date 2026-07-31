@@ -411,7 +411,57 @@ broadside area x Cd 5.0) but for ROTATION about a near-CoG centre it tilts
 through a small radius (0.215 m), while the 1.46-m spar sweeps large lateral
 velocities -- so the SPAR dominates the rotational damping and the plate is a
 minor addition. **Consequence: PR5's tank calibration stakes are lower still**
--- Cd_t governs ~11-36 % of an already-small ~4-6 % contribution.
+-- with the corrected `E_normal/E_tangential = 1.76-3.52` split the tangential
+fraction is `1/(1+ratio) = 22-36 %` of the plate (NOT 11 % -- that was the
+retired 7.7 split), so `Cd_t` governs **~22-36 % of an already-small ~4-6 %
+contribution = ~1-2 % of the total rotational damping.**
+
+### The THIRD reframing -- rotational damping lives on the SPAR (M10 -> PR4 STEP 1 -> PR4 measurement)
+
+Three successive reframings of where the rotational damping comes from:
+1. **M10 (INBAND-ROTATIONAL-RESONANCE 2f):** framed as plate **edge-on** drag
+   with an **unknown** coefficient (tank-pending), distinct from the heave
+   `Cd`.
+2. **PR4 STEP 1(b):** REFUTED -- *within the plate*, the tilting presents the
+   disc broadside (normal flow), so the dominant plate term uses the **KNOWN
+   `Cd_n = 5.0`**, not an unknown edge-on coefficient.
+3. **PR4 measurement:** the whole plate is only **4-6 % of the spar's**
+   rotational `zeta_drag`. So the rotational damping is dominated by
+   **slender-cylinder cross-flow on the SPAR** (PR2, Q3-ii), not the plate at
+   all.
+
+**Campaign-facing consequences (update the tank plan accordingly):**
+- the **tank rotational-decay experiment primarily calibrates the SPAR `Cd`**
+  (the ~90 % contributor), not the plate `Cd_t` (the ~1-2 % contributor);
+- **PR2's adopted literature prior `Cd = 1.2`** (smooth cylinder, KC ~ 1.46,
+  DNV-RP-C205 / Sarpkaya) is therefore **the load-bearing coefficient for the
+  whole rotational mode** -- the single number the campaign most needs to
+  pin. The plate `Cd_n = 5.0` (dominant *within* the plate) and `Cd_t`
+  (edge-on) are second-order for the rotational mode (though `Cd_n = 5.0`
+  remains load-bearing for HEAVE).
+
+### Item-3 -- the energy-equivalent reference is SOUND (the measured-above was a coordinate artifact)
+
+PR2 and PR4 both measured `zeta_drag` **above** their energy-equivalent
+references, same sign (~15 %, ~24 %). Investigated (item-3): re-ran the PR4
+decay from the **pure eigenmode IC** and measured in the **modal coordinate**
+`q = ph^T(M+A)xi / ph^T(M+A)ph` (the coordinate the reference is defined in):
+
+| IC | measure | ratio (measured / reference) |
+|----|---------|------------------------------|
+| differential-angle | modal `q` | **0.994** |
+| pure eigenmode | modal `q` | **0.994** |
+| differential-angle | differential DOF (buoy0 pitch - hub pitch) | 1.26 |
+| pure eigenmode | differential DOF | 1.20 |
+
+**The gap CLOSES to <0.6 % in the modal coordinate, independent of IC.** The
+cause is the **measurement coordinate**, NOT a linearization bias and NOT
+(mainly) the IC: a single/differential DOF over-reads the modal decay rate by
+~16-26 % because it mixes the mode's DOF ratios; the pure-eigenmode IC alone
+closes only ~6 % of the 24 %. **The energy-equivalent linearization is
+unbiased** -- good news for PR5, whose calibration reference is the same
+method. GATE 1's end-to-end check was tightened to the modal coordinate
+(rel 0.05, was a loose rel 0.35 forced by the differential-DOF artifact).
 
 ### Model form (as built)
 

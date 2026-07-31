@@ -1371,7 +1371,8 @@ at radial `x` moves VERTICALLY at `w(x) = -theta_dot*x` — that is
 plate-NORMAL (broadside) flow across the disc, the SAME regime as heave,
 using the **KNOWN `Cd_n = 5.0`**. The edge-on (tangential) motion of the
 disc centre is a MINOR term (`E_normal/E_tangential = 1.76-3.52` re-derived,
-so edge-on is ~11-36 %) governed by the tank-pending `Cd_t`. So:
+so edge-on is `1/(1+ratio) = 22-36 %` of the plate — NOT 11 %, which was the
+retired 7.7 split) governed by the tank-pending `Cd_t`. So:
 - the dominant plate rotational damping uses a coefficient we **already
   have** (`Cd_n = 5.0`), NOT a tank-pending one — 2f's "cannot be reused" is
   false;
@@ -1381,6 +1382,22 @@ so edge-on is ~11-36 %) governed by the tank-pending `Cd_t`. So:
   0.379 %** (F1) — the SPAR dominates rotational damping, not the plate;
 - the drag-widened bandwidth is now known from the spar (Q ~ 68, F1); the
   plate barely changes it.
+
+**THIRD reframing (net) — rotational damping lives on the SPAR.** The
+sequence is (i) M10: plate edge-on, unknown coefficient (this entry's
+original 2f); (ii) PR4 STEP 1(b): refuted — within the plate, normal flow
+dominates on the known `Cd_n = 5.0`; (iii) PR4 measurement: the plate is only
+4-6 % of the spar's contribution. **Net: rotational damping is dominated by
+slender-cylinder cross-flow on the SPAR (PR2, Q3-ii), not the plate.**
+Campaign consequences: the **tank rotational decay primarily calibrates the
+SPAR `Cd`** (the ~90 % contributor), and **PR2's adopted literature prior
+`Cd = 1.2`** (smooth cylinder, KC ~ 1.46) is now **the load-bearing
+coefficient for the whole rotational mode** — the number the campaign most
+needs to pin; `Cd_t` (~1-2 % of the total) and even the plate `Cd_n` are
+second-order for ROTATION (`Cd_n = 5.0` stays load-bearing for HEAVE). The
+energy-equivalent reference the calibration will use is **unbiased** (plan F3
+item-3: the PR2/PR4 "measured-above" was a differential-DOF coordinate
+artifact; the modal-coordinate measurement matches the reference to <0.6 %).
 
 **PRINCIPAL stated approximation (SHEARED FIELD) — this, not `Cd_t`, is what
 the tank rotational decay tests.** `Cd_n = 5.0` was measured for UNIFORM

@@ -236,14 +236,18 @@ def _plate_zeta(ph, i_eff, w_mode, theta, cd_n, cd_t):  # type: ignore[no-untype
     return e_n / (4 * np.pi * e_store), e_t / (4 * np.pi * e_store)
 
 
-def _rot_decay(setup, use_drag, theta0, n_peaks=2):  # type: ignore[no-untyped-def]
-    xi0 = np.zeros(24)
-    for j in range(3):
-        xi0[6 * j + 4] = theta0
+def _modal_decay(setup, ph, ma, use_drag, theta0, n_peaks=2):  # type: ignore[no-untyped-def]
+    """Decay from the PURE eigenmode IC (``xi0 = ph*theta0``, constraint-
+    consistent), measured in the MODAL coordinate ``q = ph^T(M+A)xi /
+    ph^T(M+A)ph`` -- the coordinate the energy-equivalent reference is defined
+    in. A single/differential DOF over-reads the modal decay rate by ~16-26 %
+    (Finding F3 item-3 investigation); the modal coordinate removes that
+    artifact, so this end-to-end check is tight (not the loose rel=0.35 a
+    differential-DOF measure would force)."""
     r = integrate_cummins(
         lhs=setup.lhs,
         kernel=setup.kernel,
-        xi0=xi0,
+        xi0=ph * theta0,
         xi_dot0=np.zeros(24),
         duration=60.0,
         dt=0.01,
@@ -252,9 +256,9 @@ def _rot_decay(setup, use_drag, theta0, n_peaks=2):  # type: ignore[no-untyped-d
         projection_interval=1,
         state_force=setup.state_force if use_drag else None,
     )
-    th = r.xi[:, 4] - r.xi[:, 22]
-    pk, _ = find_peaks(th, height=0.0)
-    amps = th[pk][: n_peaks + 1]
+    q = (r.xi @ ma @ ph) / float(ph @ ma @ ph)
+    pk, _ = find_peaks(q, height=0.0)
+    amps = q[pk][: n_peaks + 1]
     d = np.log(amps[:-1] / amps[1:])
     d = d[np.isfinite(d) & (d > 0)]
     return float(np.mean(d) / (2 * np.pi)), float(np.mean(amps[:2]))
@@ -322,18 +326,20 @@ def test_gate1_plate_drag_vs_modal_reference() -> None:
     p_edge = _plate_power_at_modal_state(ph, w_mode, 0.0, _CD_T)
     assert p_norm / p_edge == pytest.approx(ratio_analytic, rel=0.03)  # code confirms the split
 
-    # (c) end-to-end: the coupled decay's plate zeta_drag is positive, matches the
-    # energy-equivalent modal prediction (amplitude-matched, PR2's rel=0.35 for
-    # the derivation's approximations), and the plate contribution is small vs
-    # the spar's 0.379% (F1) -- the plate's rotational drag is a minor addition.
+    # (c) end-to-end: the coupled decay's plate zeta_drag, measured in the MODAL
+    # coordinate (item-3 investigation: the reference is SOUND -- the earlier
+    # ~24 % was a differential-DOF coordinate artifact, not a linearization bias),
+    # matches the energy-equivalent modal prediction to <5 %. Positive, and small
+    # vs the spar's 0.379 % (F1) -- the plate's rotational drag is a minor addition.
+    ma = np.asarray(setup.lhs.M_plus_Ainf)
     nodrag = _build_coupled(with_plate=False)
-    zt, amp = _rot_decay(setup, use_drag=True, theta0=0.05)
-    zf, _ = _rot_decay(nodrag, use_drag=False, theta0=0.05)
-    zeta_drag_meas = zt - zf
-    assert zeta_drag_meas > 0.0
+    ztq, ampq = _modal_decay(setup, ph, ma, use_drag=True, theta0=0.05)
+    zfq, _ = _modal_decay(nodrag, ph, ma, use_drag=False, theta0=0.05)
+    zeta_drag_modal = ztq - zfq
+    assert zeta_drag_modal > 0.0
     k_per_rad = sum(_plate_zeta(ph, i_eff, w_mode, 0.02, _CD_N, _CD_T)) / 0.02
-    assert zeta_drag_meas == pytest.approx(k_per_rad * amp, rel=0.35)
-    assert zeta_drag_meas < 0.001  # < 0.1%: far below the spar's 0.379% (PR2)
+    assert zeta_drag_modal == pytest.approx(k_per_rad * ampq, rel=0.05)
+    assert zeta_drag_modal < 0.001  # < 0.1%: far below the spar's 0.379% (PR2)
 
 
 # ===========================================================================
