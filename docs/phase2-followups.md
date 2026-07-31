@@ -1399,6 +1399,17 @@ energy-equivalent reference the calibration will use is **unbiased** (plan F3
 item-3: the PR2/PR4 "measured-above" was a differential-DOF coordinate
 artifact; the modal-coordinate measurement matches the reference to <0.6 %).
 
+**Campaign data-reduction requirement (M11a PR4 item-3, 2026-07-31).** The
+differential-DOF coordinate artifact applies to the **tank data reduction**,
+not only the simulation: a decay ratio computed directly on a measured
+relative-angle channel (e.g. buoy-to-hub) **over-reads the modal decay rate
+by 16-26 %**, so a `Cd` fitted from it is biased high by that factor. **Tank
+rotational-decay data must be reduced in MODAL coordinates** — project the
+measured channels onto the model's mode shape before the log-decrement, or
+apply the model-derived differential-to-modal correction. This bites the
+**SPAR `Cd`** (the load-bearing coefficient per the third reframing above).
+Recorded program-side at `docs/tier3-program-plan.md` campaign amendment (2g).
+
 **PRINCIPAL stated approximation (SHEARED FIELD) — this, not `Cd_t`, is what
 the tank rotational decay tests.** `Cd_n = 5.0` was measured for UNIFORM
 heave; applying it strip-wise to the linearly varying tilting field assumes

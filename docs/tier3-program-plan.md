@@ -416,7 +416,7 @@ range + the M11 dependency).
   - The band is **not** collapsed to the two resonance values; the
     shoulder margin is retained deliberately for the model-vs-tank and
     drag-shift uncertainties the tool cannot quantify.
-- **(2f) NEW OPEN PHYSICS QUESTION (a question, not a finding — no
+- ~~**(2f) NEW OPEN PHYSICS QUESTION (a question, not a finding — no
   rotational `Cd` is estimated here).** `Cd = 5.0` is the plate's
   **heave** drag coefficient: a disc **broadside** to vertical flow,
   which is why it is large. The rotational mode is a **different flow
@@ -428,10 +428,47 @@ range + the M11 dependency).
   different flow regimes on the same geometry. This **strengthens** the
   case that the tank's **rotational** decay/response is *essential*, not
   confirmatory, and means the drag-widened bandwidth of the rotational
-  resonance is **unknown until measured**. Flag for M11 drag scoping.
+  resonance is **unknown until measured**. Flag for M11 drag scoping.~~
+  **SUPERSEDED by the M11a THIRD REFRAMING (2026-07-30/31; `docs/
+  m11-platform-plan.md` Finding F3, tracker `INBAND-ROTATIONAL-RESONANCE`
+  2f correction).** (2f)'s premise is refuted on two counts: (i) the
+  buoy does NOT swing about its top joint — the drag-free constrained
+  eigenanalysis puts the rotation centre near the CoG (`beta = -0.330`,
+  Finding F1), so the plate **tilts** and presents its disc **broadside**
+  to the resulting vertical flow, dominated by the **known** `Cd_n = 5.0`
+  (edge-on is the minor ~22-36 % of the plate term); and (ii) the whole
+  plate is only **4-6 % of the spar's** rotational damping — so the
+  rotational mode is dominated by **slender-cylinder cross-flow on the
+  SPAR**, whose `Cd` (PR2's `1.2` literature prior) is the load-bearing
+  coefficient. Campaign consequence: the tank rotational decay
+  **primarily calibrates the SPAR `Cd`**, not a plate edge-on
+  coefficient. The bandwidth is now known from the spar (Q ~ 68, F1), not
+  "unknown until measured."
+
+- **(2g) TANK DECAY DATA MUST BE REDUCED IN MODAL COORDINATES (M11a PR4
+  item-3, 2026-07-31).** The PR4 pre-merge review established that a
+  **differential-DOF** coordinate (e.g. relative buoy-to-hub angle)
+  **over-reads the modal decay rate by 16-26 %** — it mixes the mode's
+  DOF ratios, so a log-decrement taken directly from that channel is
+  biased high by that factor (measured: ratio 1.16-1.26 vs the modal
+  coordinate; the modal coordinate `q = phi^T(M+A)xi / phi^T(M+A)phi`
+  matches the energy-equivalent reference to <0.6 %). **This applies to
+  EXPERIMENTAL data reduction, not only the simulation.** If the tank
+  logs a relative-angle channel and `Cd` is fit from a decay ratio
+  computed directly on it, the fitted `Cd` inherits the 16-26 % bias.
+  **Requirement:** tank rotational-decay data must be reduced in **modal
+  coordinates** — project the measured channels onto the model's mode
+  shape (which the tool provides) before the log-decrement, or apply the
+  model-derived differential-to-modal correction factor. This bites the
+  **SPAR `Cd`** calibration specifically, since (2f-superseded) makes the
+  spar `Cd` the load-bearing coefficient for the whole rotational mode.
+  The energy-equivalent reference itself is **unbiased** (the artifact is
+  purely the measurement coordinate). Source: `docs/m11-platform-plan.md`
+  Finding F3 item-3.
 
 Tracker `INBAND-ROTATIONAL-RESONANCE` updated with the working-joints
-resolution, the Q2 confirmation, and the campaign implications.
+resolution, the Q2 confirmation, the campaign implications, and (M11a)
+the third-reframing + item-3 modal-coordinate data-reduction requirement.
 
 ---
 
