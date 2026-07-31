@@ -168,9 +168,14 @@ solve is 3–4 orders below the convolution. B6 sparse/Schur stays deferred.
 - **PR8** — terminal gate Stages 1 and 2.
 - **PR9** — closure.
 
-**Cross-cutting:** the **contaminated-slice detector** is its **own PR**,
-sequenced with the BEM work (Measurement E: solve-time conditioning
-monitoring, not output smoothness — see tracker amendment).
+**Cross-cutting:** the **contaminated-slice detector** is ~~its **own PR**,
+sequenced with the BEM work~~ **EMBEDDED IN PR7** (M11b Phase-1 resequencing,
+2026-07-31): PR7's solve emits a per-frequency conditioning number and its gate
+is that every retained slice cleared it — so PR7 cannot proceed on unscreened
+data. Measurement E: solve-time conditioning monitoring, not output smoothness.
+The discrimination criterion (smoothness in omega of the conditioning number,
+validated on the 4.934 case) is a PR7 pre-flight design point — see the M11b
+Phase-1 amendment below.
 
 ### Q8 — ESTIMATE (LOCKED format)
 AI-assisted calendar days, base + multiplier, sanity-checked vs git-date
@@ -524,3 +529,99 @@ the same broadside drag the plate now owns; `make_morison_state_force` raises
 on it (the mechanism: `_check_plate_supersession`, checked at build time, so
 it fires on BOTH the deck path AND study hand-assembly). The plate element
 SUPERSEDES the PR1 stand-in wherever applied.
+
+---
+
+## M11b Phase-1 — pre-implementation measurements + findings (2026-07-31)
+
+**Append-only.** Branch `milestone-11b-platform`; measurement-only (one commit,
+STEP 1, carrying the PR4 item-3 modal-coordinate finding to the campaign
+record). Five measurements de-risking PR6/PR7, from the REAL 17,856-panel mesh
+or committed data; disagreements with the projections itemized (the record
+wins).
+
+### Measurements
+- **A — mesh (built + screened).** 17,856 panels; platform draft **dz =
+  0.21638 m** additional sink (Newton on the mesh displaced volume, the
+  `cluster_balance.py` method — NOT a copy; cluster DZ2 = 0.17937, so
+  **+0.037 m deeper**, consistent with +0.833 kg/buoy at A_wp = 0.0222); keel
+  1.4949 m below WL; closest cross-cluster pair **0.6197 m** (matches §3.6's
+  0.620); **0 inward, 0 indeterminate, 1152 open edges (12×96)**. Mass balance
+  402.04 kg, per-buoy **33.5033 kg** (§3.3).
+- **B — BEM probe (real mesh).** Peak working set **12.71 GB** (68.4 total,
+  36.9 available) → **NOT memory-bound**. build+factorize **20.8 s/omega**,
+  per-DOF RHS **2.18 s**; **coupled 72-DOF ≈ 42 min** (13-omega grid);
+  blended s/problem 2.47.
+- **C — assembly feasibility (n = 102).** All M10-PR1 preconditions PASS
+  through the real `build_system` path: mass 402.04, **rank(M+A_inf) = 102**,
+  **n_constraints = 64, rank(G) = 64, free = 38**, **max|phi(rest)| = 0**,
+  body refs threaded (17), **KKT bordered solve 100.6 µs** (~0.5 % of a step →
+  B6 defers).
+- **D — near-singular B baseline.** Re-derived on the committed 18-DOF
+  fixture: symmetrised-B min-eig = **-0.588 % (omega 2.075) to -1.642 %
+  (omega 2.230) of max|entry|** — verifies PR3 F2's "-0.6 to -1.6 %" (that
+  normalisation). Trend deepens 3-buoy → 6-buoy (-5/-9 %, PR3) → 12-buoy.
+
+### Itemized disagreements (record wins)
+| # | projection | measured | disposition |
+|---|-----------|----------|-------------|
+| 1 | M_buoy 28.67 kg | mesh 28.627 at isolated WL | -0.15 %; orthogonal to the platform draft solve |
+| 2 | ~9.3 GB peak | **12.71 GB** | +37 %; still « 36.9 available (G1) |
+| 3 | 25-40 min, 1.6-2.3 s/prob | **42 min, 2.47 s/prob** | consistent via the factorize/RHS split |
+| 4 | 17,856 panels | **13,824 wetted** solved | 4,032 above-water clipped (G1) |
+| 5 | KKT ~84 µs | **100.6 µs** | +20 %; still ~0.5 % of a step |
+
+### Finding G1 (RECORD ITEM A) — BEM cost projections must use WETTED panel counts
+Capytaine clips the platform mesh to **13,824 wetted panels** (4,032 above
+water, 22.6 %); the influence matrix is 13,824², not 17,856². **Every cost
+projection back to the Tier-3 plan** (`tier3-program-plan.md` risk row,
+"~5.1 GB per omega") **and this plan's Measurement C** (~9.3 GB) used the
+**TOTAL 17,856**. That is why measured peak (**12.71 GB**) EXCEEDED the 9.3 GB
+extrapolation DESPITE a smaller solved matrix: the fit was made on probe
+meshes (single / 3-buoy) with a **different wetted fraction**, so total-count
+scaling systematically mis-scales. **Rule: panel counts in BEM cost/memory
+projections are WETTED counts; total counts mislead.** [total 17,856, wetted
+13,824, peak 12.71 GB, coupled 42 min.]
+
+### Finding G2 (RECORD ITEM B) — the 72-DOF solve is RHS-bound, not factorize-bound
+At 72 DOF: **72 × 2.18 s = 157 s/omega of RHS** vs **20.8 s/omega
+build+factorize**. The solve is **DOF-bound.** Q4 mitigation-ladder
+consequence: if turnaround ever needs cutting, **C4v symmetry is the correct
+lever** — it reduces the independent-DOF count, the dominant term — while
+**memory reduction buys nothing** (not memory-bound, and it does not touch the
+RHS cost). A future session reaching for the ladder should pick that rung.
+
+### Resequencing (Q7 amendment) — the conditioning detector is EMBEDDED IN PR7
+The Phase-1 recommendation to *precede* PR7 is **strengthened to EMBEDDED**:
+PR7's solve **emits a conditioning number per frequency**, and PR7's gate is
+that **every retained slice cleared it**. A separate preceding PR would let
+PR7 proceed on unscreened data if sequencing slipped; embedding makes that
+impossible.
+
+**Discrimination argument (the reason).** At 12-buoy scale the PSD gate fires
+more often because the **physical near-singularity deepens toward the coherent
+ceiling** (Finding D trend), so the detector's job is **discriminating
+physical near-singularity (tolerate, understand) from contamination (exclude)**
+— different dispositions, and a **min-eig sign check cannot separate them**
+(both go negative).
+
+**Design point — resolve in PR7's pre-flight, not now.** The detector needs a
+DISCRIMINATION CRITERION, not just a conditioning number (deep physical
+coupling and a contaminated solve may both give large condition numbers). The
+likely discriminator is **smoothness in omega**: physical near-singularity
+varies smoothly; contamination is isolated (the 4.934 case measured ~0.02
+rad/s wide vs ~0.34 grid spacing). This is the same neighbour-trend idea
+Measurement E found **insufficient on OUTPUT matrices** — applied to the
+CONDITIONING NUMBER it may separate where output smoothness did not.
+**VALIDATE on the known 4.934 case before trusting it at 72 DOF — if it does
+not separate there, it will not separate at scale, and that is a finding.**
+
+### PR-sequence disposition
+- **PR6** (mesh generator + assembly): de-risked by Measurements A + C; low
+  risk. Assembly preconditions asserted as **permanent tests** (not
+  re-measured ad hoc).
+- **PR7** (BEM at scale): feasible (12.71 GB, 42 min); **conditioning detector
+  embedded** (above). Q4 mitigation ladder **NOT triggered** (not
+  memory-bound, < 1 h); C4v is the speed lever if ever wanted (G2).
+- **PR8 / PR9**: unchanged (PR8 Stage-1 still needs the OrcaFlex plot
+  inventory from Xabier — an open input, not a PR6/PR7 blocker).

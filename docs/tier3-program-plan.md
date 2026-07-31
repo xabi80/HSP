@@ -534,3 +534,36 @@ coupling **1.49 %** (near-field 1/d^3) and B33 coupling **0.960**
   gate (M8 `_validate_psd`) and the kernel Filon transform will face a more
   strongly near-singular B; the PSD significance floor may need revisiting
   at 72 DOF.
+
+---
+
+## Amendment (append-only) — M11b Phase-1 real-mesh measurements (2026-07-31)
+
+The 12-buoy BEM cost was probed on the REAL 17,856-panel platform mesh (M11b
+Phase-1; `docs/m11-platform-plan.md` M11b Phase-1 section, Findings G1/G2).
+Two corrections to this program plan's cost model:
+
+- **G1 — cost projections must use WETTED panel counts.** Capytaine clips the
+  platform mesh to **13,824 wetted panels** (4,032 above water, 22.6 %); the
+  influence matrix is 13,824², not 17,856². The "12-buoy BEM cost" risk row
+  above (and every projection back to it) computed **"~5.1 GB per omega" from
+  the TOTAL 17,856** — **superseded.** Measured **peak 12.71 GB** (2× the
+  wetted matrix + Capytaine intermediates), still « 36.9 GB available →
+  **NOT memory-bound** (as predicted, but for the right reason now). The
+  measured peak EXCEEDED the M11-plan 9.3 GB extrapolation *despite a smaller
+  solved matrix* because that fit used total counts on probe meshes with a
+  different wetted fraction. **Rule: BEM cost/memory projections use WETTED
+  counts.**
+- **G2 — the 72-DOF solve is RHS-bound, not factorize-bound.** Measured
+  build+factorize **20.8 s/omega** vs per-DOF RHS **2.18 s** → **72 × 2.18 =
+  157 s/omega of RHS** dominates. Coupled 72-DOF ≈ **42 min** (13-omega grid).
+  **Mitigation-ladder consequence:** the correct rung is **C4v symmetry**
+  (reduces independent DOFs, the dominant term); **memory reduction buys
+  nothing** (not memory-bound; does not touch RHS cost). The "Binding
+  constraint is likely memory" note in the risk row is **wrong** — the binding
+  constraint, if any, is the DOF-count of RHS solves.
+
+Assembly feasibility at n = 102 confirmed (all M10-PR1 preconditions PASS; KKT
+100.6 µs ~ 0.5 % of a step → B6 stays deferred). The contaminated-slice
+detector is now **embedded in PR7** (per-frequency conditioning number gate),
+not a separate preceding PR.
