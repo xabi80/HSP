@@ -153,6 +153,15 @@ solve is 3–4 orders below the convolution. B6 sparse/Schur stays deferred.
 - **PR4** — plate direction-dependent area (Q3 iii).
 - **PR5** — cluster-scale calibration harness (height × period) *[tank-gated]*.
 
+> **M11a status (2026-07-30): PR1–PR4 DELIVERED; PR5 tank-gated → M11a
+> OPEN.** Drag capability is complete and validated: wiring (PR1), spar
+> lateral drag (PR2, F1), inter-cluster coupling measured (PR3, F2),
+> anisotropic plate drag (PR4, F3). PR5 (cluster-scale calibration harness)
+> is tank-data-gated and outside program control. **Merged to `main` at this
+> point (FF-only) so M11b branches from a `main` that carries drag
+> capability, not a stale one** — M11a itself stays open until PR5's tank
+> data lands.
+
 **M11b:**
 - **PR6** — 12-buoy mesh generator + assembly (at platform eqdraft).
 - **PR7** — BEM at scale (**memory probe on the real mesh first**, Q4).
