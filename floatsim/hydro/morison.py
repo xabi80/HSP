@@ -112,7 +112,7 @@ References
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final
 
 import numpy as np
@@ -197,6 +197,181 @@ class MorisonElement:
     def cross_section_area_m2(self) -> float:
         """Cross-sectional area ``A_x = π·D²/4`` in m² (used by the inertia term)."""
         return float(np.pi * (self.diameter**2) / 4.0)
+
+
+# ---------------------------------------------------------------------------
+# Direction-dependent plate (heave-plate) drag element -- M11a PR4 (plan Q3-iii)
+# ---------------------------------------------------------------------------
+
+
+def _inplane_basis(n_hat: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Two orthonormal in-plane vectors spanning the plane orthogonal to ``n_hat``."""
+    seed = np.eye(3, dtype=np.float64)[int(np.argmin(np.abs(n_hat)))]
+    e1 = seed - float(np.dot(seed, n_hat)) * n_hat
+    e1 = e1 / float(np.linalg.norm(e1))
+    e2 = np.cross(n_hat, e1)
+    return e1, e2
+
+
+def _disc_patches(
+    *,
+    radius: float,
+    n_radial: int,
+    n_azimuthal: int,
+    center: NDArray[np.float64],
+    e1: NDArray[np.float64],
+    e2: NDArray[np.float64],
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Midpoint-rule polar quadrature of the disc face (body frame).
+
+    Returns ``(positions, areas)``: ``positions`` are the ``P = n_radial *
+    n_azimuthal`` patch centroids in body-frame coordinates (relative to the
+    body reference point), ``areas`` the corresponding patch areas. Exact
+    ring areas ⇒ ``areas.sum() == π·radius²`` to machine precision (the
+    property GATE 3 relies on for the exact heave reduction); the ``∫∫|x|³
+    dA`` moment converges to ``8·radius⁵/15`` as the counts increase
+    (GATE 4).
+    """
+    positions: list[NDArray[np.float64]] = []
+    areas: list[float] = []
+    for i in range(n_radial):
+        r_lo = radius * i / n_radial
+        r_hi = radius * (i + 1) / n_radial
+        r_mid = 0.5 * (r_lo + r_hi)
+        d_area = float(np.pi * (r_hi**2 - r_lo**2) / n_azimuthal)
+        for j in range(n_azimuthal):
+            phi = (j + 0.5) * 2.0 * np.pi / n_azimuthal
+            rho = r_mid * (float(np.cos(phi)) * e1 + float(np.sin(phi)) * e2)
+            positions.append(center + rho)
+            areas.append(d_area)
+    return np.asarray(positions, dtype=np.float64), np.asarray(areas, dtype=np.float64)
+
+
+@dataclass(frozen=True)
+class PlateDragElement:
+    """A direction-dependent (anisotropic) circular-plate drag element.
+
+    A heave plate is a thin disc that resists **broadside (normal)** flow far
+    more than **edge-on (tangential)** flow. A :class:`MorisonElement`
+    (member-normal cylinder) is drag-*isotropic* in its normal plane -- one
+    scalar ``Cd`` on the whole 2-D resultant -- so it cannot represent this
+    anisotropy and mis-models a tilting plate (M11a PR4 scoping; the record
+    corrected an earlier "reuse the cylinder" plan). This element decomposes
+    the local relative flow into the two physically distinct regimes:
+
+    - **Normal (broadside)** -- ``½·ρ·Cd_n·|w|·w`` per unit face area along the
+      disc normal ``n̂``, where ``w = u_rel·n̂`` is the local normal speed.
+      Integrated over the disc face by a body-fixed polar quadrature
+      (:func:`_disc_patches`). Because ``w`` varies linearly across the disc
+      when the plate tilts (``w(x) = −θ̇·x``), this captures BOTH pure heave
+      (uniform ``w`` ⇒ the classic ``½ρCd_n·A·|v|v`` plate drag, GATE 3) and
+      the tilting-rotational contribution (``∫∫|x|³dA = 8a⁵/15``, GATE 4).
+      ``Cd_n = 5.0`` is the KNOWN heave-plate coefficient.
+    - **Tangential (edge-on)** -- ``½·ρ·Cd_t·(t·2a)·|u_t|·u_t`` lumped at the
+      disc centre, where ``u_t`` is the in-plane relative velocity and
+      ``t·2a`` the rim frontal (silhouette) area. ``Cd_t`` is tank-pending
+      (carried as a ``[1,2]`` sensitivity); this term is minor
+      (``E_normal/E_tangential = 1.8–3.5`` on the OC4 buoy-pitch mode).
+
+    **Principal stated approximation (sheared field).** ``Cd_n = 5.0`` was
+    measured for *uniform* heave; applying it strip-wise to the linearly
+    varying tilting field assumes local face-normal drag with no radial
+    interaction. This is far better grounded than the discarded edge-on
+    framing, but it is the assumption the tank rotational-decay campaign
+    actually tests. See ``docs/m11-platform-plan.md`` Finding F3 and tracker
+    ``INBAND-ROTATIONAL-RESONANCE`` (2f correction).
+
+    Attributes
+    ----------
+    body_index
+        Index into the global state vector's body slot
+        (``0 <= body_index < n_dof // 6``).
+    center_body
+        Length-3 body-frame disc centre (metres, relative to the reference
+        point).
+    normal_body
+        Length-3 body-frame disc normal. Normalised on construction; need
+        not be unit on input. Must be non-degenerate.
+    radius
+        Disc radius ``a`` in metres (positive).
+    thickness
+        Rim thickness ``t`` in metres (non-negative). Sets the edge-on
+        frontal area ``t·2a``; ``0`` disables the tangential term.
+    Cd_n
+        Normal (broadside) drag coefficient (non-negative). The known
+        heave-plate value ``5.0`` for the OC4 buoy.
+    Cd_t
+        Tangential (edge-on) drag coefficient (non-negative). Tank-pending;
+        literature ``≈1–2`` for a bluff thin rim.
+    n_radial, n_azimuthal
+        Polar quadrature counts for the disc face. Defaults ``12 × 24`` give
+        the ``∫∫|x|³dA`` moment to ``−0.58 %`` of the analytical ``8a⁵/15``
+        (GATE 4); the face area is exact at any counts.
+    """
+
+    body_index: int
+    center_body: NDArray[np.float64]
+    normal_body: NDArray[np.float64]
+    radius: float
+    thickness: float
+    Cd_n: float
+    Cd_t: float
+    n_radial: int = 12
+    n_azimuthal: int = 24
+    # Cached quadrature (frozen; set in __post_init__).
+    _n_hat_body: NDArray[np.float64] = field(init=False, repr=False)
+    _patch_pos_body: NDArray[np.float64] = field(init=False, repr=False)
+    _patch_area: NDArray[np.float64] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.body_index < 0:
+            raise ValueError(f"body_index must be >= 0; got {self.body_index}")
+        c = np.asarray(self.center_body, dtype=np.float64)
+        n = np.asarray(self.normal_body, dtype=np.float64)
+        if c.shape != (3,) or n.shape != (3,):
+            raise ValueError(
+                f"center_body and normal_body must have shape (3,); got {c.shape}, {n.shape}"
+            )
+        n_norm = float(np.linalg.norm(n))
+        if n_norm <= _AXIS_LENGTH_RTOL:
+            raise ValueError(f"normal_body must be non-degenerate; got |n| = {n_norm:.3e}")
+        if self.radius <= 0.0:
+            raise ValueError(f"radius must be positive; got {self.radius}")
+        if self.thickness < 0.0:
+            raise ValueError(f"thickness must be non-negative; got {self.thickness}")
+        if self.Cd_n < 0.0:
+            raise ValueError(f"Cd_n must be non-negative; got {self.Cd_n}")
+        if self.Cd_t < 0.0:
+            raise ValueError(f"Cd_t must be non-negative; got {self.Cd_t}")
+        if self.n_radial < 1 or self.n_azimuthal < 1:
+            raise ValueError(
+                f"n_radial and n_azimuthal must be >= 1; got {self.n_radial}, {self.n_azimuthal}"
+            )
+        n_hat = n / n_norm
+        e1, e2 = _inplane_basis(n_hat)
+        pos, area = _disc_patches(
+            radius=self.radius,
+            n_radial=self.n_radial,
+            n_azimuthal=self.n_azimuthal,
+            center=c,
+            e1=e1,
+            e2=e2,
+        )
+        object.__setattr__(self, "center_body", c)
+        object.__setattr__(self, "normal_body", n)
+        object.__setattr__(self, "_n_hat_body", n_hat)
+        object.__setattr__(self, "_patch_pos_body", pos)
+        object.__setattr__(self, "_patch_area", area)
+
+    @property
+    def face_area_m2(self) -> float:
+        """Disc face area ``π·a²`` in m² (equals ``_patch_area.sum()`` exactly)."""
+        return float(np.pi * self.radius**2)
+
+    @property
+    def edge_area_m2(self) -> float:
+        """Rim frontal (silhouette) area ``t·2a`` in m² for the edge-on term."""
+        return float(self.thickness * 2.0 * self.radius)
 
 
 # ---------------------------------------------------------------------------
@@ -329,6 +504,95 @@ def morison_element_force(
     return out
 
 
+def plate_element_force(
+    element: PlateDragElement,
+    *,
+    rotation_matrix_body: NDArray[np.float64],
+    reference_velocity_inertial: NDArray[np.float64],
+    angular_velocity_inertial: NDArray[np.float64],
+    fluid_velocity: NDArray[np.float64],
+    rho: float,
+) -> NDArray[np.float64]:
+    """6-DOF generalized drag force from one anisotropic plate element.
+
+    Drag only (no inertia term -- the BEM carries added mass). The normal
+    (broadside) contribution is integrated over the disc face by the cached
+    polar quadrature; the tangential (edge-on) contribution is lumped at the
+    disc centre. See :class:`PlateDragElement` for the model and its stated
+    approximations.
+
+    Moments are taken about the body reference point: the disc patches are
+    stored as body-frame offsets from that point, so their inertial lever
+    arms ``R · offset`` already reference it (the absolute reference
+    position is not needed).
+
+    Parameters
+    ----------
+    element
+        The :class:`PlateDragElement` to evaluate.
+    rotation_matrix_body
+        3x3 body→inertial rotation matrix.
+    reference_velocity_inertial
+        Length-3 inertial-frame velocity of the reference point
+        (``xi_dot[0:3]``).
+    angular_velocity_inertial
+        Length-3 inertial-frame body angular velocity
+        (``R · xi_dot[3:6]``).
+    fluid_velocity
+        Length-3 inertial-frame fluid velocity, sampled once at the disc
+        centre (uniform over the compact disc; zero for a calm sea).
+    rho
+        Water density in kg/m³ (positive).
+
+    Returns
+    -------
+    NDArray[np.float64]
+        Length-6 generalized force ``[Fx, Fy, Fz, Mx, My, Mz]`` (inertial,
+        moments about the body reference point).
+
+    Raises
+    ------
+    ValueError
+        If ``rho`` is not finite and positive.
+    """
+    if not np.isfinite(rho) or rho <= 0.0:
+        raise ValueError(f"rho must be finite and positive; got {rho}")
+
+    r_mat = np.asarray(rotation_matrix_body, dtype=np.float64)
+    v_ref = np.asarray(reference_velocity_inertial, dtype=np.float64)
+    omega = np.asarray(angular_velocity_inertial, dtype=np.float64)
+    u_fluid = np.asarray(fluid_velocity, dtype=np.float64)
+
+    n_hat = r_mat @ element._n_hat_body
+
+    # --- Normal (broadside) term: integrate over the disc face patches. ---
+    # Patch lever arms (inertial offset from the reference point).
+    arms = element._patch_pos_body @ r_mat.T  # (P,3) = R @ pos, body->inertial (offset from ref)
+    # Body material velocity at each patch: v_ref + omega x arm.
+    u_body = v_ref + np.cross(omega, arms)
+    u_rel = u_fluid - u_body  # (P,3); calm -> -u_body
+    w = u_rel @ n_hat  # (P,) local normal speed
+    # d(F_normal) = 0.5*rho*Cd_n*|w|*w * dA, directed along n_hat.
+    df_n = 0.5 * rho * element.Cd_n * np.abs(w) * w * element._patch_area  # (P,)
+    f_normal = n_hat * float(df_n.sum())
+    # Moment: sum arm x (df_n * n_hat) = (sum df_n*arm) x n_hat.
+    m_normal = np.cross(df_n @ arms, n_hat)
+
+    # --- Tangential (edge-on) term: lumped at the disc centre. ---
+    center_arm = r_mat @ element.center_body
+    u_body_c = v_ref + np.cross(omega, center_arm)
+    u_rel_c = u_fluid - u_body_c
+    u_t = u_rel_c - float(u_rel_c @ n_hat) * n_hat  # in-plane component
+    speed_t = float(np.linalg.norm(u_t))
+    f_tangential = 0.5 * rho * element.Cd_t * element.edge_area_m2 * speed_t * u_t
+    m_tangential = np.cross(center_arm, f_tangential)
+
+    out = np.empty(6, dtype=np.float64)
+    out[0:3] = f_normal + f_tangential
+    out[3:6] = m_normal + m_tangential
+    return out
+
+
 # ---------------------------------------------------------------------------
 # State-force closure for the integrator
 # ---------------------------------------------------------------------------
@@ -379,8 +643,63 @@ def _body_velocity_at(
     return v_ref + np.cross(omega_inertial, arm_inertial)
 
 
+_PLATE_PARALLEL_RTOL: Final[float] = 1.0e-6
+"""A cylinder counts as a spar (parallel to a plate normal) when
+``|axis_hat · n_hat| >= 1 - _PLATE_PARALLEL_RTOL``."""
+
+
+def _check_plate_supersession(elements: Sequence[MorisonElement | PlateDragElement]) -> None:
+    """Enforce the plate/cylinder supersession rule (M11a PR4 requirement a).
+
+    A :class:`PlateDragElement` owns its plate's normal (broadside) drag,
+    integrated over the disc face. A :class:`MorisonElement` cylinder in the
+    plate plane (axis perpendicular to the plate normal -- the M11a-PR1
+    horizontal-cylinder heave-plate stand-in) captures that same broadside
+    drag: running both double-counts the normal term. This makes the
+    conflict impossible -- on any body carrying a plate element, every
+    coexisting cylinder must be parallel to that plate's normal (a spar,
+    whose member-normal plane is orthogonal to the plate normal and so
+    captures only lateral drag). Any non-parallel cylinder raises.
+
+    Raises
+    ------
+    ValueError
+        If a body carries both a :class:`PlateDragElement` and a
+        :class:`MorisonElement` whose axis is not parallel to the plate
+        normal.
+    """
+    plates_by_body: dict[int, list[PlateDragElement]] = {}
+    for e in elements:
+        if isinstance(e, PlateDragElement):
+            plates_by_body.setdefault(e.body_index, []).append(e)
+    if not plates_by_body:
+        return
+    for e in elements:
+        if not isinstance(e, MorisonElement):
+            continue
+        plates = plates_by_body.get(e.body_index)
+        if not plates:
+            continue
+        axis = e.node_b_body - e.node_a_body
+        axis_hat = axis / float(np.linalg.norm(axis))
+        for plate in plates:
+            dot = abs(float(np.dot(axis_hat, plate._n_hat_body)))
+            if dot < 1.0 - _PLATE_PARALLEL_RTOL:
+                raise ValueError(
+                    f"body_index {e.body_index}: a MorisonElement cylinder "
+                    f"(axis {axis_hat.round(4).tolist()}) coexists with a "
+                    f"PlateDragElement (normal {plate._n_hat_body.round(4).tolist()}) "
+                    f"but is not parallel to the plate normal "
+                    f"(|axis.n| = {dot:.6f} < 1). A cylinder in the plate plane is the "
+                    "M11a-PR1 horizontal-cylinder heave-plate stand-in; it double-counts "
+                    "the plate's normal drag, which the PlateDragElement now owns. Remove "
+                    "the stand-in cylinder (the plate element supersedes it), or make the "
+                    "cylinder a spar parallel to the plate normal."
+                )
+
+
 def make_morison_state_force(
-    elements: Sequence[MorisonElement],
+    elements: Sequence[MorisonElement | PlateDragElement],
     n_dof: int,
     *,
     fluid_velocity_fn: FluidFieldFn,
@@ -389,13 +708,16 @@ def make_morison_state_force(
 ) -> Callable[[float, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]:
     """Build the ``(t, xi, xi_dot) -> F`` closure consumed by ``integrate_cummins``.
 
-    Validates body indices and the kinematics callables up front so
-    illegal configurations fail fast.
+    Validates body indices, the kinematics callables, and the plate/cylinder
+    supersession rule up front so illegal configurations fail fast.
 
     Parameters
     ----------
     elements
-        Sequence of :class:`MorisonElement` instances.
+        Sequence of :class:`MorisonElement` and/or :class:`PlateDragElement`
+        instances (may be mixed). A :class:`PlateDragElement` owns the
+        plate's normal (broadside) drag; see the supersession rule under
+        *Raises*.
     n_dof
         Global DOF count ``6 * N`` for the system being integrated.
     fluid_velocity_fn
@@ -423,8 +745,15 @@ def make_morison_state_force(
     ValueError
         If ``n_dof`` is not a positive multiple of 6, any element has a
         ``body_index`` outside ``[0, n_dof // 6)``, ``rho`` is
-        non-positive, or any element has ``include_inertia=True`` but
-        ``fluid_acceleration_fn`` is ``None``.
+        non-positive, any :class:`MorisonElement` has ``include_inertia=True``
+        but ``fluid_acceleration_fn`` is ``None``, or the plate/cylinder
+        **supersession rule** is violated: a body carrying a
+        :class:`PlateDragElement` may only carry :class:`MorisonElement`
+        cylinders whose axis is parallel to that plate's normal (spars).
+        A cylinder in the plate plane (the M11a-PR1 horizontal-cylinder
+        heave-plate stand-in) captures the same broadside drag the plate
+        element now owns, so allowing both would double-count the normal
+        term. This is made impossible, not documented against.
     """
     if n_dof <= 0 or n_dof % 6 != 0:
         raise ValueError(f"n_dof must be a positive multiple of 6; got {n_dof}")
@@ -432,7 +761,7 @@ def make_morison_state_force(
         raise ValueError(f"rho must be finite and positive; got {rho}")
     n_bodies = n_dof // 6
     elem_list = list(elements)
-    needs_acceleration = any(e.include_inertia for e in elem_list)
+    needs_acceleration = any(isinstance(e, MorisonElement) and e.include_inertia for e in elem_list)
     if needs_acceleration and fluid_acceleration_fn is None:
         raise ValueError(
             "at least one element has include_inertia=True; "
@@ -444,6 +773,7 @@ def make_morison_state_force(
                 f"element {k}: body_index {e.body_index} outside valid range "
                 f"[0, {n_bodies}) for n_dof = {n_dof}"
             )
+    _check_plate_supersession(elem_list)
 
     def _state_force(
         t_eval: float,
@@ -462,6 +792,25 @@ def make_morison_state_force(
             if b not in pose_cache:
                 pose_cache[b] = _body_pose_from_xi(xi[slc])
             r_ref, R_body = pose_cache[b]
+
+            if isinstance(e, PlateDragElement):
+                # Disc centre (inertial) -> uniform fluid sample over the
+                # compact disc; then integrate the face + edge terms.
+                center_inertial = r_ref + R_body @ e.center_body
+                u_fluid_c = np.asarray(
+                    fluid_velocity_fn(center_inertial, float(t_eval)), dtype=np.float64
+                )
+                omega_inertial = R_body @ xi_dot[slc][3:6]
+                f6 = plate_element_force(
+                    e,
+                    rotation_matrix_body=R_body,
+                    reference_velocity_inertial=xi_dot[slc][0:3],
+                    angular_velocity_inertial=omega_inertial,
+                    fluid_velocity=u_fluid_c,
+                    rho=rho,
+                )
+                F_global[slc] += f6
+                continue
 
             # Body-frame midpoint -> inertial via R_body, then translate.
             mid_body = 0.5 * (e.node_a_body + e.node_b_body)

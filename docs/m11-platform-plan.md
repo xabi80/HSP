@@ -350,3 +350,118 @@ limit) and DOMINATES.
   and barely changes. The lever buys a small reduction in a minor coupling
   -- hydrodynamically not a reason to rotate the clusters before
   fabrication.
+
+---
+
+## Finding F3 -- anisotropic plate drag (Q3-iii): the model, the scoping correction, and the re-derived split (M11a PR4, 2026-07-30)
+
+**Append-only.** PR4 is the ONLY genuinely-new-physics piece in M11a
+(Q3-iii). Two corrections landed at the source before any code was written;
+the model then followed.
+
+### The scoping correction (recorded BEFORE the model, per the record-wins rule)
+
+**The STEP-1 scoping claim "distributed horizontal cylinders across the
+disc, no new physics" was WRONG.** `MorisonElement`'s `_project_normal`
+(`floatsim/hydro/morison.py:297-300`) removes only the AXIAL component and
+applies one scalar `Cd` to the entire 2-D member-normal-plane resultant --
+so a cylinder is drag-ISOTROPIC in that plane. A plate is ANISOTROPIC (it
+resists broadside flow far more than edge-on flow); **that anisotropy IS the
+physics of Q3-iii.** Under the rotational mode a horizontal cylinder laid
+across the disc sees, in its normal plane, BOTH the broadside velocity
+`v_z = -theta_dot*x` AND the uniform edge-on velocity `v_x = a_c*theta_dot`
+(|a_c| = 0.592 m, so |v_x| = 0.592*theta_dot -- LARGER pointwise than
+|v_z|_max = 0.215*theta_dot). It would apply `Cd_n = 5.0` over the broadside
+AREA to that edge-on velocity, overpredicting the edge-on term by
+`(Cd_n*A_face)/(Cd_t*A_rim) = (5.0*0.1452)/(1.5*0.00168) ~= 290x` and
+DESTROYING the STEP-1(b) finding (it re-inflates the term F3 shows is minor).
+**Q3-iii's "genuinely new physics" framing was correct all along; the
+"no-new-physics" scoping was the deviation.** Xabier concurred with the
+flawed version -- the record (morison.py:297-300) corrected both of us.
+The double-count is now made STRUCTURALLY IMPOSSIBLE (see the guard below),
+not documented against.
+
+### What STANDS from STEP 1 (reinforced), and what the record corrected
+
+STANDS: **form (ii)** (two-component normal/tangential decomposition) is
+right -- reinforced (the plate is anisotropic, which is exactly why the
+isotropic cylinder fails); **tilting-NORMAL dominates edge-on** on the known
+`Cd_n = 5.0`; **Cd_t is minor**, carried as a `[1,2]` sensitivity.
+
+CORRECTED (re-derived from committed constants at drafting; STEP 1's figures
+used a wrong plate depth and the record wins):
+
+| quantity | STEP 1 (wrong) | re-derived (committed) | source |
+|----------|----------------|------------------------|--------|
+| plate depth `z_plate_body` | -0.125 | **-0.2617** | `-1.45737 - _ZB`, PR2 test:47 |
+| edge-on lever `a_c` | -0.455 | **-0.592** | `beta + pitch*z_plate`, eigenmode |
+| split `E_normal/E_tangential` | 3.9-7.7 | **1.76-3.52** (Cd_t 2.0-1.0) | energy integrals |
+
+The split dropped (larger `a_c` -> larger edge-on) but **normal still
+dominates for all Cd_t in [1,2]** -- the mis-framing refutation holds; only
+its magnitude was wrong. `beta = -0.3302` reproduces PR2 / Finding F1 exactly
+(mode `T = 3.214 s` vs record 3.257, `I_eff = 118.86`).
+
+### The magnitude finding -- the plate's rotational drag is SMALL vs the spar
+
+At `Theta = 0.02 rad`, `zeta_norm = 0.0135 %`, `zeta_plate = 0.017-0.021 %`
+(Cd_t 1.0-2.0), `Q_plate ~ 2400-2900`. **This is only ~4-6 % of the spar's
+`zeta_drag = 0.379 %` (F1).** The heave plate dominates HEAVE damping (huge
+broadside area x Cd 5.0) but for ROTATION about a near-CoG centre it tilts
+through a small radius (0.215 m), while the 1.46-m spar sweeps large lateral
+velocities -- so the SPAR dominates the rotational damping and the plate is a
+minor addition. **Consequence: PR5's tank calibration stakes are lower still**
+-- Cd_t governs ~11-36 % of an already-small ~4-6 % contribution.
+
+### Model form (as built)
+
+`floatsim.hydro.morison.PlateDragElement` (+ deck `PlateMember`), decomposing
+the local rigid-body flow:
+- **NORMAL (broadside):** `0.5*rho*Cd_n*|w|*w` per face area along the disc
+  normal, `w = u_rel.n_hat`, integrated over the disc face by a body-fixed
+  polar quadrature. Captures BOTH heave (uniform `w`) and tilt
+  (`w(x) = -theta_dot*x` -> `INT|x|^3 dA = 8a^5/15`) with the KNOWN
+  `Cd_n = 5.0`. **Pivot-insensitive** -- the tilting rate is the buoy pitch
+  rate regardless of the rotation centre, so the F1 fixed-pivot error does
+  NOT touch the dominant term (it is confined to the minor edge-on `a_c`).
+- **TANGENTIAL (edge-on):** `0.5*rho*Cd_t*(t*2a)*|u_t|*u_t` lumped at the rim.
+  Minor; `Cd_t` tank-pending.
+
+**PRINCIPAL stated approximation -- the SHEARED FIELD (more prominent than
+the Cd_t sensitivity).** `Cd_n = 5.0` was measured for UNIFORM heave; applying
+it strip-wise to the linearly varying tilting field assumes local
+face-normal drag with NO radial interaction. It is far better grounded than
+the discarded edge-on framing, but it is **the assumption the tank
+rotational-decay campaign actually tests** -- not `Cd_t`. See tracker
+`INBAND-ROTATIONAL-RESONANCE` (2f correction).
+
+### Gates (all green)
+
+- **GATE 1 (modal-kinematics reference, NEVER a fixed pivot):** the code's
+  normal/tangential energy split at the modal state matches the analytical
+  `E_n/E_t` (measured 2.335 vs 2.35 at Cd_t=1.5, rel < 0.03), normal
+  dominant; the end-to-end coupled decay `zeta_drag,plate` is positive,
+  amplitude-linear, and matches the energy-equivalent prediction within PR2's
+  rel=0.35. Reference from the drag-free constrained eigenanalysis (predates
+  the drag code).
+- **GATE 2 (byte-identity, absolute):** plate touches no `M+A_inf`, `C` or
+  kernel -- force-only; drag-free decks build identically.
+- **GATE 3 (STRUCTURAL):** in pure heave `u_n` is uniform, so the plate
+  reduces EXACTLY to the single-`Cd` cylinder (`D*L = pi*a^2`) at machine
+  precision (rtol 1e-13); the heave decay through the plate reproduces the
+  committed `zeta = 2.5225e-02` (rel 1e-3, the only slack being the study's
+  0.1452-vs-0.14522 area rounding).
+- **GATE 4 (ANALYTICAL):** the disc quadrature converges to `8a^5/15`
+  (residual **-0.58 %** at the adopted 12x24, halving to -0.33 % at 16x32);
+  the face area is exact at any count.
+
+### Supersession -- a STRUCTURAL GUARD (requirement a), not a note
+
+A body carrying a `PlateDragElement` may only carry `MorisonElement`
+cylinders PARALLEL to the plate normal (spars, whose normal plane is
+orthogonal to the plate normal -> lateral drag only). A cylinder in the
+plate plane (the M11a-PR1 horizontal-cylinder heave-plate stand-in) captures
+the same broadside drag the plate now owns; `make_morison_state_force` raises
+on it (the mechanism: `_check_plate_supersession`, checked at build time, so
+it fires on BOTH the deck path AND study hand-assembly). The plate element
+SUPERSEDES the PR1 stand-in wherever applied.

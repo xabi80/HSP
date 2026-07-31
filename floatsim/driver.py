@@ -68,7 +68,7 @@ from floatsim.bodies.joints import JointSet, hinge_joint, yaw_locked_joint
 from floatsim.bodies.mass_properties import rigid_body_mass_matrix
 from floatsim.hydro.database import HydroDatabase
 from floatsim.hydro.hydrostatics import gravity_restoring_contribution
-from floatsim.hydro.morison import MorisonElement, make_morison_state_force
+from floatsim.hydro.morison import MorisonElement, PlateDragElement, make_morison_state_force
 from floatsim.hydro.radiation import CumminsLHS, assemble_cummins_lhs
 from floatsim.hydro.retardation import RetardationKernel, compute_retardation_kernel
 from floatsim.io.deck import (
@@ -77,6 +77,7 @@ from floatsim.io.deck import (
     Deck,
     HingeJoint,
     LinearSpring,
+    PlateMember,
     RigidLink,
     YawLockedJoint,
 )
@@ -412,9 +413,25 @@ def _build_drag_state_force(deck: Deck, n_dof: int, *, rho: float) -> _StateForc
     Returns ``None`` when no body declares ``drag_elements`` (the
     common case), so a drag-free deck's ``state_force`` is untouched.
     """
-    elements: list[MorisonElement] = []
+    elements: list[MorisonElement | PlateDragElement] = []
     for k, body in enumerate(deck.bodies):
         for e in body.drag_elements:
+            if isinstance(e, PlateMember):
+                elements.append(
+                    PlateDragElement(
+                        body_index=k,
+                        center_body=np.asarray(e.center, dtype=np.float64),
+                        normal_body=np.asarray(e.normal, dtype=np.float64),
+                        radius=e.radius,
+                        thickness=e.thickness,
+                        Cd_n=e.Cd_n,
+                        Cd_t=e.Cd_t,
+                        n_radial=e.n_radial,
+                        n_azimuthal=e.n_azimuthal,
+                    )
+                )
+                continue
+            # MorisonMember cylinder (spar / brace).
             if e.include_inertia:
                 raise ValueError(
                     f"body {body.name!r} drag element: include_inertia=True is not "

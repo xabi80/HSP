@@ -126,7 +126,37 @@ class MorisonMember(_Base):
     include_inertia: bool = False
 
 
-DragElement = Annotated[MorisonMember, Field(discriminator="type")]
+class PlateMember(_Base):
+    """Direction-dependent circular-plate (heave-plate) drag element.
+
+    A thin disc resists broadside (normal) flow far more than edge-on
+    (tangential) flow. Unlike :class:`MorisonMember` (an isotropic
+    member-normal cylinder), this element decomposes the local flow into a
+    NORMAL term -- ``½·ρ·Cd_n·|w|·w`` integrated over the disc face, capturing
+    both heave and the tilting-rotational contribution -- and a minor
+    TANGENTIAL (edge-on) term -- ``½·ρ·Cd_t·(t·2a)·|u_t|·u_t`` at the rim.
+    Maps to :class:`floatsim.hydro.morison.PlateDragElement`; drag-only (the
+    BEM carries added mass). See M11a PR4 (plan Q3-iii, Finding F3).
+
+    A body carrying a ``PlateMember`` may not also carry a ``MorisonMember``
+    cylinder lying in the plate plane (the M11a-PR1 horizontal-cylinder
+    heave-plate stand-in) -- the plate element supersedes it; ``build_system``
+    raises on the double-count (only spars parallel to the plate normal are
+    permitted alongside a plate).
+    """
+
+    type: Literal["plate"]
+    center: Vec3
+    normal: Vec3
+    radius: PositiveFloat
+    thickness: NonNegativeFloat
+    Cd_n: NonNegativeFloat
+    Cd_t: NonNegativeFloat = 0.0
+    n_radial: Annotated[int, Field(ge=1)] = 12
+    n_azimuthal: Annotated[int, Field(ge=1)] = 24
+
+
+DragElement = Annotated[MorisonMember | PlateMember, Field(discriminator="type")]
 
 
 def distributed_cylinder_drag(

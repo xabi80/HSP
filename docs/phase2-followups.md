@@ -1358,14 +1358,43 @@ external check). The tank campaign will sweep wave **height and period**
   (response-per-height falls near resonance -> `Cd`);
 - drag capability is needed to **predict the cluster tests**, not only to
   resolve LEVEL2 (program-plan amendment 2b-2e);
-- **NEW open question (2f):** the heave-plate `Cd = 5.0` (disc broadside
+- ~~**NEW open question (2f):** the heave-plate `Cd = 5.0` (disc broadside
   to vertical flow) cannot be reused for the rotational mode (plate
   edge-on, horizontal flow) — the rotational damping must be measured,
   not inferred; the drag-widened resonance bandwidth is unknown until
-  then.
+  then.~~ **REFUTED at M11a PR4 (2026-07-30) — see the correction below.**
+
+**2f CORRECTION (M11a PR4, 2026-07-30) — the edge-on framing was wrong.**
+The derivation (plan Finding F3) refutes 2f. Under the rotational mode the
+plate does not present its edge to the flow; it **TILTS**, so a disc point
+at radial `x` moves VERTICALLY at `w(x) = -theta_dot*x` — that is
+plate-NORMAL (broadside) flow across the disc, the SAME regime as heave,
+using the **KNOWN `Cd_n = 5.0`**. The edge-on (tangential) motion of the
+disc centre is a MINOR term (`E_normal/E_tangential = 1.76-3.52` re-derived,
+so edge-on is ~11-36 %) governed by the tank-pending `Cd_t`. So:
+- the dominant plate rotational damping uses a coefficient we **already
+  have** (`Cd_n = 5.0`), NOT a tank-pending one — 2f's "cannot be reused" is
+  false;
+- only the minor edge-on `Cd_t` is tank-pending, and it governs a small
+  fraction of an already-small contribution: the plate's rotational
+  `zeta_drag ~ 0.017-0.021 %` at `Theta = 0.02`, only **~4-6 % of the spar's
+  0.379 %** (F1) — the SPAR dominates rotational damping, not the plate;
+- the drag-widened bandwidth is now known from the spar (Q ~ 68, F1); the
+  plate barely changes it.
+
+**PRINCIPAL stated approximation (SHEARED FIELD) — this, not `Cd_t`, is what
+the tank rotational decay tests.** `Cd_n = 5.0` was measured for UNIFORM
+heave; applying it strip-wise to the linearly varying tilting field assumes
+local face-normal drag with no radial interaction. It is far better grounded
+than the discarded edge-on framing, but it is an approximation, and the tank
+rotational-decay campaign is the experiment that tests it. (The isotropic
+horizontal-cylinder heave-plate stand-in was ALSO refuted — it applies
+`Cd_n` to the large edge-on velocity, ~290x overpredicting that term; the
+anisotropic `PlateDragElement` supersedes it, structurally guarded.)
 
 **Estimated effort.** Capability ~1-2 wk (coupled drag `state_force` +
 gate); characterisation is tank-campaign-gated (outside program control).
+**Capability DELIVERED (M11a PR1 wiring, PR2 spar, PR4 plate).**
 
 **Blocks.** The `M10 -> LEVEL2 decision gate -> M11` sequencing (Q1): the
 gate's rotation-amplitude input is undetermined near resonance until drag
