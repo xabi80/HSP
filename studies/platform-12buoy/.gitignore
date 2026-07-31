@@ -1,0 +1,6 @@
+# The 12-buoy mesh (17,856 panels, ~3.2 MB) is a deterministic output of
+# build_platform_mesh.py from the committed single-buoy hull; regenerate it
+# rather than committing a large binary-ish artifact. PR7 regenerates before
+# the BEM solve.
+mesh/*.gdf
+__pycache__/
