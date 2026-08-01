@@ -1237,6 +1237,31 @@ min-eig/max\|B\| = **−0.250 %**.
 rad/s near ω=5 → on any realistic grid it manifests as a **single
 isolated bad ω**.
 
+**Mechanism CORRECTED (M11b PR7, 2026-07-31).** The entry describes ω=4.934
+as a NEAR-SINGULAR *solve* ("the entire BEM solve is contaminated", "a
+near-singular boundary-integral operator"). Measured on the cluster mesh
+(`m11b_pr7_step1_detector.py` / `_condS.py`): the **system matrix K that
+Capytaine factorizes** (`capytaine solver.py:174`) **is WELL conditioned** at
+4.934 — `cond(K) = 110 = 1.0× median, neighbour-z = 0.06`, and Capytaine
+issues no irregular-frequency warning there (it does warn, and cond(K) spikes,
+at the genuine irregular frequencies 16.8 / 20.9). The near-singularity is in
+the **single-layer operator S** (`potential = S @ sources`, solver.py:178):
+`cond(S) ≈ 2.66e6`, but broadly elevated (4.5–5.3, not isolated — 5.30 has
+near-equal cond(S) yet is clean). The result is an **isolated OUTPUT anomaly**
+(the heave-damping sign flip / `min-eig(symB) = −0.12`), NOT a near-singular
+system solve. This is precisely why a solve-conditioning detector alone cannot
+catch it (cond(K) is flat) and why M11b PR7 embeds **two** detectors: cond(K)
+for genuine ill-conditioned solves, and B-min-eig-smoothness for output
+anomalies behind well-conditioned solves.
+
+**This is the FOURTH correction in this contamination story's family** (the
+pattern: the story has been repeatedly mis-characterised): the *framing*
+(edge-on rotational damping — refuted at M11a PR4, Finding F3), the
+*recommended detector* (output smoothness — falsified at M11 Phase-1
+Measurement E), the *detector scope* (a per-frequency conditioning number
+alone — falsified at M11b PR7 STEP 1, cond(K) flat here), and now the
+*mechanism* (output anomaly, not near-singular solve).
+
 **Draft dependence** (strongest clue). Clean at the single-buoy
 eqdraft (single-body study BEM: `B_heave(4.934) = +0.0211`), present at
 cluster draft (`−0.0858`), **same hull geometry** — only the DZ2

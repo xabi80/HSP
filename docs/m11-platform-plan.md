@@ -52,7 +52,15 @@ data first → staged validation; LEVEL2 subordinate to drag.
 - **E (freq screen):** neighbour-trend screen catches ω=20.909 (z=30.2)
   but **misses ω=4.934** (z=0.5, all 5 statistics) → **falsifies the
   tracker's output-smoothness recommendation**; needs solve-time
-  conditioning monitoring.
+  conditioning monitoring. **CORRECTED (M11b PR7, 2026-07-31):** the true
+  statement is NARROWER — the five **A-based** statistics are smooth at 4.934
+  (confirmed: max|A| z≈4.75, A[2,2] flat), so *those* miss it; but the
+  **symmetrized-B min-eigenvalue** (the M8 PSD metric) is NOT smooth at
+  4.934 — neighbour-z = **1026** — and separates it cleanly (physical 2–3
+  band z=0.5–3.0). So "output smoothness cannot separate the 4.934 class"
+  holds for A-statistics only, not for the B-min-eig; the M8 PSD gate
+  catching 4.934 was consistent with this all along. The M11b PR7 B-min-eig
+  detector uses exactly this metric.
 
 ---
 
@@ -616,6 +624,40 @@ CONDITIONING NUMBER it may separate where output smoothness did not.
 **VALIDATE on the known 4.934 case before trusting it at 72 DOF — if it does
 not separate there, it will not separate at scale, and that is a finding.**
 
+**SUPERSEDED by the TWO-DETECTOR design (M11b PR7 STEP 1, 2026-07-31).** The
+single "per-frequency conditioning number" above was **falsified on the known
+case**: cond(K) is FLAT at 4.934 (z=0.06) because 4.934 is not an
+ill-conditioned solve — it is an output anomaly behind a well-conditioned
+system matrix (tracker `BEM-CONTAMINATED-...` mechanism correction). cond(K)
+and a B-min-eig-smoothness detector catch **DIFFERENT phenomena, and neither
+sees the other's**: cond(K) flags genuine ill-conditioned solves (16.837 at
+z=11.7, Capytaine warns independently); B-min-eig-z flags output anomalies
+(4.934 z=1026, 20.909 z=88045 where cond(K) is flat). **PR7 embeds BOTH**
+(disposition OPTION 2), with a four-way verdict (Q7 four-way table below).
+Thresholds from the measured separation: `COND_Z=5` (16.837 at 11.7 vs clean
+≤1.3) and `BMINEIG_Z=50` on slices below the M8 magnitude floor
+(`min-eig < −1e-3·max|B|`, the significance-skip DROPPED so tail
+contaminations like 20.909 are not hidden); physical near-singularity sits at
+z=0.5–3.0 — a 2–3 order gap. Both detectors re-validated on the known cases
+(STEP D): cond(K) fires 16.837 / flat 4.934; B-min-eig excludes exactly
+{4.934, 20.909}, tolerates the smooth physical band, retains the benign
+sub-magnitude isolated spikes (3.2, 27.9). See
+`studies/platform-12buoy/platform_screening.py`.
+
+### Q7 four-way verdict table (M11b PR7) — three combinations need a disposition
+| cond(K)-z | B-min-eig (sig-neg + isolated) | verdict | disposition |
+|-----------|-------------------------------|---------|-------------|
+| low | low | **clean** | retain |
+| **high** | low | **ill_conditioned** (irregular-freq) | EXCLUDE (grid selection, M8 PR3 — never value mod) |
+| low | **high** | **output_contam** (behind a good solve) | EXCLUDE (same pattern) |
+| **high** | **high** | **both** — NO case in the record | EXCLUDE **and REPORT** as a distinct observation |
+
+The **physical** class stays TOLERATED: the M8 magnitude gate firing on
+deepening coherent coupling (Finding D: −0.6% → −5% → worse) is a real
+property; **smoothness is the discriminator** (z≤3 physical vs z≥1026
+contaminated). A `both`-fire has no measured precedent — if it occurs at
+12-buoy it must surface as a new class, not be absorbed into a known one.
+
 ### PR-sequence disposition
 - **PR6** (mesh generator + assembly): de-risked by Measurements A + C; low
   risk. Assembly preconditions asserted as **permanent tests** (not
@@ -625,3 +667,49 @@ not separate there, it will not separate at scale, and that is a finding.**
   memory-bound, < 1 h); C4v is the speed lever if ever wanted (G2).
 - **PR8 / PR9**: unchanged (PR8 Stage-1 still needs the OrcaFlex plot
   inventory from Xabier — an open input, not a PR6/PR7 blocker).
+
+---
+
+## M11b PR7 — 12-buoy BEM at scale, MEASURED (2026-07-31)
+
+**Append-only.** The 72-DOF coupled BEM ran on the real mesh with the
+two-detector screening embedded (`studies/platform-12buoy/platform_bem.py`,
+`platform_screening.py`; detectors validated STEP D, permanent test
+`test_m11b_pr7_screening.py`). Output: `platform12_bem.nc` (13-ω grid + inf,
+radiation + diffraction + hydrostatic C).
+
+### Screening (STEP 4) — the two-detector design vindicated end-to-end
+On the 13-ω grid `[0.5…30]`: **cond(K)** all cond-z ≤ 2.93 (< 5) — no
+ill-conditioned solves (grid dodges the irregular frequencies); **B-min-eig**
+fires (magnitude) at ω=2.5, 3.0 but SMOOTH (z=0.06, 1.06) → verdict
+**`physical`** — the deepening coherent near-singularity, TOLERATED not
+excluded. **Excluded: NONE; no `both`-fire.** The physical class activated
+exactly as designed, and the detector distinguished it from contamination by
+smoothness.
+
+### F2 confirmed and then some — physical near-singularity deepens hard at 12-buoy
+`min-eig(symB)` reaches strongly negative at the resonances (well past the
+6-buoy −5/−9 %), tolerated as `physical`. This is the PR3 F2 trend
+(3-buoy −0.6/−1.6 % → 6-buoy −5/−9 % → 12-buoy deepest) MEASURED, and it is
+why the detector needs the smoothness discriminator (a bare min-eig sign/PSD
+check would exclude real physics).
+
+### Predictions vs measured (STEP 5)
+| quantity | pinned prediction | measured | note |
+|----------|-------------------|----------|------|
+| heave period | ~3.13 s | **3.141 s** | ✓ +0.3 % (C33 = 2653 measured = 12×221) |
+| A33(∞) composite | 256–260 kg | **262 kg** | inter-cluster ~2.2 % (bit above the ~1 % 6-body) |
+| B33 amplification @ ω_n | 122–132× (85–92 % coherent) | **112.5×** (78 %) | **MISS — footprint-limited:** platform ~3.4 m = 0.22λ vs cluster 0.065λ, so coherence drops with array size (diagnosed, not tuned) |
+| reciprocity (raw) | ~1–2e-4 | **5.84e-3 abs ≈ 1.5e-4 rel** | ✓ panel-noise scale (18-DOF 1.08e-4) |
+
+### Finding G2 CORRECTED — the run is BUILD-bound, not RHS-bound
+Measured runtime **190.5 min** (1021 problems), vs the Phase-1 probe's 42-min
+projection — **4.5×**. Diagnosis: the per-ω solve is ~2:13 (RHS ≈ 31 min
+total); the remaining ~159 min is the **Green's-function BUILD** (~680 s/ω on
+13,824²). **The Phase-1 probe (Finding G2) under-measured the O(N²) build by
+~30×**, so G2's "RHS-bound → C4v cuts the RHS" is wrong: the run is
+**BUILD-bound** (Green's-function evaluation). **C4v symmetry remains the Q4
+lever** — it cuts the mesh, hence the *build* (the dominant term), not the
+RHS. Memory was as measured (~12.7 GB peak wetted, not binding). This is a
+STOP-condition disagreement (runtime materially exceeded the probe) — reported
+here; the run completed successfully with valid data, so no re-run.

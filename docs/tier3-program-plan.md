@@ -562,6 +562,12 @@ Two corrections to this program plan's cost model:
   nothing** (not memory-bound; does not touch RHS cost). The "Binding
   constraint is likely memory" note in the risk row is **wrong** — the binding
   constraint, if any, is the DOF-count of RHS solves.
+  **G2 CORRECTED at M11b PR7 (2026-07-31):** the ACTUAL 12-buoy run took
+  **190.5 min, not 42** — the probe under-measured the O(N²) **Green's-function
+  BUILD** by ~30× (real ~680 s/omega). The run is **BUILD-bound**, not
+  RHS-bound. **C4v symmetry stays the right lever** (it cuts the mesh → the
+  *build*, the dominant term), but the mechanism in G2 above (RHS-bound) is
+  wrong. See `docs/m11-platform-plan.md` "M11b PR7 ... MEASURED".
 
 Assembly feasibility at n = 102 confirmed (all M10-PR1 preconditions PASS; KKT
 100.6 µs ~ 0.5 % of a step → B6 stays deferred). The contaminated-slice
