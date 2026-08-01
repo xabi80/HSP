@@ -1635,32 +1635,34 @@ path may never have produced hydrostatics before. Free-decay validation on
 the cluster was necessary but not sufficient: it never exercised a
 non-zero stored ``C``.
 
-**Investigation (STEP 2, CONFIRMED 2026-08-01).** A **reference-point
-inconsistency**, confirmed to the number:
-- ``studies/platform-12buoy/platform_bem.py`` (the BEM runner) sets each
-  buoy's ``rotation_center = center_of_mass = (dx, dy, cogz)`` with
-  ``cogz = cc.CoG_Z_SINGLE - pc.PLATFORM_DZ = -1.2327`` and calls
-  ``compute_hydrostatic_stiffness`` about that CoG. About the CoG (which
-  sits ~0.5 m below the center of buoyancy) Capytaine's hydrostatic
-  stiffness carries a surge-pitch / sway-roll buoyancy coupling
-  ``C15 = rho*g*V*(z_CoG - z_CoB) = 328.67 * 0.500 = 164.25`` -- exactly
-  the measured off-diagonal. With zero surge stiffness the [surge, pitch]
-  2x2 block ``[[0, 164.25], [164.25, 161.74]]`` has determinant
-  ``-164.25^2 < 0`` -> eigenvalue -102. (a) confirmed.
-- ``reference_single_bem.nc`` (the hydrostatic the WORKING M10 path
-  injects) is **PSD**: C33 = 221.08, C44 = C55 = **151.36**, **C15 = 0**,
-  eig ``[0, 0, 0, 151.36, 151.36, 221.08]``. So the correctly-referenced
-  per-buoy hydrostatic IS PSD -- (c) confirmed decisively.
-- The M10 cluster BEM stores an **all-zero** C and draws stiffness
-  entirely from that PSD reference-injection. The platform is the first
-  run to store a non-zero C and feed it in as the restoring base --
-  **first-contact** ((b) confirmed), and M10/cluster are unaffected
-  (their stored C is zero) ((d) confirmed).
-- **Bug class named:** a stored hydrostatic C computed about the CoG
-  (``rotation_center = CoG``) carries a buoyancy/CoB rotational coupling
-  that FloatSim's separate gravity + reference-injection path neither
-  expects nor cancels; ``build_system`` then seeds the restoring from this
-  indefinite stored C.
+**Investigation (STEP 2, CONFIRMED 2026-08-01).** NOT a reference-point
+error (the first hypothesis) -- a **single-body-vs-multibody compute**
+error. ``studies/platform-12buoy/platform_bem.py`` computed the
+hydrostatic C by calling ``compute_hydrostatic_stiffness`` on the
+**combined 12-body assembly** (``allb.immersed_part()``). A decisive
+recompute (STEP 2(c), Capytaine) settles it:
+- A SINGLE isolated buoy at the platform draft about its CoG
+  (``cogz = -1.2327``) is **PSD**: ``C15 = 0``, C33 = 221.08,
+  C44 = C55 = **161.28**, eig ``[0, 0, 0, 161.28, 161.28, 221.08]``. So
+  ``rotation_center = CoG`` is FINE -- (a): the reference point is not the
+  fault.
+- The stored **multibody** block has the identical diagonals but a
+  spurious ``C15 = 164.25`` off-diagonal -> per-block eig
+  ``[-102, -102, 0, 221, 264, 264]`` (indefinite). The one difference from
+  the single-body compute is the combined-assembly call. See
+  **CAPYTAINE-MULTIBODY-HYDROSTATIC-COUPLING** for the external-tool
+  mechanism, the verbatim numbers, and the single-vs-multibody table.
+- The recompute reproduces ``reference_single`` (PSD, C15 = 0) EXACTLY at
+  cluster draft, validating the method -- (c) confirmed: the correct
+  computation is PSD.
+- The M10 **multibody** cluster BEM stores an **all-zero** C
+  (``compute_hydrostatic_stiffness`` was never called on it; hydrostatics
+  came from the SINGLE-body ``reference_single``). So the platform is the
+  **first run to call ``compute_hydrostatic_stiffness`` on a multibody
+  assembly and store it** -- the **fifth Section-13 first-contact case**
+  (that code path had never been exercised): (b) confirmed. M10/cluster
+  are unaffected (their multibody stored C is zero) -- (d) confirmed by
+  the green regression, not assumed.
 
 **STEP 3 (DONE) -- build-time restoring-PSD gate.** ``build_system`` now
 runs ``_gate_restoring_psd`` (``floatsim/driver.py``) on the assembled
@@ -1669,37 +1671,106 @@ returning: it raises when the min generalized eigenvalue ``omega^2`` drops
 below ``-_RESTORING_PSD_RTOL (1e-8) * max|omega^2|``. Free rigid modes at
 zero pass; a genuine negative-stiffness mode fails. Calibrated on the
 known cases: **M10 PR1 feasible omega^2 min = -5.42e-16 -> PASS** (suite
-still green); **platform feasible omega^2 min = -1.60, six negative ->
-FAIL** with a message naming this entry. Unit-tested in
-``tests/validation/test_m11b_pr8_restoring_psd_gate.py`` (7 cases:
-PSD pass, indefinite fail, zero-free-modes allowed, numerical-zero
-tolerance, feasible-subspace dim + qualifier). This turns the failure
-mode that took hours to diagnose into an immediate build-time error.
+still green); the pre-fix **platform feasible omega^2 min = -1.60, six
+negative -> FAIL** with a message naming this entry. Unit-tested in
+``tests/validation/test_m11b_pr8_restoring_psd_gate.py`` (7 cases).
 
-**Fix options for the C itself (STEP 4, NOT yet implemented -- awaiting
-disposition, informed by STEP 2).**
-1. Regenerate ``platform12_bem.nc`` with a zeroed/consistent stored C so
-   the reference-injection path supplies stiffness cleanly (matches the
-   validated cluster path) — a knowing design decision now that STEP 2 has
-   confirmed the mechanism.
-2. Recompute the platform hydrostatics about a reference consistent with
-   the assembly / gravity-restoring convention (no ``rotation_center =
-   CoG`` coupling) at the source.
+**STEP 4 (DONE) -- resolution (OPTION 2).**
+``platform_bem.py:add_hydrostatic`` now computes the per-buoy hydrostatic
+as the SINGLE-body block (``_single_buoy_hydrostatic_block``) tiled
+block-diagonal x12, matching the validated ``reference_single`` /
+``cluster_bem`` method. ``platform12_bem.nc`` regenerated (post-process,
+no radiation re-solve; C33 composite = 2653 N/m). The pilot deck
+(``platform_rao_pilot.py``) drops ``hydrostatic_database`` so
+``build_system`` uses the now-correct ``shared_db.C`` + gravity_restoring
+(injecting ``reference_single`` too would double-count buoyancy).
+Verified:
+- **Tiling assumption (item 1):** all twelve buoy equilibrium heaves are
+  equal to 0.000 m (spread 0.0; C4 symmetry, modeling draft = equilibrium).
+- **PSD gate (item 2):** assembled feasible ``omega^2`` min goes
+  **-1.60 (6 negative) -> -1.1e-15 (0 negative)**; stored buoy1 block eig
+  now ``[0, 0, 0, 161.28, 161.28, 221.08]`` (C15 164.25 -> 0).
+- **Free rigid modes (item 2):** exactly **3 zero feasible modes**
+  (whole-platform surge/sway/yaw, no hydrostatic restoring) -- the
+  correction removed no real physics; all physical modes positive
+  (smallest omega^2 ~ 1.01, largest ~ 4.35, resonances in-band).
+- No test asserts on ``platform12_bem.nc``'s C; the STEP 3 regression is
+  unaffected.
 
-**Blocks.** ALL dynamic simulation of the full platform — the M11b PR8
-RAO/acceleration pilot and any future time-domain platform run (until
-STEP 4 lands). Static assembly (kernel, ``M+A_inf``, G rank) is
-unaffected. The STEP 3 gate now makes the blockage explicit at build time.
+**Blocks.** RESOLVED for the platform pilot -- the assembled restoring is
+now PSD and ``build_system`` completes. Any FUTURE multibody BEM that
+stores hydrostatics must avoid the combined-assembly compute
+(CAPYTAINE-MULTIBODY-HYDROSTATIC-COUPLING).
 
-**Estimated effort.** STEP 4 regeneration ~ 0.5 d + a platform BEM
-re-solve (the hydrostatic recompute is cheap; a full radiation re-solve is
-only needed if the grid is also revisited).
+**Status.** RESOLVED 2026-08-01 (M11b PR8 STEP 4). Surfaced, root-caused,
+gated, and fixed same day. Kernel exemption ``5d2c55a``, PSD gate + STEP 2
+diagnosis ``702f2cc``, STEP 4 fix in the STEP-4 commit. The pilot proceeds
+on the corrected hydrostatics.
 
-**Status.** Open — BLOCKER on the platform pilot; STEP 2 (root cause) and
-STEP 3 (PSD gate) COMPLETE. Surfaced 2026-08-01 (M11b PR8 pilot
-bring-up); root cause isolated + gated same day. The PR8 kernel Check-3
-exemption (commit 5d2c55a) is complete and independent. STEP 4 (fix the
-stored C) awaits disposition.
+---
+
+### CAPYTAINE-MULTIBODY-HYDROSTATIC-COUPLING — Capytaine's combined-body ``compute_hydrostatic_stiffness`` injects a spurious per-block cross-DOF coupling (external tool)
+
+**Scope: an external-tool quirk, not a FloatSim bug.** Recorded on its own
+so anyone hitting it in an unrelated context can find it without reading
+M11b's history. It first surfaced via PLATFORM-HYDROSTATIC-C-INDEFINITE
+(the 12-buoy platform), but it is a property of Capytaine, has its own
+lifetime (a future Capytaine version may change it), and applies to ANY
+multibody hydrostatic assembly.
+
+**Mechanism.** ``compute_hydrostatic_stiffness`` called on a COMBINED
+multibody FloatingBody (bodies joined with ``+``, e.g.
+``allb.immersed_part()``) returns per-body 6x6 diagonal blocks that are
+**correct on the diagonal but carry a spurious surge-pitch / sway-roll
+off-diagonal coupling**
+
+``C15 = C24 (magnitude) = rho*g*V * (z_CoG - z_CoB)``
+
+that the equivalent SINGLE-body compute (same mesh, same draft, same
+``rotation_center = CoG``) does NOT produce. With zero horizontal (surge)
+stiffness the ``[surge, pitch]`` 2x2 block ``[[0, C15], [C15, C55]]`` has
+determinant ``-C15^2 < 0`` -> a negative eigenvalue, i.e. an indefinite
+restoring block.
+
+**Verbatim numbers (one spar-fin buoy, platform draft,
+``rho*g*V = 328.67 N``, ``z_CoG = -1.2327``, ``z_CoB = -0.7431`` ->
+``z_CoG - z_CoB = -0.490 m``):**
+
+| compute | C15 | C33 | C44 = C55 | 6x6 eigenvalues | verdict |
+|---------|-----|-----|-----------|-----------------|---------|
+| single isolated body (about CoG) | **0** | 221.08 | 161.28 | ``[0, 0, 0, 161.28, 161.28, 221.08]`` | PSD |
+| combined 12-body assembly (stored) | **164.25** | 221.08 | 161.74 | ``[-102, -102, 0, 221, 264, 264]`` | INDEFINITE |
+
+``164.25 = 328.67 * 0.500`` (``|z_CoG - z_CoB|``); diagonals agree to
+< 0.5 N/m, so ONLY the off-diagonal is corrupted.
+
+**Physical reading.** ``rho*g*V*(z_CoG - z_CoB)`` is the **weight-buoyancy
+couple** -- genuine physics: for a rigid body, a horizontal shift under
+pitch moves the buoyancy line off the weight line, producing a restoring
+(or upsetting) moment coupled to surge. It is real *per body about a
+common point*, but the multibody routine applies it **per diagonal block
+using assembly-level quantities**, where it does not belong -- each buoy's
+block should be its own single-body stiffness (the couple is already in
+the ``C44``/``C55`` metacentric terms, not a separate surge-pitch cross
+term about the buoy's own CoG). So the term is not nonsense; it is real
+physics inserted at the wrong level of the block structure.
+
+**Guidance / workaround.** For a block-diagonal multibody hydrostatic,
+compute each body's stiffness with a SINGLE-body ``compute_hydrostatic_
+stiffness`` and assemble block-diagonal -- never call it on the combined
+assembly. FloatSim's design already expects per-body block-diagonal
+hydrostatics (M10 PR0.85 reference-injection); ``reference_single`` /
+``cluster_bem`` do this correctly, and ``platform_bem.py:add_hydrostatic``
+was corrected to tile the single-body block (M11b PR8 STEP 4). The
+build-time restoring-PSD gate (``_gate_restoring_psd``,
+PLATFORM-HYDROSTATIC-C-INDEFINITE) catches the indefinite result if it
+ever recurs.
+
+**Status.** Open (external-tool note; no FloatSim code owed beyond the
+STEP-4 fix + the PSD gate that already guard against it). Surfaced
+2026-08-01 (M11b PR8). Re-check on Capytaine upgrades; if a future version
+computes multibody per-block stiffness correctly, this note can close and
+the single-body-tiling workaround becomes optional.
 
 ---
 

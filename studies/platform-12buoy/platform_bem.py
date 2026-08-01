@@ -196,17 +196,53 @@ def run() -> None:
     print(f"wrote {_OUT_NC.name}")
 
 
+def _single_buoy_hydrostatic_block() -> np.ndarray:
+    """6x6 buoyancy-only hydrostatic stiffness of ONE isolated buoy at the
+    platform draft, about its CoG (M11b PR8 STEP 4, OPTION 2).
+
+    Computed single-body -- NOT via the combined-assembly
+    ``compute_hydrostatic_stiffness``, which corrupts each per-buoy block with a
+    spurious surge-pitch / sway-roll coupling
+    ``C15 = rho*g*V*(z_CoG - z_CoB)`` (correct on the diagonal, indefinite
+    off-diagonal; see tracker CAPYTAINE-MULTIBODY-HYDROSTATIC-COUPLING). The
+    single-body block is PSD: eig ``[0, 0, 0, 161.28, 161.28, 221.08]`` at the
+    platform draft (STEP 2(c) decisive recompute). It reproduces the
+    ``reference_single`` method (``cluster_bem.py``) exactly at cluster draft.
+    """
+    base = cpt.load_mesh(str(pc.cc.SINGLE_EQDRAFT_MESH), file_format="gdf").translated(
+        [0.0, 0.0, -pc.PLATFORM_DZ]
+    )
+    cogz = pc.cc.CoG_Z_SINGLE - pc.PLATFORM_DZ
+    body = cpt.FloatingBody(mesh=base, center_of_mass=[0.0, 0.0, cogz], name="buoy")
+    body.rotation_center = np.array([0.0, 0.0, cogz])
+    body.add_all_rigid_body_dofs()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return np.asarray(
+            body.immersed_part().compute_hydrostatic_stiffness(rho=pc.cc.RHO, g=pc.cc.G),
+            dtype=np.float64,
+        )[:6, :6]
+
+
 def add_hydrostatic() -> None:
     """Post-process: add hydrostatic_stiffness to an existing platform12_bem.nc
-    (the run() that produced it predated the code above), avoiding a re-solve."""
+    (the run() that produced it predated the code above), avoiding a re-solve.
+
+    M11b PR8 STEP 4 (OPTION 2): the per-buoy hydrostatic is the single-body
+    block (``_single_buoy_hydrostatic_block``) tiled block-diagonal x12 -- NOT
+    the combined-assembly ``compute_hydrostatic_stiffness``, which is indefinite
+    per block. Tiling is exact: all twelve buoys are geometrically identical at
+    one platform draft (C4 symmetry; equal-equilibrium-draft check recorded in
+    PLATFORM-HYDROSTATIC-C-INDEFINITE)."""
     import xarray as xr
     from capytaine.io.xarray import separate_complex_values
 
     allb = _build_bodies()
     dofs = list(allb.dofs)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        K = allb.immersed_part().compute_hydrostatic_stiffness(rho=pc.cc.RHO, g=pc.cc.G)
+    block6 = _single_buoy_hydrostatic_block()
+    K = np.zeros((72, 72), dtype=np.float64)
+    for k in range(12):
+        K[6 * k : 6 * k + 6, 6 * k : 6 * k + 6] = block6
     ds = xr.open_dataset(str(_OUT_NC))
     ds.load()
     ds.close()
