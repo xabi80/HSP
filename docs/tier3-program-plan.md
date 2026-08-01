@@ -571,5 +571,31 @@ Two corrections to this program plan's cost model:
 
 Assembly feasibility at n = 102 confirmed (all M10-PR1 preconditions PASS; KKT
 100.6 µs ~ 0.5 % of a step → B6 stays deferred). The contaminated-slice
-detector is now **embedded in PR7** (per-frequency conditioning number gate),
+detector is now **embedded in PR7** (~~per-frequency conditioning number
+gate~~ **TWO detectors** — cond(K)-z + B-min-eig-z; the single conditioning
+number was falsified at M11b PR7 STEP 1, see `docs/m11-platform-plan.md`),
 not a separate preceding PR.
+
+---
+
+## Generalized lesson (M11b) — SHORT FREQUENCY PROBES SYSTEMATICALLY MIS-SCALE BEM COST
+
+Two independent cost-model errors surfaced across M11b, both from probes:
+
+- **G1 (wetted vs total panels).** Cost projections used the **total**
+  17,856-panel mesh; Capytaine solves only the **wetted** 13,824 (4,032 above
+  water clipped). Different meshes carry different wetted fractions, so a
+  total-count fit mis-scales.
+- **G2 (build under-measured).** A short 2-omega probe measured
+  build+factorize ≈ 20.8 s/omega and projected **42 min**; the production
+  13-omega run took **190 min** — the **Green's-function BUILD is ~680 s/omega**
+  (~30× the probe), because the fixed build cost amortizes differently across a
+  handful of probe frequencies than across a full grid (and the run is
+  BUILD-bound, not RHS-bound as the probe implied).
+
+**Rule for all future BEM sizing:** a short frequency probe **cannot** be
+trusted to scale to a production grid. **Measure the build cost and the
+per-RHS cost SEPARATELY** (a probe that blends them over 2 omegas hides which
+dominates), and **use WETTED panel counts**, not total. Both cases are
+measured and cited above (G1/G2) and in `docs/m11-platform-plan.md`
+("M11b PR7 ... MEASURED").
