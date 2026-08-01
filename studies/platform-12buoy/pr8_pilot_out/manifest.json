@@ -1,0 +1,380 @@
+{
+  "study": "M11b PR8 -- 12-buoy platform RAO + acceleration for OrcaFlex comparison",
+  "scope": "PRODUCES comparable outputs; does NOT judge agreement (no tolerance).",
+  "rao_normalization": "per wave amplitude A = H/2 (RAO = |response amplitude| / A)",
+  "heading": {
+    "value_deg": 0.0,
+    "database_headings_available": [
+      0.0
+    ],
+    "propagation": "+x (eta = A cos(wt - k x))",
+    "upwave_side": "-x (wave arrives there first); cluster C (-1,0) is UPWAVE",
+    "downwave_side": "+x; cluster A (+1,0) is DOWNWAVE",
+    "flag": "CONTRADICTS the pinned 'cluster A upwave' note: the coupled RAO DB has only heading 0, so cluster A is DOWNWAVE. Making cluster A upwave needs a heading-180 BEM re-solve (~190 min). RAO magnitudes are heading-label-independent; only accel role labels are affected."
+  },
+  "wave_height_range_m": [
+    0.03,
+    1.2
+  ],
+  "wave_period_range_s": [
+    1.2,
+    3.3
+  ],
+  "steepness_caveat": "H/lambda > 0.04 flagged per case (see rao_summary + below)",
+  "drag": {
+    "plate": {
+      "type": "PlateMember (anisotropic)",
+      "Cd_n": 5.0,
+      "Cd_t": 1.5,
+      "radius_m": 0.215,
+      "thickness_m": 0.0039,
+      "z_body_m": -0.2617,
+      "provenance": "Cd_n = 5.0 KNOWN heave-plate broadside; Cd_t = 1.5 mid of [1,2] tank-pending; M11a PR4 (test_m11a_pr4_plate_drag.py)"
+    },
+    "spar": {
+      "type": "distributed cylinder (10 seg)",
+      "diameter_m": 0.1682,
+      "Cd": 1.2,
+      "z_bottom_body_m": -0.2617,
+      "z_top_body_m": 1.1956674320202696,
+      "provenance": "D=2*R_SPAR (cluster_common.R_SPAR=0.0841); Cd=1.2 standard cylinder transverse"
+    }
+  },
+  "rao_dofs": [
+    "platform heave (ref point)",
+    "buoy heave (all 12)"
+  ],
+  "acceleration_channels": [
+    {
+      "label": "buoy1_clusterA",
+      "buoy": 1,
+      "xy": [
+        1.5,
+        0.0
+      ],
+      "role": "cluster A (1.5, 0) -- +x extremum, DOWNWAVE under heading 0"
+    },
+    {
+      "label": "buoy4_clusterB",
+      "buoy": 4,
+      "xy": [
+        0.5000000000000001,
+        1.0
+      ],
+      "role": "cluster B side (0.5, 1)"
+    },
+    {
+      "label": "buoy7_clusterC",
+      "buoy": 7,
+      "xy": [
+        -0.5,
+        1.2246467991473532e-16
+      ],
+      "role": "cluster C (-0.5, 0) -- on wave axis, UPWAVE-side cluster under heading 0"
+    }
+  ],
+  "buoy_centers_xy": {
+    "buoy1": [
+      1.5,
+      0.0
+    ],
+    "buoy2": [
+      0.7500000000000001,
+      0.43301270189221935
+    ],
+    "buoy3": [
+      0.7499999999999998,
+      -0.43301270189221924
+    ],
+    "buoy4": [
+      0.5000000000000001,
+      1.0
+    ],
+    "buoy5": [
+      -0.24999999999999983,
+      1.4330127018922194
+    ],
+    "buoy6": [
+      -0.25000000000000017,
+      0.5669872981077808
+    ],
+    "buoy7": [
+      -0.5,
+      1.2246467991473532e-16
+    ],
+    "buoy8": [
+      -1.25,
+      0.43301270189221946
+    ],
+    "buoy9": [
+      -1.2500000000000002,
+      -0.43301270189221913
+    ],
+    "buoy10": [
+      0.49999999999999983,
+      -1.0
+    ],
+    "buoy11": [
+      -0.25000000000000006,
+      -0.5669872981077806
+    ],
+    "buoy12": [
+      -0.2500000000000004,
+      -1.4330127018922192
+    ]
+  },
+  "kernel_decay_floor_override": "M11b PR8: rigid-yaw radiation (peak|K|/dominant ~4e-15) is numerical noise on the coarse 13-omega grid; exempt the 12 buoy-yaw DOFs from Check 3",
+  "asymptote_check_override": "M11b PR8: small-body spar-fin hulls (L~1.85 m) do not reach 1/omega^4 by omega_max",
+  "screening_verdict": "platform12_bem.nc passed PR7 conditioning screen (cond(K) 4.934 flat; B-min-eig clean)",
+  "bem_grid_omega": [
+    0.5,
+    1.0,
+    1.5,
+    1.75,
+    1.9,
+    2.0,
+    2.1,
+    2.25,
+    2.5,
+    3.0,
+    5.0,
+    12.0,
+    30.0
+  ],
+  "cases": [
+    {
+      "height_m": 0.05,
+      "period_s": 3.257,
+      "omega": 1.9291327317100355,
+      "amp_m": 0.025,
+      "settle_ratio": 1.3055239907718148e-05,
+      "settled": true,
+      "duration_s": 419.54200000000003,
+      "n_steps": 41954,
+      "rao_platform_heave": 1.4829450527006631,
+      "rao_buoy1_heave": 1.5181354666944136,
+      "rao_buoy2_heave": 1.4780188777658556,
+      "rao_buoy3_heave": 1.478018877096955,
+      "rao_buoy4_heave": 1.526516303970469,
+      "rao_buoy5_heave": 1.474903885431016,
+      "rao_buoy6_heave": 1.482190014849305,
+      "rao_buoy7_heave": 1.7188731774149064,
+      "rao_buoy8_heave": 1.6694934250135862,
+      "rao_buoy9_heave": 1.6694934246601023,
+      "rao_buoy10_heave": 1.5265163011241984,
+      "rao_buoy11_heave": 1.4821900134342259,
+      "rao_buoy12_heave": 1.4749038825364607,
+      "wavelength_m": 16.56245289647728,
+      "steepness_H_over_lambda": 0.0030188765101716703,
+      "steepness_flag": false
+    },
+    {
+      "height_m": 0.3,
+      "period_s": 3.257,
+      "omega": 1.9291327317100355,
+      "amp_m": 0.15,
+      "settle_ratio": 9.560082276653679e-05,
+      "settled": true,
+      "duration_s": 419.54200000000003,
+      "n_steps": 41954,
+      "rao_platform_heave": 0.610604423776451,
+      "rao_buoy1_heave": 0.6268953272018789,
+      "rao_buoy2_heave": 0.6251233954903843,
+      "rao_buoy3_heave": 0.6251233951735821,
+      "rao_buoy4_heave": 0.6170183014226305,
+      "rao_buoy5_heave": 0.6181907380273407,
+      "rao_buoy6_heave": 0.6145445231179683,
+      "rao_buoy7_heave": 0.6833098149921316,
+      "rao_buoy8_heave": 0.6810426458025304,
+      "rao_buoy9_heave": 0.6810426456958322,
+      "rao_buoy10_heave": 0.6170183003955333,
+      "rao_buoy11_heave": 0.6145445230141572,
+      "rao_buoy12_heave": 0.6181907372594049,
+      "wavelength_m": 16.56245289647728,
+      "steepness_H_over_lambda": 0.01811325906103002,
+      "steepness_flag": false
+    },
+    {
+      "height_m": 1.0,
+      "period_s": 3.257,
+      "omega": 1.9291327317100355,
+      "amp_m": 0.5,
+      "settle_ratio": 0.00013208900429287059,
+      "settled": true,
+      "duration_s": 419.54200000000003,
+      "n_steps": 41954,
+      "rao_platform_heave": 0.3057194444529654,
+      "rao_buoy1_heave": 0.3004972454246447,
+      "rao_buoy2_heave": 0.3024660895044046,
+      "rao_buoy3_heave": 0.3024660888016454,
+      "rao_buoy4_heave": 0.2874295685044592,
+      "rao_buoy5_heave": 0.31380731242537907,
+      "rao_buoy6_heave": 0.3107520065977402,
+      "rao_buoy7_heave": 0.35012980202939353,
+      "rao_buoy8_heave": 0.36438861543126727,
+      "rao_buoy9_heave": 0.36438861539152717,
+      "rao_buoy10_heave": 0.2874295676016271,
+      "rao_buoy11_heave": 0.3107520066372305,
+      "rao_buoy12_heave": 0.3138073118570155,
+      "wavelength_m": 16.56245289647728,
+      "steepness_H_over_lambda": 0.06037753020343341,
+      "steepness_flag": true
+    },
+    {
+      "height_m": 0.05,
+      "period_s": 3.141,
+      "omega": 2.0003773661826125,
+      "amp_m": 0.025,
+      "settle_ratio": 1.9233684944231128e-07,
+      "settled": true,
+      "duration_s": 418.846,
+      "n_steps": 41885,
+      "rao_platform_heave": 1.3962742168218867,
+      "rao_buoy1_heave": 1.4758754304401422,
+      "rao_buoy2_heave": 1.4170887396247434,
+      "rao_buoy3_heave": 1.4170887395409462,
+      "rao_buoy4_heave": 1.4666377134203106,
+      "rao_buoy5_heave": 1.3848202556077696,
+      "rao_buoy6_heave": 1.3847450972899427,
+      "rao_buoy7_heave": 1.5956071900758901,
+      "rao_buoy8_heave": 1.5075100566900028,
+      "rao_buoy9_heave": 1.5075100560216337,
+      "rao_buoy10_heave": 1.466637711039141,
+      "rao_buoy11_heave": 1.3847450953357787,
+      "rao_buoy12_heave": 1.3848202525873166,
+      "wavelength_m": 15.403698582533899,
+      "steepness_H_over_lambda": 0.003245973668732684,
+      "steepness_flag": false
+    },
+    {
+      "height_m": 0.3,
+      "period_s": 3.141,
+      "omega": 2.0003773661826125,
+      "amp_m": 0.15,
+      "settle_ratio": 8.121262075025797e-06,
+      "settled": true,
+      "duration_s": 418.846,
+      "n_steps": 41885,
+      "rao_platform_heave": 0.5639008837554466,
+      "rao_buoy1_heave": 0.5870804740888954,
+      "rao_buoy2_heave": 0.5845304425164567,
+      "rao_buoy3_heave": 0.5845304422852231,
+      "rao_buoy4_heave": 0.5770432444756509,
+      "rao_buoy5_heave": 0.5738177292333532,
+      "rao_buoy6_heave": 0.5694498917875173,
+      "rao_buoy7_heave": 0.6370653846243022,
+      "rao_buoy8_heave": 0.6271158686951195,
+      "rao_buoy9_heave": 0.6271158684469588,
+      "rao_buoy10_heave": 0.577043243665222,
+      "rao_buoy11_heave": 0.5694498917631602,
+      "rao_buoy12_heave": 0.5738177287233693,
+      "wavelength_m": 15.403698582533899,
+      "steepness_H_over_lambda": 0.0194758420123961,
+      "steepness_flag": false
+    },
+    {
+      "height_m": 1.0,
+      "period_s": 3.141,
+      "omega": 2.0003773661826125,
+      "amp_m": 0.5,
+      "settle_ratio": 1.2687629524722514e-05,
+      "settled": true,
+      "duration_s": 418.846,
+      "n_steps": 41885,
+      "rao_platform_heave": 0.2766916218745253,
+      "rao_buoy1_heave": 0.27056271127754355,
+      "rao_buoy2_heave": 0.27665257329801357,
+      "rao_buoy3_heave": 0.276652572568688,
+      "rao_buoy4_heave": 0.26140161915797705,
+      "rao_buoy5_heave": 0.2904499262121323,
+      "rao_buoy6_heave": 0.2873027606128571,
+      "rao_buoy7_heave": 0.3294346312908443,
+      "rao_buoy8_heave": 0.34022736679374344,
+      "rao_buoy9_heave": 0.34022736683961785,
+      "rao_buoy10_heave": 0.26140161854616634,
+      "rao_buoy11_heave": 0.2873027608229991,
+      "rao_buoy12_heave": 0.29044992611110615,
+      "wavelength_m": 15.403698582533899,
+      "steepness_H_over_lambda": 0.06491947337465367,
+      "steepness_flag": true
+    },
+    {
+      "height_m": 0.05,
+      "period_s": 2.0,
+      "omega": 3.141592653589793,
+      "amp_m": 0.025,
+      "settle_ratio": 0.0007499594995926805,
+      "settled": true,
+      "duration_s": 216.0,
+      "n_steps": 21600,
+      "rao_platform_heave": 0.0018584207178407898,
+      "rao_buoy1_heave": 0.001695504884398875,
+      "rao_buoy2_heave": 0.008562198112682131,
+      "rao_buoy3_heave": 0.008562198114548282,
+      "rao_buoy4_heave": 0.0023794956109634787,
+      "rao_buoy5_heave": 0.0036017312430920542,
+      "rao_buoy6_heave": 0.0009617536910704826,
+      "rao_buoy7_heave": 0.010212967707011607,
+      "rao_buoy8_heave": 0.004960009183745387,
+      "rao_buoy9_heave": 0.004960009165177898,
+      "rao_buoy10_heave": 0.0023794956283451165,
+      "rao_buoy11_heave": 0.0009617536673876487,
+      "rao_buoy12_heave": 0.003601731251120279,
+      "wavelength_m": 6.245239966925974,
+      "steepness_H_over_lambda": 0.00800609748621252,
+      "steepness_flag": false
+    },
+    {
+      "height_m": 0.3,
+      "period_s": 2.0,
+      "omega": 3.141592653589793,
+      "amp_m": 0.15,
+      "settle_ratio": 0.0035513517467377492,
+      "settled": true,
+      "duration_s": 216.0,
+      "n_steps": 21600,
+      "rao_platform_heave": 0.0018548112997404831,
+      "rao_buoy1_heave": 0.0008633394798653971,
+      "rao_buoy2_heave": 0.008166198354941397,
+      "rao_buoy3_heave": 0.008166198347788181,
+      "rao_buoy4_heave": 0.0023518472900470296,
+      "rao_buoy5_heave": 0.0035565658379547653,
+      "rao_buoy6_heave": 0.0008893989614088324,
+      "rao_buoy7_heave": 0.010363635208851089,
+      "rao_buoy8_heave": 0.005490802898943653,
+      "rao_buoy9_heave": 0.005490802881418195,
+      "rao_buoy10_heave": 0.00235184729757883,
+      "rao_buoy11_heave": 0.0008893989374217429,
+      "rao_buoy12_heave": 0.003556565844258935,
+      "wavelength_m": 6.245239966925974,
+      "steepness_H_over_lambda": 0.04803658491727512,
+      "steepness_flag": true
+    },
+    {
+      "height_m": 1.0,
+      "period_s": 2.0,
+      "omega": 3.141592653589793,
+      "amp_m": 0.5,
+      "settle_ratio": 0.0035892924872914806,
+      "settled": true,
+      "duration_s": 216.0,
+      "n_steps": 21600,
+      "rao_platform_heave": 0.0019703637236281944,
+      "rao_buoy1_heave": 0.005223119459391378,
+      "rao_buoy2_heave": 0.007581309495045754,
+      "rao_buoy3_heave": 0.007581309421827338,
+      "rao_buoy4_heave": 0.0011074997388672196,
+      "rao_buoy5_heave": 0.004763479275444587,
+      "rao_buoy6_heave": 0.0011688628950799328,
+      "rao_buoy7_heave": 0.011380641587627005,
+      "rao_buoy8_heave": 0.00781649342461093,
+      "rao_buoy9_heave": 0.007816493363482235,
+      "rao_buoy10_heave": 0.00110749967469686,
+      "rao_buoy11_heave": 0.0011688629166651356,
+      "rao_buoy12_heave": 0.004763479310600582,
+      "wavelength_m": 6.245239966925974,
+      "steepness_H_over_lambda": 0.1601219497242504,
+      "steepness_flag": true
+    }
+  ]
+}
