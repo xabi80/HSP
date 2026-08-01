@@ -1503,6 +1503,72 @@ magnitude-scaled hypothesis-red bound.
 
 ---
 
+### KERNEL-DECAY-COARSE-GRID — does the 13-ω BEM grid degrade the physical kernel, or only noise-floor DOFs? (OPEN QUESTION)
+
+**This is an open question, NOT a deferred fix.** M11b PR8 shipped a
+Check-3 noise-floor exemption (`kernel_decay_floor_override`,
+`floatsim/hydro/retardation.py`) that lets the 12-buoy platform kernel
+build on the coarse 13-ω grid (`studies/platform-12buoy/
+platform12_bem.nc`, ω = {0.5, 1.0, 1.5, 1.75, 1.9, 2.0, 2.1, 2.25, 2.5,
+3.0, 5.0, 12.0, 30.0} + ∞). The exemption is safe by construction — it
+fires ONLY on DOFs whose kernel is measurably negligible (peak |K| /
+dominant < `_KERNEL_DECAY_NOISE_FLOOR` = 1e-9) and requires an explicit
+rationale. The open question is upstream of the exemption: **is 13 ω
+points enough to resolve the PHYSICAL kernel (heave, surge, the
+rotational mode) to the accuracy PR8's RAO deliverable needs, or does the
+coarse grid also perturb the physical DOFs — just not enough to trip
+Check 3?**
+
+**What is measured (PR8-K3, `scratchpad/pr8_k3_verify.py`).** On this
+grid, exactly the 12 buoy-yaw DOFs are exempted, all at peak |K| /
+dominant ≈ 4.1e-15 (absolute ≈ 1.6e-12, ~1.5 orders above the
+`_FLOAT_EPS` = 1e-12 absent-kernel skip). This is physically expected: a
+rigid buoy radiates ~no yaw wave, so B[yaw] ≈ 0 and its "kernel" is
+numerical noise whose non-decay is meaningless. The dominant diagonal
+peak is 383.2; the smallest PHYSICAL DOF (heave) sits at rel ≈ 1.24e-4,
+~5 orders above the 1e-9 floor and ~10 orders above yaw. So the exemption
+cleanly separates noise from physics **at the Check-3 level**. What it
+does NOT establish is the *quantitative accuracy* of the physical kernel
+on 13 points vs a finer grid.
+
+**Why this is latent (the code-path-exercise principle, CLAUDE.md §13
+Item 19).** PR8 produces RAO / acceleration outputs for an EXTERNAL
+OrcaFlex comparison; it does not judge agreement in code (no tolerance).
+A coarse-grid kernel error on a physical DOF would therefore surface only
+as a discrepancy in Xabier's external comparison, not as a failing gate
+in this repo — precisely the shape of the five latent bugs in §13. The
+noise-floor exemption removes the *gate false-positive* on yaw but does
+not certify the physical kernel.
+
+**Resolution protocol (if/when acted on).** Re-run the platform BEM on a
+denser ω grid (e.g. 25–40 points, refined through the rotational-mode
+band ~1.9–2.25 rad/s where the coupled cluster response peaks), recompute
+the retardation kernel, and compare the PHYSICAL diagonal kernels
+(heave / surge / the rotational DOF) against the 13-ω kernels. If the
+physical kernels agree to within the RAO-relevant tolerance, the coarse
+grid is vindicated and the exemption stands as the only coarse-grid
+concession. If they diverge, the RAO deliverable must be regenerated on
+the finer grid AND the exemption re-derived (the noise floor is set from
+the 13-ω separation; a finer grid changes the absolute peaks). Until such
+a run exists, this stays an open question — no accuracy claim is made
+about the 13-ω physical kernel.
+
+**Options considered (PR8 kernel disposition).** (i) widen the grid now —
+rejected: a full re-solve is ~190 min (BUILD-bound, Finding G2) and PR8's
+scope is producing comparable outputs, not re-qualifying the BEM. (ii)
+the noise-floor exemption — SHIPPED (this is the safe, measured, opt-in
+path). (iii) THIS entry — record the residual grid-adequacy question
+explicitly rather than assume the coarse grid is fine for the physical
+DOFs.
+
+**Status.** Open question. Surfaced 2026-07-31 (M11b PR8). Not blocking
+PR8 (external comparison; no in-repo tolerance). Re-open for any future
+in-repo assertion that depends on the platform kernel's physical
+accuracy, or if Xabier's external comparison shows a discrepancy that
+points back at kernel resolution.
+
+---
+
 ## Resolved entries
 
 *(none yet)*

@@ -95,6 +95,15 @@ _OFFDIAG_REL_THRESHOLD: Final[float] = 1.0e-6
 
 # Check 3 (post-extension, hard error).
 _GATE_KERNEL_DECAY_RATIO: Final[float] = 1.0e-3  # |K(t_max)| / max|K| < 0.1%
+# Check-3 noise-floor exemption (M11b PR8). A diagonal DOF whose peak |K| is
+# below this fraction of the matrix's dominant diagonal peak carries no physical
+# radiation memory -- its "kernel" is numerical noise, and the decay ratio on it
+# is meaningless. Set from the measured separation on the 12-buoy platform: yaw
+# peak |K| / max = 4.1e-15 (rigid yaw radiation ~0) vs the smallest PHYSICAL DOF
+# (heave) = 1.24e-4 -- ~10 orders apart. 1e-9 sits ~5 orders above yaw and ~5
+# below heave. Exemption is OPT-IN via a rationale string (never automatic), so
+# it cannot silently mask a real non-decay on a physical DOF.
+_KERNEL_DECAY_NOISE_FLOOR: Final[float] = 1.0e-9
 
 # Tail extension upper bound (independent of the gates).
 _TAIL_UPPER_BOUND_FACTOR: Final[float] = 5.0
@@ -208,6 +217,7 @@ def compute_retardation_kernel(
     t_max: float,
     dt: float,
     asymptote_check_override: str | None = None,
+    kernel_decay_floor_override: str | None = None,
 ) -> RetardationKernel:
     """Compute the retardation kernel ``K(t)`` from ``hdb.B(omega)``.
 
@@ -253,6 +263,21 @@ def compute_retardation_kernel(
         that the caller has judged Item 25 inapplicable. Empty
         strings (``None``, ``""``, or whitespace-only via
         ``.strip() == ""``) raise ``ValueError``.
+    kernel_decay_floor_override
+        Optional non-empty rationale string that exempts noise-floor
+        DOFs from Check 3 (post-extension kernel decay; M11b PR8). A
+        diagonal DOF qualifies for exemption ONLY by the measured
+        criterion ``peak|K_ii| / max_j peak|K_jj| < _KERNEL_DECAY_NOISE_FLOOR``
+        (= 1e-9) -- i.e. its kernel is numerical noise relative to the
+        dominant radiation memory, so the decay ratio is meaningless.
+        Physical DOFs (above the floor) are never exempted, so a real
+        non-decay still raises. The exempted DOFs and their measured
+        ``peak|K|/dominant`` ratios are emitted as a ``UserWarning``.
+        Intended for the 12-buoy platform's rigid-yaw radiation
+        (``|K|/dominant ~ 4e-15``) on the coarse 13-omega BEM grid. Empty
+        strings raise ``ValueError``, exactly as
+        ``asymptote_check_override``. See tracker
+        ``KERNEL-DECAY-COARSE-GRID``.
 
     Returns
     -------
@@ -366,6 +391,21 @@ def compute_retardation_kernel(
             stacklevel=2,
         )
 
+    # Check-3 noise-floor exemption (M11b PR8). Same rationale-string contract as
+    # the Item-25 override: opt-in, explicit rationale, empty/whitespace raises.
+    if kernel_decay_floor_override is not None:
+        if not isinstance(kernel_decay_floor_override, str):
+            raise ValueError(
+                "kernel_decay_floor_override must be a non-empty rationale string; got "
+                f"{type(kernel_decay_floor_override).__name__}"
+            )
+        if kernel_decay_floor_override.strip() == "":
+            raise ValueError(
+                "kernel_decay_floor_override rationale is empty or whitespace-only; "
+                "the exemption requires an explicit rationale (M11b PR8; see tracker "
+                "KERNEL-DECAY-COARSE-GRID)."
+            )
+
     omega = np.asarray(hdb.omega, dtype=np.float64)
     b_stack = np.asarray(hdb.B, dtype=np.float64)
 
@@ -422,7 +462,7 @@ def compute_retardation_kernel(
     # BEM input proxies in _validate_input_gates only screen for likely
     # problems; this measures the actual decay we care about. Runs on
     # both the standard and override paths per plan Q3 lock.
-    _validate_kernel_decay(K)
+    _validate_kernel_decay(K, floor_override=kernel_decay_floor_override)
 
     return RetardationKernel(K=K, t=t_arr, dt=float(dt))
 
@@ -528,9 +568,16 @@ def _validate_input_gates(omega: NDArray[np.float64], B: NDArray[np.float64]) ->
     return skip_tail_mask
 
 
-def _validate_kernel_decay(K: NDArray[np.float64]) -> None:
+def _validate_kernel_decay(K: NDArray[np.float64], *, floor_override: str | None = None) -> None:
     """Check 3 (post-extension hard error): ``|K_ii(t_max)| / max|K_ii(t)|``
     must be < ``_GATE_KERNEL_DECAY_RATIO`` (= 0.001) on every diagonal.
+
+    When ``floor_override`` is a non-empty rationale string, a diagonal DOF
+    whose peak |K| is below ``_KERNEL_DECAY_NOISE_FLOOR`` of the matrix's
+    dominant diagonal peak is EXEMPTED (its kernel is numerical noise, so the
+    decay ratio is meaningless) -- the exempted DOFs and their measured ratios
+    are emitted as a UserWarning. Physical DOFs (above the floor) are never
+    exempted, so a real non-decay still raises (M11b PR8).
 
     Threshold rationale: 0.1 % is 20x the measured marin_semi ratio
     (~ 0.005 %); conservative for future fixtures with potentially
@@ -553,13 +600,34 @@ def _validate_kernel_decay(K: NDArray[np.float64]) -> None:
     end = np.abs(K[:, :, -1])
     diag_peak = np.diag(peak)
     diag_end = np.diag(end)
+    dominant = float(np.max(diag_peak)) if n_dof else 0.0
     offenders: list[tuple[int, float, float]] = []
+    exempted: list[tuple[int, float]] = []  # (dof, peak/dominant)
     for i in range(n_dof):
         if diag_peak[i] <= _FLOAT_EPS:
             continue
         ratio = float(diag_end[i] / diag_peak[i])
-        if ratio > _GATE_KERNEL_DECAY_RATIO:
+        if ratio <= _GATE_KERNEL_DECAY_RATIO:
+            continue
+        rel = float(diag_peak[i] / dominant) if dominant > 0.0 else 1.0
+        if floor_override is not None and rel < _KERNEL_DECAY_NOISE_FLOOR:
+            exempted.append((i, rel))
+        else:
             offenders.append((i, ratio, float(diag_peak[i])))
+    if exempted:
+        exempt_lines = "\n".join(
+            f"  DOF {i}: peak|K|/dominant = {rel:.2e} (< {_KERNEL_DECAY_NOISE_FLOOR:.0e} floor)"
+            for i, rel in exempted
+        )
+        warnings.warn(
+            "Check 3 (kernel decay) EXEMPTED noise-floor DOFs via "
+            f"kernel_decay_floor_override; rationale: {floor_override!r}. These "
+            "DOFs carry no physical radiation memory (peak |K| far below the "
+            f"dominant diagonal), so the decay ratio is meaningless:\n{exempt_lines}\n"
+            "See tracker KERNEL-DECAY-COARSE-GRID.",
+            UserWarning,
+            stacklevel=3,
+        )
     if offenders:
         offender_lines = "\n".join(
             f"  DOF {i}: |K[{i},{i}](t_max)|/peak = {ratio * 100:.4f}%, "

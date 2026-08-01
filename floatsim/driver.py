@@ -549,6 +549,7 @@ def _build_coupled_mixed(
     gravity: float,
     asymptote_check_override: str | None = None,
     hydrostatic_database: HydroDatabase | None = None,
+    kernel_decay_floor_override: str | None = None,
 ) -> tuple[CumminsLHS, RetardationKernel]:
     """Coupled ``6*n_deck`` LHS + kernel for a deck mixing hydro (labelled)
     bodies with structural (hydro-free) bodies (M10 PR0.5, plan Q4-c).
@@ -641,7 +642,11 @@ def _build_coupled_mixed(
         body_labels=tuple(deck_hydro_labels),
     )
     kernel_h = compute_retardation_kernel(
-        reordered, t_max=t_max_kernel, dt=dt, asymptote_check_override=asymptote_check_override
+        reordered,
+        t_max=t_max_kernel,
+        dt=dt,
+        asymptote_check_override=asymptote_check_override,
+        kernel_decay_floor_override=kernel_decay_floor_override,
     )
     k_h = np.asarray(kernel_h.K)
     k_global = np.zeros((6 * n, 6 * n, k_h.shape[-1]), dtype=np.float64)
@@ -658,6 +663,7 @@ def _build_coupled_lhs_kernel(
     gravity: float,
     asymptote_check_override: str | None = None,
     hydrostatic_database: HydroDatabase | None = None,
+    kernel_decay_floor_override: str | None = None,
 ) -> tuple[CumminsLHS, RetardationKernel]:
     """Coupled ``6N`` LHS + kernel from a shared N-body database (M9 Q5).
 
@@ -686,6 +692,7 @@ def _build_coupled_lhs_kernel(
             gravity,
             asymptote_check_override,
             hydrostatic_database,
+            kernel_decay_floor_override,
         )
     if any(b.hydro_body_label is None for b in deck.bodies):
         raise ValueError(
@@ -755,6 +762,7 @@ def _build_coupled_lhs_kernel(
         t_max=t_max_kernel,
         dt=dt,
         asymptote_check_override=asymptote_check_override,
+        kernel_decay_floor_override=kernel_decay_floor_override,
     )
     return lhs, kernel
 
@@ -769,6 +777,7 @@ def build_system(
     shared_hydro_database: HydroDatabase | None = None,
     asymptote_check_override: str | None = None,
     hydrostatic_database: HydroDatabase | None = None,
+    kernel_decay_floor_override: str | None = None,
 ) -> SimulationSetup:
     """Materialise a deck-driven simulation setup.
 
@@ -780,6 +789,21 @@ def build_system(
     ``omega_max``; the override is a forcing function — the kernel still
     raises on an empty / whitespace rationale. ``None`` (default) leaves
     the gate active and the assembly byte-identical to pre-PR0.
+
+    ``kernel_decay_floor_override`` (M11b PR8): a non-empty rationale
+    string that exempts **noise-floor DOFs** from the retardation-kernel
+    post-extension decay gate (Check 3) on the **coupled** path only. A
+    DOF qualifies for exemption ONLY by a measured criterion — its kernel
+    peak ``|K|`` relative to the matrix's dominant diagonal entry falls
+    below ``retardation._KERNEL_DECAY_NOISE_FLOOR`` (see the constant's
+    derivation). The 12-buoy platform's yaw radiation is
+    ``|K|/dominant ~ 4e-15`` (numerical noise, not physics); its
+    non-decay on the coarse 13-omega grid is a gate false-positive. The
+    exemption is per-DOF and reported (a ``warnings.warn`` lists the
+    exempted DOFs and their measured ratios); physical DOFs that fail to
+    decay still raise. Empty / whitespace rationale raises, exactly as
+    ``asymptote_check_override``. ``None`` (default) leaves Check 3 fully
+    active. See tracker ``KERNEL-DECAY-COARSE-GRID``.
 
     Parameters
     ----------
@@ -844,6 +868,7 @@ def build_system(
             deck.environment.gravity,
             hydrostatic_database=hydrostatic_database,
             asymptote_check_override=asymptote_check_override,
+            kernel_decay_floor_override=kernel_decay_floor_override,
         )
     else:
         for body in deck.bodies:
