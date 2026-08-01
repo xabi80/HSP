@@ -226,9 +226,13 @@ def _fit_amplitude(t: NDArray, x: NDArray, omega: float) -> float:
     return float(np.hypot(coeffs[0], coeffs[1]))
 
 
-def _steady_window(t: NDArray, ramp_s: float, settle_s: float) -> NDArray[np.bool_]:
-    """Boolean mask of the steady window: after ramp + settle, to the end."""
-    return t >= (ramp_s + settle_s)
+_SETTLE_TOL = 0.02  # 2% window-to-window amplitude agreement (settling criterion)
+
+
+def _window_amp(t: NDArray, x: NDArray, omega: float, t_hi: float, w_s: float) -> float:
+    """Sinusoid amplitude of ``x`` over the window ``[t_hi - w_s, t_hi]``."""
+    m = (t >= t_hi - w_s) & (t <= t_hi + 1e-9)
+    return _fit_amplitude(t[m], x[m], omega)
 
 
 def run_case(
@@ -239,13 +243,22 @@ def run_case(
     height_m: float,
     period_s: float,
     ramp_s: float,
-    settle_s: float,
-    steady_periods: float,
+    cap_settle_s: float,
+    window_periods: float,
     dt: float,
 ) -> dict:
-    """Integrate one (H, T) case and extract RAOs + accelerations."""
+    """Integrate one (H, T) case with ADAPTIVE settle (M11b PR8 STEP 1):
+    integrate-until-window-converges, capped at ``cap_settle_s``.
+
+    The integrator stops as soon as the platform-heave amplitude over two
+    consecutive ``window_periods``-long windows agrees to within
+    ``_SETTLE_TOL``; the RAO/accel window is the final converged window. A run
+    that reaches the cap without converging is reported ``settled=False``
+    (STOP condition -- a finding about the mode's Q, not a cap to raise)."""
     amp = 0.5 * height_m  # A = H/2
     omega = 2.0 * np.pi / period_s
+    window_s = window_periods * period_s
+    plat_heave_dof = 6 * _buoy_body_index_platform() + 2
     wave = RegularWave(amplitude=amp, omega=omega, heading_deg=0.0)
     f72 = make_regular_wave_force(
         hdb=hdb, wave=wave, body_position=(0.0, 0.0, 0.0), ramp=HalfCosineRamp(duration=ramp_s)
@@ -256,7 +269,18 @@ def run_case(
         f[hydro_dof] = f72(t)
         return f
 
-    duration = ramp_s + settle_s + steady_periods * period_s
+    def stop_check(tt: NDArray[np.float64], xx: NDArray[np.float64]) -> bool:
+        t_now = float(tt[-1])
+        # Need the ramp done plus two full comparison windows of steady data.
+        if t_now < ramp_s + 2.0 * window_s:
+            return False
+        a_last = _window_amp(tt, xx[:, plat_heave_dof], omega, t_now, window_s)
+        a_prev = _window_amp(tt, xx[:, plat_heave_dof], omega, t_now - window_s, window_s)
+        if a_last <= 0.0:
+            return False
+        return abs(a_last - a_prev) / a_last < _SETTLE_TOL
+
+    duration = ramp_s + cap_settle_s + 2.0 * window_s
     res = integrate_cummins(
         lhs=setup.lhs,
         kernel=setup.kernel,
@@ -269,21 +293,23 @@ def run_case(
         external_force=ext,
         state_force=setup.state_force,
         projection_interval=1,
+        stop_check=stop_check,
+        stop_check_interval=max(1, round(window_s / dt)),
     )
     t = res.t
-    mask = _steady_window(t, ramp_s, settle_s)
+    duration_used = float(t[-1])
+    converged = duration_used < duration - 0.5 * dt  # stopped early via stop_check
+
+    # RAO / accel window = the final converged window.
+    mask = t >= duration_used - window_s
     tw, xi_w, acc_w = t[mask], res.xi[mask], res.xi_ddot[mask]
 
-    # Settling verification: amplitude over 1st vs 2nd half of the steady window
-    # must agree. Use the platform-heave channel (global DOF 98) as the probe.
-    plat_heave_dof = 6 * _buoy_body_index_platform() + 2
-    half = tw.size // 2
-    a1 = _fit_amplitude(tw[:half], xi_w[:half, plat_heave_dof], omega)
-    a2 = _fit_amplitude(tw[half:], xi_w[half:, plat_heave_dof], omega)
-    settle_ratio = float(abs(a1 - a2) / a2) if a2 > 0 else float("nan")
-    settled = settle_ratio < 0.02
+    # Settling verification: last two windows must agree (the stop criterion).
+    a_last = _window_amp(t, res.xi[:, plat_heave_dof], omega, duration_used, window_s)
+    a_prev = _window_amp(t, res.xi[:, plat_heave_dof], omega, duration_used - window_s, window_s)
+    settle_ratio = float(abs(a_last - a_prev) / a_last) if a_last > 0 else float("nan")
+    settled = settle_ratio < _SETTLE_TOL
 
-    # RAOs: platform heave + every buoy heave.
     rao = {"platform_heave": _fit_amplitude(tw, xi_w[:, plat_heave_dof], omega) / amp}
     for k0 in range(12):
         dof = 6 * _buoy_body_index(k0) + 2
@@ -294,7 +320,9 @@ def run_case(
         "period_s": period_s,
         "omega": omega,
         "amp_m": amp,
-        "duration_s": duration,
+        "duration_s": duration_used,
+        "duration_cap_s": duration,
+        "converged_early": bool(converged),
         "n_steps": int(t.size - 1),
         "settle_ratio": settle_ratio,
         "settled": bool(settled),
@@ -373,22 +401,23 @@ def main() -> None:
 
     # Pilot matrix: 2 resonances (T=3.141, 3.257 s) + 1 off-resonance anchor
     # (T=2.0 s), each at 3 heights spanning the requested 0.03-1.2 m band.
+    # Adaptive settle (M11b PR8 STEP 1): the integrator stops when converged;
+    # cap_settle is the hard ceiling only, sized for the slowest (small-H) case.
     if args.smoke:
-        matrix = [(0.30, 3.257, 20.0, 40.0, 6.0)]  # (H, T, ramp, settle, steady_periods)
+        matrix = [(0.30, 3.257, 20.0, 450.0, 6.0)]  # (H, T, ramp, cap_settle, window_periods)
     else:
         heights = [0.05, 0.30, 1.00]
-        # (period, ramp_s, settle_s, steady_periods): resonances settle slowly
-        # (high Q at low amplitude); the off-res anchor settles faster.
+        # (period, ramp_s, cap_settle_s, window_periods)
         periods = [
-            (3.257, 20.0, 380.0, 6.0),
-            (3.141, 20.0, 380.0, 6.0),
-            (2.000, 20.0, 180.0, 8.0),
+            (3.257, 20.0, 450.0, 6.0),
+            (3.141, 20.0, 450.0, 6.0),
+            (2.000, 20.0, 250.0, 8.0),
         ]
-        matrix = [(h, p, r, s, sp) for (p, r, s, sp) in periods for h in heights]
+        matrix = [(h, p, r, s, wp) for (p, r, s, wp) in periods for h in heights]
 
     summary_rows: list[dict] = []
-    for i, (h, p, r, s, sp) in enumerate(matrix):
-        print(f"[{i + 1}/{len(matrix)}] H={h} m  T={p} s  (settle {s}s)...", flush=True)
+    for i, (h, p, r, s, wp) in enumerate(matrix):
+        print(f"[{i + 1}/{len(matrix)}] H={h} m  T={p} s  (cap {s}s)...", flush=True)
         case = run_case(
             setup,
             hdb_force,
@@ -396,8 +425,8 @@ def main() -> None:
             height_m=h,
             period_s=p,
             ramp_s=r,
-            settle_s=s,
-            steady_periods=sp,
+            cap_settle_s=s,
+            window_periods=wp,
             dt=dt,
         )
         tag = f"H{h:g}_T{p:g}".replace(".", "p")
@@ -409,7 +438,9 @@ def main() -> None:
             "amp_m": case["amp_m"],
             "settle_ratio": case["settle_ratio"],
             "settled": case["settled"],
-            "duration_s": case["duration_s"],
+            "converged_early": case["converged_early"],
+            "duration_used_s": case["duration_s"],
+            "duration_cap_s": case["duration_cap_s"],
             "n_steps": case["n_steps"],
         }
         row.update({f"rao_{k}": v for k, v in case["rao"].items()})
@@ -417,7 +448,9 @@ def main() -> None:
         print(
             f"    platform_heave RAO={case['rao']['platform_heave']:.4f}  "
             f"buoy1 RAO={case['rao']['buoy1_heave']:.4f}  "
-            f"settled={case['settled']} (ratio {case['settle_ratio']:.2e})",
+            f"settled={case['settled']} (ratio {case['settle_ratio']:.2e})  "
+            f"dur_used={case['duration_s']:.0f}s/cap{case['duration_cap_s']:.0f}s "
+            f"converged_early={case['converged_early']}",
             flush=True,
         )
 

@@ -222,6 +222,8 @@ def integrate_cummins(
     rho_inf: float = 0.9,
     constraints: JointSet | None = None,
     projection_interval: int = 1,
+    stop_check: Callable[[NDArray[np.float64], NDArray[np.float64]], bool] | None = None,
+    stop_check_interval: int = 0,
 ) -> IntegrationResult:
     """Integrate the linear Cummins ODE with generalized-alpha.
 
@@ -263,13 +265,25 @@ def integrate_cummins(
         integrator's high-frequency numerical damping. ``1`` is the
         energy-conserving trapezoidal limit, ``0`` is maximum damping.
         Default ``0.9`` matches the marine/offshore convention.
+    stop_check
+        Optional opt-in early-stop callback (M11b PR8 adaptive settle).
+        When supplied, it is evaluated every ``stop_check_interval`` steps
+        on the history accumulated so far, called as
+        ``stop_check(t[:m], xi[:m])``; returning ``True`` terminates the
+        run and the result is truncated to that length. The default
+        (``None``) never evaluates and the run is byte-identical to the
+        fixed-duration path -- ``duration`` is then the exact length.
+    stop_check_interval
+        Steps between ``stop_check`` evaluations. ``0`` (default) disables
+        the check regardless of ``stop_check``.
 
     Returns
     -------
     IntegrationResult
         Time grid and per-DOF position, velocity, and acceleration
-        histories, each of shape ``(N+1, n_dof)`` with
-        ``N = round(duration / dt)``.
+        histories, each of shape ``(M, n_dof)`` -- ``M = round(duration /
+        dt) + 1`` for a full run, or fewer rows when ``stop_check``
+        terminates early.
 
     Raises
     ------
@@ -381,6 +395,7 @@ def integrate_cummins(
     xi_ddot_n = xi_ddot_0
     F_n = F0
 
+    stop_n: int | None = None
     for n in range(n_steps):
         t_np1 = t[n + 1]
         F_np1_time = np.asarray(force(t_np1), dtype=np.float64)
@@ -443,10 +458,25 @@ def integrate_cummins(
         F_n = F_np1
         mu_n = mu_np1
 
+        # Optional opt-in early stop (M11b PR8 adaptive settle): when a
+        # ``stop_check`` is supplied, evaluate it every ``stop_check_interval``
+        # steps on the history so far and terminate when it returns True. The
+        # default (``stop_check=None``) never evaluates and the run is
+        # byte-identical to the fixed-duration path.
+        if (
+            stop_check is not None
+            and stop_check_interval > 0
+            and (n + 1) % stop_check_interval == 0
+            and stop_check(t[: n + 2], xi_hist[: n + 2])
+        ):
+            stop_n = n + 1
+            break
+
+    last = n_samples if stop_n is None else stop_n + 1
     return IntegrationResult(
-        t=t,
-        xi=xi_hist,
-        xi_dot=xi_dot_hist,
-        xi_ddot=xi_ddot_hist,
-        lam=lam_hist,
+        t=t[:last],
+        xi=xi_hist[:last],
+        xi_dot=xi_dot_hist[:last],
+        xi_ddot=xi_ddot_hist[:last],
+        lam=(None if lam_hist is None else lam_hist[:last]),
     )
