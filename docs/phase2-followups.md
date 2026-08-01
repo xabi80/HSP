@@ -1569,6 +1569,140 @@ points back at kernel resolution.
 
 ---
 
+### ~~PLATFORM-KKT-CONSTRAINT-DRIFT~~ — RETRACTED (misdiagnosis; superseded by PLATFORM-HYDROSTATIC-C-INDEFINITE)
+
+**Retracted 2026-08-01, same day it was raised.** The M11b PR8 pilot
+bring-up first presented as a velocity-level KKT constraint-drift
+instability: the full 12-buoy platform diverged under integration and the
+position-constraint residual ``||phi||`` grew unboundedly (12 -> 3.8e3 ->
+3.4e6). That framing was **wrong**. The ``||phi||`` blow-up was a
+**symptom**, not the cause: the assembled restoring matrix ``C`` is
+indefinite (six negative-omega^2 modes on the constraint-feasible
+subspace), and those negative-stiffness modes drive the motion that the
+single-step position projection then chases — the projection was never at
+fault. The decisive falsification: M10 PR1 runs the identical 1-cluster
+topology, identical ``yaw_locked`` constraints, identical consistent
+rigid-heave IC, and is **stable**; swapping only the hydrodynamic
+database (M10 cluster BEM -> platform BEM) flips it to divergent. The
+constraint formulation is exonerated. See
+PLATFORM-HYDROSTATIC-C-INDEFINITE for the real cause. Both the wrong
+diagnosis and its correction are kept here per the audit-trail rule
+(conventions doc Item 23).
+
+---
+
+### PLATFORM-HYDROSTATIC-C-INDEFINITE — platform12_bem.nc carries an indefinite stored hydrostatic C (BLOCKER)
+
+**Mechanism.** ``studies/platform-12buoy/platform12_bem.nc`` stores a
+**non-zero, indefinite** hydrostatic restoring matrix ``C``. Each per-buoy
+6x6 block has correct positive diagonals but a large negative eigenvalue,
+so the full 72x72 ``C`` has 31 negative eigenvalues. ``build_system``'s
+coupled path seeds the global restoring from ``shared_db.C``
+(``floatsim/driver.py``: ``c_mat += shared_db.C`` in
+``_build_coupled_lhs_kernel`` / ``_build_coupled_mixed``), so the
+indefiniteness flows straight into the LHS. The assembled ``C`` then
+carries **six negative-omega^2 modes on the constraint-feasible subspace**
+(null(G)), i.e. six unstable free modes -> exponential divergence in every
+dynamic run of the platform (free decay, wave-forced, drag or no drag,
+on- or off-resonance, any dt). This is the hydrostatic-gravity bug CLASS
+(CLAUDE.md Section 13 Example 1) — a wrong hydrostatic matrix — not a
+solver bug.
+
+**Measured evidence (M11b PR8 diagnostics).**
+- Stored C: **M10 cluster BEM min eig 0.0, 0 negative** (all-zero C33 =
+  C44 = C55 = 0) vs **platform12 min eig -1.02e2, 31 negative**; the
+  platform per-buoy block has C33 = 221.08, C44 = C55 = 161.74, block
+  min eig **-1.02e2** (positive diagonals, indefinite block -> the fault
+  is an off-diagonal rotational coupling, not a diagonal sign).
+- M10-anchor swap (topology / constraints / consistent rigid-heave IC /
+  integrator all held FIXED, only the shared radiation+hydrostatic DB
+  swapped): assembled ``C`` feasible-omega^2 min **A (M10) ~ 0 -> STABLE**
+  (heave decays 5 cm -> 3.6 cm) vs **B (platform) = -1.60, six negative
+  -> DIVERGING** (max|xi| 3.8e6 by t=40).
+- Ruled out: ``M+A_inf`` is positive-definite (min eig **0.114**), raw
+  ``A_inf`` PSD -> mass matrix fine; zeroing ``B(omega)`` (kernel ~ 0)
+  does **not** fix it -> not the radiation kernel; no topology or scale
+  gradient (1-cluster / 24-DOF diverges identically to 4-cluster /
+  102-DOF) -> not accumulation, not a two-level-chain effect, not the
+  KKT projection.
+
+**Why latent (Section 13 first-contact, candidate).** M10 / cluster BEM
+stored an all-zero ``C`` and drew stiffness entirely from the M10-PR0.85
+reference-injection path (``reference_single_bem.nc`` broadcast). The
+platform BEM is (pending STEP-2 confirmation) the **first** run whose
+stored ``C`` is non-zero and consumed as the restoring base — so this code
+path may never have produced hydrostatics before. Free-decay validation on
+the cluster was necessary but not sufficient: it never exercised a
+non-zero stored ``C``.
+
+**Investigation (STEP 2, CONFIRMED 2026-08-01).** A **reference-point
+inconsistency**, confirmed to the number:
+- ``studies/platform-12buoy/platform_bem.py`` (the BEM runner) sets each
+  buoy's ``rotation_center = center_of_mass = (dx, dy, cogz)`` with
+  ``cogz = cc.CoG_Z_SINGLE - pc.PLATFORM_DZ = -1.2327`` and calls
+  ``compute_hydrostatic_stiffness`` about that CoG. About the CoG (which
+  sits ~0.5 m below the center of buoyancy) Capytaine's hydrostatic
+  stiffness carries a surge-pitch / sway-roll buoyancy coupling
+  ``C15 = rho*g*V*(z_CoG - z_CoB) = 328.67 * 0.500 = 164.25`` -- exactly
+  the measured off-diagonal. With zero surge stiffness the [surge, pitch]
+  2x2 block ``[[0, 164.25], [164.25, 161.74]]`` has determinant
+  ``-164.25^2 < 0`` -> eigenvalue -102. (a) confirmed.
+- ``reference_single_bem.nc`` (the hydrostatic the WORKING M10 path
+  injects) is **PSD**: C33 = 221.08, C44 = C55 = **151.36**, **C15 = 0**,
+  eig ``[0, 0, 0, 151.36, 151.36, 221.08]``. So the correctly-referenced
+  per-buoy hydrostatic IS PSD -- (c) confirmed decisively.
+- The M10 cluster BEM stores an **all-zero** C and draws stiffness
+  entirely from that PSD reference-injection. The platform is the first
+  run to store a non-zero C and feed it in as the restoring base --
+  **first-contact** ((b) confirmed), and M10/cluster are unaffected
+  (their stored C is zero) ((d) confirmed).
+- **Bug class named:** a stored hydrostatic C computed about the CoG
+  (``rotation_center = CoG``) carries a buoyancy/CoB rotational coupling
+  that FloatSim's separate gravity + reference-injection path neither
+  expects nor cancels; ``build_system`` then seeds the restoring from this
+  indefinite stored C.
+
+**STEP 3 (DONE) -- build-time restoring-PSD gate.** ``build_system`` now
+runs ``_gate_restoring_psd`` (``floatsim/driver.py``) on the assembled
+restoring matrix over the constraint-feasible subspace ``null(G)`` before
+returning: it raises when the min generalized eigenvalue ``omega^2`` drops
+below ``-_RESTORING_PSD_RTOL (1e-8) * max|omega^2|``. Free rigid modes at
+zero pass; a genuine negative-stiffness mode fails. Calibrated on the
+known cases: **M10 PR1 feasible omega^2 min = -5.42e-16 -> PASS** (suite
+still green); **platform feasible omega^2 min = -1.60, six negative ->
+FAIL** with a message naming this entry. Unit-tested in
+``tests/validation/test_m11b_pr8_restoring_psd_gate.py`` (7 cases:
+PSD pass, indefinite fail, zero-free-modes allowed, numerical-zero
+tolerance, feasible-subspace dim + qualifier). This turns the failure
+mode that took hours to diagnose into an immediate build-time error.
+
+**Fix options for the C itself (STEP 4, NOT yet implemented -- awaiting
+disposition, informed by STEP 2).**
+1. Regenerate ``platform12_bem.nc`` with a zeroed/consistent stored C so
+   the reference-injection path supplies stiffness cleanly (matches the
+   validated cluster path) — a knowing design decision now that STEP 2 has
+   confirmed the mechanism.
+2. Recompute the platform hydrostatics about a reference consistent with
+   the assembly / gravity-restoring convention (no ``rotation_center =
+   CoG`` coupling) at the source.
+
+**Blocks.** ALL dynamic simulation of the full platform — the M11b PR8
+RAO/acceleration pilot and any future time-domain platform run (until
+STEP 4 lands). Static assembly (kernel, ``M+A_inf``, G rank) is
+unaffected. The STEP 3 gate now makes the blockage explicit at build time.
+
+**Estimated effort.** STEP 4 regeneration ~ 0.5 d + a platform BEM
+re-solve (the hydrostatic recompute is cheap; a full radiation re-solve is
+only needed if the grid is also revisited).
+
+**Status.** Open — BLOCKER on the platform pilot; STEP 2 (root cause) and
+STEP 3 (PSD gate) COMPLETE. Surfaced 2026-08-01 (M11b PR8 pilot
+bring-up); root cause isolated + gated same day. The PR8 kernel Check-3
+exemption (commit 5d2c55a) is complete and independent. STEP 4 (fix the
+stored C) awaits disposition.
+
+---
+
 ## Resolved entries
 
 *(none yet)*

@@ -101,6 +101,18 @@ _EARTH_INDEX: Final[int] = -1
 # deck genuinely needs a looser tol, expose it as a kwarg later.
 _EQUILIBRIUM_TOL_N: Final[float] = 1.0
 
+# Restoring-matrix PSD gate (M11b PR8, PLATFORM-HYDROSTATIC-C-INDEFINITE).
+# The assembled restoring matrix C must be positive semi-definite on the
+# constraint-FEASIBLE subspace (null(G)) -- free rigid modes legitimately sit
+# at zero, but a genuinely negative generalized eigenvalue (omega^2 < 0) is an
+# unstable negative-stiffness mode that diverges under any dynamics. The gate
+# fails when the min feasible omega^2 drops below -RTOL * max|omega^2|.
+# Calibrated on the known cases: M10 PR1's assembled C is PSD (feasible
+# omega^2 min ~ -5e-16, a numerical zero -> PASS); the M11b platform's is
+# indefinite (feasible omega^2 min = -1.60 -> FAIL). RTOL = 1e-8 clears the
+# numerical-zero band by ~8 orders while catching the -1.6 mode by ~8 orders.
+_RESTORING_PSD_RTOL: Final[float] = 1.0e-8
+
 
 _StateForce = Callable[[float, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]
 
@@ -495,6 +507,71 @@ def _build_joint_set(deck: Deck, name_to_index: dict[str, int]) -> JointSet | No
     # convention), not absolute position (Amendment A2).
     refs = tuple(np.asarray(b.reference_point, dtype=np.float64) for b in deck.bodies)
     return JointSet(joints=tuple(built), n_bodies=len(deck.bodies), body_references=refs)
+
+
+def _feasible_restoring_eigvals(
+    lhs: CumminsLHS, constraints: JointSet | None
+) -> NDArray[np.float64]:
+    """Generalized eigenvalues ``omega^2`` of the restoring problem
+    ``C x = omega^2 (M+A_inf) x`` restricted to the constraint-feasible
+    subspace ``null(G)`` (M11b PR8).
+
+    These are the squared natural frequencies of the constrained free
+    modes; a negative value is an unstable negative-stiffness mode. With no
+    constraints the feasible subspace is all of R^n. ``M+A_inf`` is SPD (it
+    carries the rigid mass), so the symmetric-definite reduction via its
+    Cholesky factor is well-posed and the eigenvalues inherit the inertia
+    (sign) of ``C`` on the subspace (Sylvester).
+    """
+    n_dof = lhs.n_dof
+    C = 0.5 * (np.asarray(lhs.C) + np.asarray(lhs.C).T)
+    M = 0.5 * (np.asarray(lhs.M_plus_Ainf) + np.asarray(lhs.M_plus_Ainf).T)
+    if constraints is not None:
+        g = np.asarray(constraints.jacobian(np.zeros(n_dof, dtype=np.float64)))
+        # Null space of G from the SVD: right-singular vectors past the rank.
+        _u, s, vh = np.linalg.svd(g)
+        rank_tol = max(g.shape) * np.finfo(np.float64).eps * (s[0] if s.size else 0.0)
+        rank = int((s > rank_tol).sum())
+        basis = vh[rank:].T  # (n_dof, n_dof - rank)
+    else:
+        basis = np.eye(n_dof, dtype=np.float64)
+    if basis.shape[1] == 0:  # fully constrained -> no free modes
+        return np.zeros(0, dtype=np.float64)
+    c_f = basis.T @ C @ basis
+    m_f = basis.T @ M @ basis
+    chol = np.linalg.cholesky(m_f)
+    chol_inv = np.linalg.inv(chol)
+    reduced = chol_inv @ c_f @ chol_inv.T
+    return np.linalg.eigvalsh(0.5 * (reduced + reduced.T))
+
+
+def _gate_restoring_psd(lhs: CumminsLHS, constraints: JointSet | None) -> None:
+    """Fail the build when the assembled restoring matrix has a negative-
+    stiffness mode on the constraint-feasible subspace (M11b PR8,
+    PLATFORM-HYDROSTATIC-C-INDEFINITE). An indefinite ``C`` reached the
+    integrator once already and produced six negative ``omega^2`` modes with
+    nothing catching it; this is the missing invariant (cf. M8's PSD gate on
+    ``B(omega)``)."""
+    w = _feasible_restoring_eigvals(lhs, constraints)
+    if w.size == 0:
+        return
+    scale = max(1.0, float(np.max(np.abs(w))))
+    tol = -_RESTORING_PSD_RTOL * scale
+    w_min = float(w.min())
+    if w_min < tol:
+        n_neg = int((w < tol).sum())
+        raise ValueError(
+            "assembled restoring matrix is indefinite on the constraint-feasible "
+            f"subspace: {n_neg} negative generalized eigenvalue(s) omega^2, min = "
+            f"{w_min:.4e} < {tol:.2e}. A negative restoring eigenvalue is an unstable "
+            "negative-stiffness mode that diverges under any dynamics (free decay or "
+            "forced). This is the M11b PR8 restoring-PSD gate "
+            "(PLATFORM-HYDROSTATIC-C-INDEFINITE): the most likely cause is a stored "
+            "hydrostatic C computed about an inconsistent reference (e.g. Capytaine "
+            "rotation_center = CoG, which injects a buoyancy/CoB rotational coupling "
+            "that the gravity + reference-injection path does not cancel). Inspect the "
+            "BEM database's stored hydrostatic_stiffness against reference_single."
+        )
 
 
 def _inject_hydrostatic_c(
@@ -920,6 +997,13 @@ def build_system(
     drag_force = _build_drag_state_force(deck, n_dof, rho=deck.environment.water_density)
     state_force = _compose_state_force(connector_force, catenary_force, drag_force, n_dof)
 
+    # --- Constraints + restoring-PSD gate (M11b PR8) ------------------------
+    # Build the joint set now so the restoring-PSD gate can use its Jacobian.
+    # A negative-stiffness mode on the feasible subspace diverges under any
+    # dynamics; fail fast here rather than after the equilibrium solve.
+    constraints = _build_joint_set(deck, name_to_index)
+    _gate_restoring_psd(lhs_global, constraints)
+
     # --- Initial conditions -------------------------------------------------
     xi0_packed = pack_state(
         [np.asarray(b.initial_conditions.position, dtype=np.float64) for b in deck.bodies]
@@ -946,5 +1030,5 @@ def build_system(
         xi0=xi0,
         xi_dot0=xi_dot0_packed,
         body_name_to_index=name_to_index,
-        constraints=_build_joint_set(deck, name_to_index),
+        constraints=constraints,
     )
