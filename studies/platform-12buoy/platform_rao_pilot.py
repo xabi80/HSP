@@ -377,9 +377,15 @@ def _write_case_csv(path: Path, case: dict) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--smoke", action="store_true", help="1 short case to validate the pipeline")
+    ap.add_argument(
+        "--fan",
+        action="store_true",
+        help="in-band amplitude fan (option A): 7 periods x 5 heights -> pr8_fan_out/",
+    )
     args = ap.parse_args()
 
-    _OUT.mkdir(exist_ok=True)
+    out_dir = (_OUT.parent / "pr8_fan_out") if args.fan else _OUT
+    out_dir.mkdir(exist_ok=True)
     deck = _deck_with_drag()
     hydro_dof = _hydro_dof(deck)
     shared = read_capytaine(_PLAT_NC)
@@ -405,6 +411,15 @@ def main() -> None:
     # cap_settle is the hard ceiling only, sized for the slowest (small-H) case.
     if args.smoke:
         matrix = [(0.30, 3.257, 20.0, 450.0, 6.0)]  # (H, T, ramp, cap_settle, window_periods)
+    elif args.fan:
+        # In-band amplitude fan (option A): the requested OrcaFlex band 1.2-3.3 s,
+        # weighted to T >= 2.0 where the response is non-negligible (below 2 s the
+        # RAO is <0.03 -- measuring noise). Both pilot periods pinned for continuity.
+        fan_heights = [0.05, 0.15, 0.30, 0.60, 1.00]
+        fan_periods = [2.0, 2.5, 2.8, 3.0, 3.141, 3.257, 3.3]
+        matrix = [
+            (h, p, 20.0, 450.0, 8.0 if p < 2.6 else 6.0) for p in fan_periods for h in fan_heights
+        ]
     else:
         heights = [0.05, 0.30, 1.00]
         # (period, ramp_s, cap_settle_s, window_periods)
@@ -430,7 +445,7 @@ def main() -> None:
             dt=dt,
         )
         tag = f"H{h:g}_T{p:g}".replace(".", "p")
-        _write_case_csv(_OUT / f"case_{tag}.csv", case)
+        _write_case_csv(out_dir / f"case_{tag}.csv", case)
         row = {
             "height_m": h,
             "period_s": p,
@@ -455,7 +470,7 @@ def main() -> None:
         )
 
     # Summary CSV
-    with (_OUT / "rao_summary.csv").open("w", newline="") as fh:
+    with (out_dir / "rao_summary.csv").open("w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=list(summary_rows[0].keys()))
         w.writeheader()
         w.writerows(summary_rows)
@@ -529,10 +544,10 @@ def main() -> None:
         row["wavelength_m"] = float(lam)
         row["steepness_H_over_lambda"] = float(row["height_m"] / lam)
         row["steepness_flag"] = bool(row["height_m"] / lam > 0.04)
-    with (_OUT / "manifest.json").open("w") as fh:
+    with (out_dir / "manifest.json").open("w") as fh:
         json.dump(manifest, fh, indent=2)
 
-    print(f"\nDone. Outputs in {_OUT}")
+    print(f"\nDone. Outputs in {out_dir}")
     n_unsettled = sum(1 for r in summary_rows if not r["settled"])
     if n_unsettled:
         print(
