@@ -647,12 +647,41 @@ surfaced a failing hypothesis example on the SAME assertion
   above ("derive the real bound") is now the priority; the
   reproducing counterexample makes it directly verifiable.
 
+**M11b PR8 addendum (2026-08-02) — THIRD triage cycle, same
+red carried again.** The M11b PR8 pre-merge full-suite run
+(`800 passed / 50 skipped / 20 xfailed / 1 failed`, full scope
+incl. slow, `2:40:09`) surfaced this SAME assertion once more.
+
+- **Counterexample:** `K_attach ~ 8e7` (values ~1e8),
+  `r = [1e-8, 0, 0] m`, `xi = [1,1,1,0,0,0]`; `F_ref` differs by
+  **≈ 2e-8 relative** against `rtol = 1e-8` — the same stiff-K /
+  tiny-r float64-floor regime as the M9 PR2 cached example
+  (`K ~ 5e7`, `rel 1.00000002e-8`), not a new failure mode.
+- **Pre-existence re-verified:** the test imports NONE of PR8's
+  three changed core files (`retardation.py`, `driver.py`,
+  `newmark.py`); `connector.py` and the test are byte-identical
+  to `main`; the suite reconciles as `779` (M11b PR7 baseline,
+  `5adcfbc`) `+ 21` new PR8 tests `= 800`, a clean `+21` with
+  the carried red unchanged — ZERO PR8 regressions.
+- **THIRD full-suite run to cost a triage cycle** (M9 PR2 →
+  M11b PR7 `5adcfbc` → M11b PR8). The recurring per-run triage
+  cost is now the operative argument for CLEARING this in the
+  carried `fix-` branch sooner rather than later, via the
+  sharpened deferred work above (magnitude-scaled `atol`, or a
+  bound from the transform's condition number `||T||·||Tᵀ||`) —
+  NOT a third bare `rtol` loosening (→ 1e-7), which CLAUDE.md §9
+  rules out. Not fixed in PR8 (out of scope; PR8 touches no
+  connector code).
+
 **Status.** Open. Surfaced 2026-07-01 (M7.5 pre-milestone
 audit). Empirical tolerance in place at `bbb5b9b`;
 analytical bound derivation and cache-skip investigation
 deferred. Not blocking M7.5. **Re-surfaced with a cached
-reproducing counterexample at M9 PR2 (2026-07-26); the M9
-branch carries this one pre-existing red, tracked here.**
+reproducing counterexample at M9 PR2 (2026-07-26); carried
+(one pre-existing red) through M11b PR7 (`5adcfbc`) and M11b
+PR8 (2026-08-02) — three triage cycles now spent on the same
+carried red. Clearing it via the magnitude-scaled bound is the
+standing recommendation.**
 
 ---
 
