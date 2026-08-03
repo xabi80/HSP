@@ -17,7 +17,7 @@ import numpy as np
 _D = Path(__file__).resolve().parent
 _TN = {"0215": 2.99, "015": 2.48, "none": 2.31}
 _COL = {"0215": "#d62728", "015": "#ff7f0e", "none": "#7f7f7f"}
-_LBL = {"0215": "fin 0.215 m", "015": "fin 0.15 m", "none": "no fin"}
+_LBL = {"0215": "fin 0.215 m", "015": "fin 0.15 m", "none": "no fin (+spar bottom-cap)"}
 
 
 def row_at(cfg: str, key: str, h: float):
@@ -35,7 +35,9 @@ def panel(ax, kind, cd, h):  # type: ignore[no-untyped-def]
         T, v = row_at(f"fin{fin}_Cd{cd}", key, h)
         ax.plot(T, v, "-o", ms=4, color=_COL[fin], label=_LBL[fin])
         ax.axvline(_TN[fin], color=_COL[fin], ls=":", lw=0.9, alpha=0.6)
-    T, v = row_at("finnone_spar", key, h)  # no-fin: Cd-independent, spar only
+    # no-fin: uses the spar's flat-bottom form drag (bottom-cap plate at r=R_spar)
+    # so it converges; the PURE no-fin idealization (zero heave damping) diverges.
+    T, v = row_at("finnone_cap", key, h)
     ax.plot(T, v, "-o", ms=4, color=_COL["none"], label=_LBL["none"])
     ax.axvline(_TN["none"], color=_COL["none"], ls=":", lw=0.9, alpha=0.6)
     if np.isnan(v).any():
@@ -59,8 +61,9 @@ panel(ax[0, 1], "rao", "1", 0.04)
 panel(ax[1, 0], "acc", "5", 0.12)
 panel(ax[1, 1], "acc", "1", 0.12)
 fig.suptitle("Single buoy: fin-size sensitivity of heave RAO (top, H=0.04 m) and Nz "
-             "acceleration (bottom, H=0.12 m)\nrigorous BEM per fin size; dotted = each "
-             "fin's heave natural period", fontsize=12)
+             "acceleration (bottom, H=0.12 m)\nrigorous BEM per fin size; dotted = each fin's "
+             "heave natural period; no-fin includes the spar's small bottom-cap drag "
+             "(pure no-fin is undamped)", fontsize=11)
 fig.tight_layout(rect=(0, 0, 1, 0.95))
 fig.savefig(_D / "fin_sensitivity.png", dpi=140)
 print("wrote fin_sensitivity.png")
@@ -74,8 +77,8 @@ for cd in ("5", "1"):
         pr = max(float(r["rao_center"]) for r in rows)
         pa = max(float(r["acc_center_amp"]) for r in rows)
         print(f"  Cd{cd} fin {flab}: peak RAO {pr:.2f}, peak Nz-accel {pa:.3f} m/s^2")
-rows = list(csv.DictReader((_D / "rao_summary_finnone_spar.csv").open()))
-fr = [float(r["rao_center"]) for r in rows if not np.isnan(float(r["rao_center"]))]
-fa = [float(r["acc_center_amp"]) for r in rows if not np.isnan(float(r["acc_center_amp"]))]
-print(f"  no-fin: off-resonance RAO<= {max(fr):.2f} (amplitude-independent, linear); "
-      f"DIVERGES at resonance (undamped)")
+rows = list(csv.DictReader((_D / "rao_summary_finnone_cap.csv").open()))
+pr = max(float(r["rao_center"]) for r in rows)
+pa = max(float(r["acc_center_amp"]) for r in rows)
+print(f"  no-fin (+spar bottom-cap drag): peak RAO {pr:.2f}, peak Nz-accel {pa:.3f} m/s^2 "
+      f"(pure no-fin -- zero heave damping -- diverges at resonance)")

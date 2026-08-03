@@ -39,7 +39,9 @@ from floatsim.solver.equilibrium import solve_static_equilibrium  # noqa: E402
 
 _STUDY = _HERE / "fin_study"
 _HEIGHTS = [0.04, 0.06, 0.08, 0.10, 0.12]
-_PERIODS = [2.0, 2.5, 2.8, 3.0, 3.141, 3.257, 3.3]
+_PERIODS = [2.0, 2.2, 2.3, 2.4, 2.5, 2.8, 3.0, 3.141, 3.257, 3.3]  # refined near 2.3 s
+# (captures the no-fin resonance at its 2.31 s natural period, which the original
+# 7-point grid straddled between 2.0 and 2.5)
 _CAP = 350.0  # fin cases settle in <100s; no-fin near-resonance won't (the finding)
 # (tag, fin_radius, [Cd_n configs])  -- no-fin: no plate, spar-only single config
 _FINS = [("0215", 0.215, [5.0, 1.0]), ("015", 0.15, [5.0, 1.0]), ("none", None, [None])]

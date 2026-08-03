@@ -21,12 +21,24 @@ F_exc, and drag change.
 
 ## Peak RAO / peak Nz-acceleration (over the H,T grid)
 
-| fin R | Cd5 RAO | Cd5 accel | Cd1 RAO | Cd1 accel |
-|-------|---------|-----------|---------|-----------|
-| 0.215 | 1.62 | 0.25 m/s² | 3.45 | 0.53 m/s² |
-| 0.15 | **1.97** | **0.43 m/s²** | **4.40** | **0.95 m/s²** |
-| none | diverges @ res. | — | diverges @ res. | — |
-| none (off-res) | ≤1.56, amplitude-independent | | | |
+Period grid `{2.0, 2.2, 2.3, 2.4, 2.5, 2.8, 3.0, 3.141, 3.257, 3.3}` s —
+refined near 2.3 s so every fin's resonance is sampled at its natural period
+(the no-fin's 2.31 s fell between the original grid's 2.0 and 2.5 points and was
+under-reported).
+
+| fin R | Cd5 RAO | Cd5 accel | Cd1 RAO | Cd1 accel | peak @ T |
+|-------|---------|-----------|---------|-----------|----------|
+| 0.215 | 1.62 | 0.25 m/s² | 3.45 | 0.53 m/s² | 3.0–3.14 s |
+| 0.15 | **1.97** | **0.44 m/s²** | **4.40** | **0.95 m/s²** | 2.4–2.5 s |
+| none (+bottom-cap drag) | **3.30** | **0.84 m/s²** | — | — | 2.3 s |
+
+The pure no-fin idealization has literally zero heave damping (B₃₃≈0; a vertical
+spar's Morison drag is ~0 in heave) and **diverges** at its 2.31 s resonance. To
+get a comparable number, the no-fin case above includes the spar's own
+flat-bottom form drag — a heave plate at the spar radius (0.084 m, ~15% of the
+0.215 fin area), the realistic minimum for a finless spar. Even with that, its
+peak RAO (3.30, at its 2.30 s natural period) and acceleration (0.84 m/s²)
+exceed both fins by a wide margin.
 
 ## Findings
 
@@ -45,10 +57,12 @@ F_exc, and drag change.
    quadratic-drag amplitude-gating. **The fin is the buoy's only meaningful
    heave damper.**
 
-3. **Bigger is better, within the tested range.** Motion decreases monotonically
-   with fin size (0.215 < 0.15 < none in RAO and accel). If material/cost allows,
-   a fin ≥ 0.215 m is favourable; **do not shrink to 0.15 m** (~75% more peak
-   acceleration), and a fin is **essential** (none = undamped).
+3. **Bigger is better — monotonic.** Peak acceleration (Cd5) climbs
+   0.25 → 0.44 → 0.84 m/s² as the fin goes 0.215 → 0.15 → none: shrinking to
+   0.15 costs **+74%**, removing it costs another **+90%** (×3.4 vs the 0.215
+   fin). Peak RAO likewise 1.62 → 1.97 → 3.30. If material/cost allows a fin
+   ≥ 0.215 m is favourable; **do not shrink to 0.15 m**, and a fin is
+   **essential** (none = undamped/diverges without even its bottom-cap drag).
 
 ## Caveat / next step
 
