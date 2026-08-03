@@ -80,3 +80,10 @@ The previous sweep (0.05–1.0 m) reached 50 m full-scale waves; 0.04–0.12 m
   + `manifest.json`, uniform schema).
 - Regenerate: run the three `*_rao*.py` / `*_fan_lowh.py` scripts, then
   `python studies/rao_cross_model_plots.py`.
+
+## Related
+
+- `../spar-fin-decay/ADDED-MASS-VALIDATION.md` — sanity-check of the buoy heave
+  added mass (A₃₃≈21 kg, 78% of the ideal disc, ~94% from the fin) and the key
+  finding that **radiation damping B₃₃≈0**, so all heave damping is Morison drag
+  (Cd) — the root of the Cd-sensitivity and amplitude-gating seen here.
