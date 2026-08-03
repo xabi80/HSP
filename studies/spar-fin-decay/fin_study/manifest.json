@@ -1,0 +1,37 @@
+{
+  "grid_heights_m": [
+    0.04,
+    0.06,
+    0.08,
+    0.1,
+    0.12
+  ],
+  "grid_periods_s": [
+    2.0,
+    2.5,
+    2.8,
+    3.0,
+    3.141,
+    3.257,
+    3.3
+  ],
+  "cap_settle_s": 350.0,
+  "fins": {
+    "0215": {
+      "radius_m": 0.215,
+      "T_n_s": 2.987018635237611,
+      "A33_kg": 21.681208908293932
+    },
+    "015": {
+      "radius_m": 0.15,
+      "T_n_s": 2.480604259307797,
+      "A33_kg": 6.05554002069519
+    },
+    "none": {
+      "radius_m": null,
+      "T_n_s": 2.3046379106827826,
+      "A33_kg": 1.3036368580355315
+    }
+  },
+  "note": "each fin uses its own parametric BEM; plate drag radius matched to the fin; no-fin has no plate (spar drag only)."
+}
