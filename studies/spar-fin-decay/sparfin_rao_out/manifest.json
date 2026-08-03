@@ -1,0 +1,26 @@
+{
+  "model": "single spar-fin buoy (6-DOF)",
+  "T_n_s": 2.9817525839182837,
+  "grid_heights_m": [
+    0.04,
+    0.06,
+    0.08,
+    0.1,
+    0.12
+  ],
+  "grid_periods_s": [
+    2.0,
+    2.5,
+    2.8,
+    3.0,
+    3.141,
+    3.257,
+    3.3
+  ],
+  "plate_Cd_n": [
+    5.0,
+    1.0
+  ],
+  "scale": "1:50 model; H 0.04-0.12 m = 2-6 m full-scale; accel Froude-invariant",
+  "drag": "spar D=0.1682 Cd=1.2 (10 seg) + plate r=0.215 Cd_n swept Cd_t=1.5"
+}
