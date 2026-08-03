@@ -38,8 +38,25 @@ The previous sweep (0.05–1.0 m) reached 50 m full-scale waves; 0.04–0.12 m
 | 12-buoy platform | 3.14 s | 1.92 | 0.26 | 4.20 | 0.57 |
 
 1. **The resonance walks right with model size** — the buoy's heave natural
-   period lengthens 2.97 → 3.11 → 3.14 s as it is embedded in larger coupled
-   structures (more added mass), and the RAO peak follows.
+   period lengthens 2.97 → 3.11 → 3.14 s as it is embedded in larger
+   structures, and the RAO peak follows. Decomposing
+   `T_n = 2π√((M_eff + A₃₃)/C₃₃)` per buoy shows this is driven **mostly by the
+   dry structural mass each buoy carries, not by added mass**:
+
+   | model | M_eff (kg) | A₃₃ (kg) | M+A | C₃₃ (N/m) | T_n (s) |
+   |-------|-----------|----------|-----|-----------|---------|
+   | 1 buoy | 28.67 | 21.11 | 49.78 | 221.1 | 2.98 |
+   | 3-buoy cluster | 32.67 | 21.34 | 54.01 | 221.1 | 3.11 |
+   | 12-buoy platform | 33.50 | 21.74 | 55.24 | 221.1 | 3.14 |
+
+   Of the single→platform change in the `M+A` numerator (+5.46 kg):
+   **effective mass +4.83 kg (89%)** — each buoy carries a growing share of the
+   dry arms/platform (which is also what sinks it deeper); **added mass +0.63 kg
+   (11%, +3.0%)** — real but secondary, part deeper-submergence and part genuine
+   inter-buoy hydrodynamic coupling (~2%, STEP A); **stiffness +0.00** —
+   `C₃₃ = ρg·πR²_spar` is the spar cylinder's waterplane, which is
+   **draft-independent**, so despite the drafts differing it contributes nothing
+   to the spread. (`scratchpad tn_decomp.py`; A₃₃ at each model's own ω_n.)
 2. **Peak buoy RAO *rises* with model size** (1.66→1.75→1.92 at Cd5;
    3.53→3.86→4.20 at Cd1) — the coupled added-mass/radiation environment
    amplifies the resonance relative to the isolated buoy.
