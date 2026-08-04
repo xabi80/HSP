@@ -64,13 +64,28 @@ exceed both fins by a wide margin.
    ≥ 0.215 m is favourable; **do not shrink to 0.15 m**, and a fin is
    **essential** (none = undamped/diverges without even its bottom-cap drag).
 
-## Caveat / next step
+## 3-buoy cluster — confirms the single-buoy conclusion
 
-Single buoy in isolation. In the cluster/platform each buoy carries more
-structural mass (longer T_n, more inertia), shifting the resonance and absolute
-levels, but the fin's role — the dominant added mass **and** the only real heave
-damper — is per-buoy identical. Extending this fin sweep to the 3-buoy cluster
-and 12-buoy platform (each needs new coupled BEMs per fin) is the pending step.
+The fin sweep was repeated on the 3-buoy articulated cluster with rigorous
+**coupled** BEMs per fin (parametric mesh replicated at the cluster positions,
+validated: heave-block A₃₃ 65.8 kg vs the existing cluster's 64.1, 2.8%). Cluster
+heave modes 3.12 / 2.63 / 2.47 s (0.215/0.15/none) — ~0.15 s longer than the
+single buoy (arm mass). Peak (Cd5), single **/** cluster:
+
+| fin | RAO (single/cluster) | Nz-accel (single/cluster) |
+|-----|----------------------|----------------------------|
+| 0.215 | 1.62 / 1.68 | 0.25 / 0.30 m/s² |
+| 0.15 | 1.97 / 2.09 | 0.44 / 0.42 m/s² |
+| none (+cap) | 3.30 / 3.50 | 0.84 / 0.78 m/s² |
+
+The two models track each other within a few percent (see
+`../../cluster-3buoy-rigid/fin_study/fin_single_vs_cluster.png` and
+`cluster_fin_sensitivity.png`). The monotonic "smaller fin = more motion"
+conclusion is model-independent, as expected — the fin's role (dominant added
+mass **and** the only real heave damper) is per-buoy identical.
+
+**Remaining:** the 12-buoy platform (each fin needs a new 72-DOF coupled BEM —
+materially more expensive than the cluster; a mesh-resolution/cost decision).
 
 ## Files
 
