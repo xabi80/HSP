@@ -70,24 +70,89 @@ The fin sweep was repeated on the 3-buoy articulated cluster with rigorous
 **coupled** BEMs per fin (parametric mesh replicated at the cluster positions,
 validated: heave-block A₃₃ 65.8 kg vs the existing cluster's 64.1, 2.8%). Cluster
 heave modes 3.12 / 2.63 / 2.47 s (0.215/0.15/none) — ~0.15 s longer than the
-single buoy (arm mass). Peak (Cd5), single **/** cluster:
+single buoy (arm mass). Peak **buoy** heave (Cd5), single **/** cluster:
 
-| fin | RAO (single/cluster) | Nz-accel (single/cluster) |
-|-----|----------------------|----------------------------|
-| 0.215 | 1.62 / 1.68 | 0.25 / 0.30 m/s² |
-| 0.15 | 1.97 / 2.09 | 0.44 / 0.42 m/s² |
-| none (+cap) | 3.30 / 3.50 | 0.84 / 0.78 m/s² |
+| fin | buoy RAO (single/cluster) | buoy Nz-accel (single/cluster) |
+|-----|---------------------------|--------------------------------|
+| 0.215 | 1.62 / 1.73 | 0.25 / 0.24 m/s² |
+| 0.15 | 1.97 / 2.23 | 0.44 / 0.44 m/s² |
+| none (+cap) | 3.30 / 3.81 | 0.84 / 0.86 m/s² |
 
-The two models track each other within a few percent (see
+The buoy tracks tightly across the two models — accel within a few percent, RAO
+modestly higher in the cluster (see
 `../../cluster-3buoy-rigid/fin_study/fin_single_vs_cluster.png` and
-`cluster_fin_sensitivity.png`). The monotonic "smaller fin = more motion"
-conclusion is model-independent, as expected — the fin's role (dominant added
-mass **and** the only real heave damper) is per-buoy identical.
+`cluster_fin_sensitivity.png`; the full 3-model picture is in the platform
+section below). The monotonic "smaller fin = more motion" conclusion is
+model-independent, as expected — the fin's role (dominant added mass **and** the
+only real heave damper) is per-buoy identical.
 
-**Remaining:** the 12-buoy platform (each fin needs a new 72-DOF coupled BEM —
-materially more expensive than the cluster; a mesh-resolution/cost decision).
+## 12-buoy platform — confirms it at full scale
+
+The sweep was repeated on the full 12-buoy articulated platform (102 global
+DOF, 16 yaw-locked joints) with a rigorous **72-DOF coupled** BEM per fin
+(parametric mesh replicated at the 12 platform positions; heave-block A₃₃
+266 / 74 / 18 kg for 0.215 / 0.15 / none, i.e. ~22 / 6.2 / 1.5 kg per buoy,
+matching the per-buoy single/cluster values). Platform heave natural periods
+**3.15 / 2.66 / 2.50 s** (0.215 / 0.15 / none) — a touch longer than the cluster
+(more coupled added mass).
+
+All cross-model comparisons below are for **the buoy** — the payload body, the
+same physical object in every model. (The per-config "center" channel is the
+buoy for the single model but the hub / platform structural reference node for
+the cluster / platform; those central nodes move *less* than the buoys and are
+not comparable across models — comparing them is what makes an apples-to-oranges
+"cluster > single" artifact.) Peak buoy heave (Cd_n=5), all three models:
+
+| fin | buoy RAO (single / cluster / platform) | buoy Nz-accel (single / cluster / platform) |
+|-----|----------------------------------------|----------------------------------------------|
+| 0.215 | 1.62 / 1.73 / **1.84** | 0.25 / 0.24 / **0.25** m/s² |
+| 0.15 | 1.97 / 2.23 / **2.37** | 0.44 / 0.44 / **0.47** m/s² |
+| none (+cap) | 3.30 / 3.81 / **4.27** | 0.84 / 0.86 / **0.92** m/s² |
+
+Two clean, consistent trends. **(i)** Buoy heave *RAO* rises modestly with model
+size (single → platform, ~+14 % at 0.215) — a buoy embedded in a larger
+articulated structure resonates a little higher. **(ii)** Peak *acceleration* is
+essentially **model-independent** (0.25 / 0.24 / 0.25 m/s² at 0.215; tight at
+every fin): the extra coupled added mass that raises the RAO also lengthens T_n,
+and the lower ω² exactly cancels it, since `a = ω²·(RAO·H/2)`. Both trends are
+monotonic in fin size in **every** model — the "smaller fin = more motion"
+conclusion is fully model-independent, as expected, because the fin's role
+(dominant heave added mass **and** the only real heave damper) is per-buoy
+identical. Under Cd_n=1 the buoy peaks roughly double, landing on each fin's
+resonance (3.14 / 2.65 s). See
+`../../platform-12buoy/fin_study/platform_fin_sensitivity.png` and
+`../../platform-12buoy/fin_study/fin_single_vs_cluster_vs_platform.png`.
+
+**Run infrastructure note.** The platform fin fan surfaced a memory leak in the
+constrained (KKT) integrator — ~2 GB/case retained via native-heap fragmentation
+over the ~40 k steps/case (the retardation convolution buffer was suspected from
+the OOM traceback but exonerated in isolation; see tracker
+`CONSTRAINED-INTEGRATOR-SWEEP-MEMORY`). The 220-case sweep is therefore run as a
+sequence of bounded fresh subprocesses (`run_platform_fin_fan.py`, 12 cases each,
+per-case row-JSON resume), which caps peak RAM ~24 GB and reclaims it on each
+process exit. RAO values are byte-identical to a single-process run.
+
+## Decision summary (all three models)
+
+**Keep a full-size fin (≥ 0.215 m).** Shrinking to 0.15 m costs ~+20-30 % peak
+buoy RAO and ~+80-90 % peak buoy vertical acceleration (0.25 → 0.44-0.47 m/s²);
+removing the fin roughly doubles peak RAO again (to ~4 at platform scale) and
+leaves the heave resonance essentially undamped (finite only because of the
+modelled spar bottom-cap drag; a bare finless spar diverges). The fin is the
+buoy's dominant heave added mass **and** its only meaningful heave damper, so
+this holds identically across the single buoy, the 3-cluster, and the 12-buoy
+platform.
 
 ## Files
+
+- `sparfin_fin_bem.py` — parametric mesh + BEM per fin (`capytaine_fin{0215,015,none}.nc`).
+- `sparfin_fin_fan.py` — the RAO+accel fan (matched plate drag; t_max=60 kernel).
+- `fin_plots.py` → `fin_sensitivity.png`.
+- `rao_summary_fin*.csv` + per-case CSVs + `manifest.json`.
+- 3-buoy cluster: `../../cluster-3buoy-rigid/fin_study/` (BEM, fan, plots).
+- 12-buoy platform: `../../platform-12buoy/fin_study/` + `platform_fin_bem.py`,
+  `platform_fin_fan.py`, `run_platform_fin_fan.py` (chunked runner),
+  `platform_fin_plots.py`.
 
 - `sparfin_fin_bem.py` — parametric mesh + BEM per fin (`capytaine_fin{0215,015,none}.nc`).
 - `sparfin_fin_fan.py` — the RAO+accel fan (matched plate drag; t_max=60 kernel).

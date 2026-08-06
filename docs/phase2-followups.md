@@ -1803,6 +1803,78 @@ the single-body-tiling workaround becomes optional.
 
 ---
 
+### CONSTRAINED-INTEGRATOR-SWEEP-MEMORY — the KKT integrator retains ~2 GB/case, OOMing long same-process sweeps
+
+**Mechanism.** A long same-process parameter sweep over the 12-buoy
+platform (72-DOF coupled hydro, 16 yaw-locked joints, 102 global DOF) grows
+resident memory ~2 GB per case and does not release it between cases, so a
+single process OOMs after ~25-30 cases and the original 275-case fin fan
+died at case ~96 (~50 GB of a 64 GB box). The growth is **native heap, not
+Python objects** — ``gc.collect()`` does not reclaim it and object counts
+stay flat while RSS climbs linearly (~0.37 GB/min of integration). The
+source is the *constrained integrator's per-step allocation churn*: in the
+KKT branch of ``integrate_cummins`` every step evaluates the joint Jacobian
+``constraints.jacobian(...)`` (twice, in the midpoint iteration), assembles
+and LU-solves the ``(n+m)×(n+m)`` saddle-point system ``_kkt_solve``, runs a
+position projection, and calls the Morison-drag ``state_force`` — tens of
+short-lived arrays per step × ~40 k steps/case ≈ tens of GB of allocator
+traffic per case, a fraction of which the allocator retains through
+fragmentation.
+
+**Buffer exonerated.** The retardation convolution buffer was the initial
+suspect (the OOM traceback landed in ``RadiationConvolution.push``'s
+``np.roll``, the single largest per-step allocation — so it is simply the
+allocation that *fails* once the heap is already exhausted). Isolation at
+full platform scale (n_lags=6001, n_dof=102) proved it innocent: **both the
+stock ``np.roll`` push and an allocation-free preallocated-scratch variant
+leave RSS flat (+0.01 GB over 40 k pushes)**, and ``evaluate`` (einsum) is
+flat too. Swapping in the allocation-free buffer left the full-case growth
+rate unchanged, confirming the leak is downstream of the convolution.
+
+**Audit reference.** ``floatsim/solver/newmark.py`` ``integrate_cummins``
+KKT branch (jacobian / ``_kkt_solve`` / ``_project_position`` per step);
+``floatsim/bodies/joints.py`` ``JointSet.jacobian``. Surfacer +
+measurements: ``studies/platform-12buoy/run_platform_fin_fan.py`` header.
+
+**Why latent / visibility.** Every validation/integration test runs a
+*single* short integration, so nothing accumulates across cases and each run
+frees on process exit. Only a long *same-process* sweep of a large
+constrained system exposes it; the single-buoy fin fan (no joints, 6 DOF)
+and the 3-cluster fan (18 DOF, 2 joints, run per config) stayed under the
+ceiling, so the 102-DOF platform fan is the first exerciser.
+
+**Scope.**
+- Profile ``integrate_cummins`` under a repeated-case loop (tracemalloc +
+  native RSS) to attribute the retained fraction across ``jacobian`` /
+  ``_kkt_solve`` / projection / ``state_force``.
+- Durable fix: preallocate and reuse the per-step KKT scratch (Jacobian
+  buffer, saddle-point matrix + factorization workspace) across steps
+  instead of allocating fresh each step; behaviour must stay byte-identical,
+  so it needs a full validation regression incl. the tight free-response
+  conservation tolerances (rtol=1e-10 / atol=1e-12) — a dedicated
+  ``refactor-integrator`` PR, not a study-layer change.
+- Add a memory-stability regression: N repeated ``integrate_cummins`` calls
+  keep RSS flat.
+
+**Estimated effort.** ~3-5 days (attribution profiling + scratch reuse +
+memory regression + full validation incl. slow).
+
+**Blocks.** Single-process parameter sweeps of large *constrained* systems
+(platform scale, ~100 DOF) longer than ~25 cases. **Interim workaround (in
+tree):** ``studies/platform-12buoy/run_platform_fin_fan.py`` runs the sweep
+as a sequence of bounded fresh subprocesses (default 12 new cases each),
+persisting one row JSON per case as the resume unit and assembling each
+config's summary CSV once its 55 rows exist; the OS reclaims all memory on
+each process exit. Unconstrained single-body / small cluster sweeps are
+unaffected.
+
+**Status.** Open. Surfaced 2026-08-05 (platform fin-size study); buffer
+mis-attribution corrected the same day after isolation. Workaround in place
+and sufficient for the current study; core integrator-scratch fix deferred
+to a dedicated PR.
+
+---
+
 ## Resolved entries
 
 *(none yet)*
