@@ -99,6 +99,7 @@
     color:var(--ink);border-radius:9px;padding:8px 14px;cursor:pointer;display:inline-flex;align-items:center;
     gap:8px;font-weight:600;transition:border-color .15s,background .15s}
   .btn:hover{border-color:var(--accent)}
+  .btn[aria-pressed="true"]{background:var(--accent);color:#04212a;border-color:var(--accent)}
   .btn .ico{width:11px;height:11px;fill:currentColor}
   .grow{flex:1 1 240px;display:flex;align-items:center;gap:11px;min-width:200px}
   .tcode{font-family:var(--mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;
@@ -146,6 +147,8 @@
       <div class="ro"><span class="k">Period</span><span class="v" id="ro-T">—<small> s</small></span></div>
       <div class="ro"><span class="k">Wave H</span><span class="v" id="ro-H">—<small> m</small></span></div>
       <div class="ro"><span class="k">Buoy RAO</span><span class="v" id="ro-rao">—</span></div>
+      <div class="ro"><span class="k">Peak heave</span><span class="v" id="ro-peak">—<small> mm</small></span></div>
+      <div class="ro"><span class="k">Heave Tₙ</span><span class="v" id="ro-tn">—<small> s</small></span></div>
     </div>
   </header>
 
@@ -185,6 +188,7 @@
       <input type="range" id="exag" min="1" max="40" value="8" step="1">
       <span class="val" id="exagval">8×</span>
     </div>
+    <button class="btn" id="orbit" type="button" aria-pressed="false" title="Auto-rotate the view">↻&nbsp;Orbit</button>
   </section>
 
   <footer id="foot">
@@ -205,6 +209,8 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
   const reduce = matchMedia("(prefers-reduced-motion:reduce)").matches;
   const bodies = DATA.bodies, PLAT = bodies.findIndex(b=>b.type==="platform");
   const UP = DATA.upwave_buoy, DN = DATA.downwave_buoy;
+  const B7 = Math.max(0, bodies.findIndex(b=>b.name==="buoy7"));
+  const TN = {"0215":3.15,"015":2.66,"none":2.50};  // platform heave natural period per fin
   // spar length = equilibrium (hub z - buoy z); the joint sits straight above the
   // buoy at hub level (deck attach_a = [0,0,z_hub-z_buoy]), so each buoy hangs on a
   // vertical spar and a horizontal hub arm reaches out to that joint point.
@@ -218,7 +224,7 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
   // ---- state ----
   let ci=0, frame=0, playing=!reduce, speed=1, exag=8;
   const AZ0=0.62, EL0=0.46;
-  let az=AZ0, el=EL0, zoom=1, drag=null;
+  let az=AZ0, el=EL0, zoom=1, autorot=false, drag=null;
   let acc=0, last=performance.now(), HMAX=1;
 
   function curCase(){return DATA.cases[ci];}
@@ -311,54 +317,124 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
       const cph=Math.cos(ph),sph=Math.sin(ph),cth=Math.cos(th),sth=Math.sin(th),cps=Math.cos(ps),sps=Math.sin(ps);
       wp[bi]=[J[0]-L*(sth*cph*cps+sph*sps), J[1]-L*(sth*cph*sps-sph*cps), J[2]-L*cth*cph];
     }
+    // soft contact shadows: each buoy's footprint dropped onto the sea (z=0)
+    vctx.save();
+    for(let bi=0;bi<bodies.length;bi++){ if(bodies[bi].type!=="buoy") continue;
+      const s0=project(wp[bi][0],wp[bi][1],0,v), rr=0.34*v.s;
+      const gsh=vctx.createRadialGradient(s0.X,s0.Y,0,s0.X,s0.Y,rr);
+      gsh.addColorStop(0,"rgba(0,0,0,0.26)"); gsh.addColorStop(1,"rgba(0,0,0,0)");
+      vctx.fillStyle=gsh; vctx.beginPath(); vctx.arc(s0.X,s0.Y,rr,0,7); vctx.fill(); }
+    vctx.restore();
+
+    const finR = cc.fin==="0215"?0.215 : cc.fin==="015"?0.15 : 0.084;
     for(let bi=0;bi<bodies.length;bi++){ const par=bodies[bi].parent; if(par<0)continue;
       if(bodies[bi].type==="buoy"){
-        const J=Jpt[bi], pJ=project(J[0],J[1],J[2],v),
-              pH=project(wp[par][0],wp[par][1],wp[par][2],v),
-              pB=project(wp[bi][0],wp[bi][1],wp[bi][2],v);
-        prims.push({t:"arm",d:(pH.d+pJ.d)/2,pa:pH,pb:pJ,kind:"hubarm"});   // rigid hub arm
-        prims.push({t:"arm",d:(pJ.d+pB.d)/2,pa:pJ,pb:pB,kind:"spar"});     // rigid spar, tilts about J
+        const J=Jpt[bi], bp=wp[bi];
+        const pJ=project(J[0],J[1],J[2],v), pH=project(wp[par][0],wp[par][1],wp[par][2],v), pB=project(bp[0],bp[1],bp[2],v);
+        prims.push({t:"arm",d:(pH.d+pJ.d)/2,pa:pH,pb:pJ,kind:"hubarm"});
+        prims.push({t:"spar",d:(pJ.d+pB.d)/2,pa:pJ,pb:pB});
+        prims.push({t:"fin",d:pB.d,c:bp,u:[(J[0]-bp[0])/SPAR_LEN,(J[1]-bp[1])/SPAR_LEN,(J[2]-bp[2])/SPAR_LEN]});
       } else {
         const pa=project(wp[bi][0],wp[bi][1],wp[bi][2],v), pb=project(wp[par][0],wp[par][1],wp[par][2],v);
         prims.push({t:"arm",d:(pa.d+pb.d)/2,pa,pb,kind:"platarm"});
       }}
-    // platform deck quad through the 4 hubs
     const hubs=bodies.map((b,i)=>i).filter(i=>bodies[i].type==="hub");
     if(hubs.length===4){ const q=hubs.map(i=>project(wp[i][0],wp[i][1],wp[i][2],v));
       const cxq=q.reduce((s,p)=>s+p.X,0)/4, cyq=q.reduce((s,p)=>s+p.Y,0)/4;
       q.sort((p1,p2)=>Math.atan2(p1.Y-cyq,p1.X-cxq)-Math.atan2(p2.Y-cyq,p2.X-cxq));
       prims.push({t:"deck",d:q.reduce((s,p)=>s+p.d,0)/4,q});}
-    // nodes: buoys, hubs, platform (at wp)
     for(let bi=0;bi<bodies.length;bi++){ const p=project(wp[bi][0],wp[bi][1],wp[bi][2],v);
-      prims.push({t:"node",d:p.d,p,bi,typ:bodies[bi].type,
-        heave:cc.frames[fr][bi][2], norm:cc.frames[fr][bi][2]/HMAX});}
+      prims.push({t:"node",d:p.d,p,bi,typ:bodies[bi].type,norm:cc.frames[fr][bi][2]/HMAX});}
     prims.sort((a,b)=>b.d-a.d);
 
-    const accent=C('--accent'), ink=C('--ink'), line=C('--line'), panel=C('--panel');
+    // atmospheric depth: far primitives recede toward the background
+    let dmin=Infinity,dmax=-Infinity; for(const p of prims){if(p.d<dmin)dmin=p.d;if(p.d>dmax)dmax=p.d;}
+    const fade=pd=>1-0.42*((pd-dmin)/((dmax-dmin)||1));
+    const accent=C('--accent'), line=C('--line'), panel=C('--panel'), ink2=C('--ink-2'), warm=C('--warm');
     for(const pr of prims){
+      vctx.globalAlpha=fade(pr.d);
       if(pr.t==="deck"){ vctx.beginPath(); pr.q.forEach((p,i)=>i?vctx.lineTo(p.X,p.Y):vctx.moveTo(p.X,p.Y)); vctx.closePath();
-        vctx.fillStyle=`color-mix(in srgb, ${accent} 12%, transparent)`; vctx.fill();
-        vctx.lineWidth=1.4; vctx.strokeStyle=`color-mix(in srgb, ${accent} 55%, transparent)`; vctx.stroke(); }
-      else if(pr.t==="arm"){ vctx.beginPath(); vctx.moveTo(pr.pa.X,pr.pa.Y); vctx.lineTo(pr.pb.X,pr.pb.Y);
-        if(pr.kind==="spar"){ vctx.lineWidth=2.6; vctx.strokeStyle=C('--ink-2'); }
-        else { vctx.lineWidth=2; vctx.strokeStyle=`color-mix(in srgb, ${accent} 50%, ${line})`; }
-        vctx.stroke(); }
+        vctx.fillStyle=`color-mix(in srgb, ${accent} 14%, transparent)`; vctx.fill();
+        vctx.lineWidth=1.4; vctx.strokeStyle=`color-mix(in srgb, ${accent} 60%, transparent)`; vctx.stroke(); }
+      else if(pr.t==="arm"){ vctx.lineCap="round"; vctx.beginPath(); vctx.moveTo(pr.pa.X,pr.pa.Y); vctx.lineTo(pr.pb.X,pr.pb.Y);
+        vctx.lineWidth=2; vctx.strokeStyle=`color-mix(in srgb, ${accent} 55%, ${line})`; vctx.stroke(); vctx.lineCap="butt"; }
+      else if(pr.t==="spar"){ spar(pr.pa,pr.pb); }
+      else if(pr.t==="fin"){ disc(pr.c,pr.u,finR,`color-mix(in srgb, ${warm} 60%, transparent)`,warm,v); }
       else { const p=pr.p;
-        if(pr.typ==="buoy"){ const rad=9;
-          const col=heaveColor(pr.norm);
-          const gr=vctx.createRadialGradient(p.X-rad*0.35,p.Y-rad*0.4,rad*0.2,p.X,p.Y,rad*1.15);
-          gr.addColorStop(0,`color-mix(in srgb, ${col} 82%, white)`); gr.addColorStop(1,col);
+        if(pr.typ==="buoy"){ const rad=8.5, col=heaveColor(pr.norm);
+          const gr=vctx.createRadialGradient(p.X-rad*0.42,p.Y-rad*0.46,rad*0.15,p.X,p.Y,rad*1.2);
+          gr.addColorStop(0,`color-mix(in srgb, ${col} 78%, white)`); gr.addColorStop(1,col);
           vctx.beginPath(); vctx.arc(p.X,p.Y,rad,0,7); vctx.fillStyle=gr; vctx.fill();
-          if(pr.bi===UP||pr.bi===DN){ vctx.lineWidth=2; vctx.strokeStyle=pr.bi===UP?C('--down'):C('--up'); vctx.stroke(); }
-          else { vctx.lineWidth=1; vctx.strokeStyle=`color-mix(in srgb, ${col} 60%, black)`; vctx.stroke(); }
-        } else if(pr.typ==="hub"){ vctx.beginPath(); vctx.arc(p.X,p.Y,3.4,0,7);
-          vctx.fillStyle=`color-mix(in srgb, ${accent} 70%, ${panel})`; vctx.fill(); }
-        else { vctx.beginPath(); vctx.arc(p.X,p.Y,5,0,7); vctx.fillStyle=accent; vctx.fill();
+          if(pr.bi===UP||pr.bi===DN){ vctx.lineWidth=2.2; vctx.strokeStyle=pr.bi===UP?C('--down'):C('--up'); vctx.stroke(); }
+          else { vctx.lineWidth=1; vctx.strokeStyle=`color-mix(in srgb, ${col} 55%, black)`; vctx.stroke(); }
+        } else if(pr.typ==="hub"){ vctx.beginPath(); vctx.arc(p.X,p.Y,3.6,0,7);
+          vctx.fillStyle=`color-mix(in srgb, ${accent} 72%, ${panel})`; vctx.fill(); }
+        else { const r=5.5, gr=vctx.createRadialGradient(p.X-r*0.4,p.Y-r*0.4,r*0.2,p.X,p.Y,r*1.2);
+          gr.addColorStop(0,`color-mix(in srgb, ${accent} 65%, white)`); gr.addColorStop(1,accent);
+          vctx.beginPath(); vctx.arc(p.X,p.Y,r,0,7); vctx.fillStyle=gr; vctx.fill();
           vctx.lineWidth=1.5; vctx.strokeStyle=panel; vctx.stroke(); }
       }
     }
+    vctx.globalAlpha=1;
+    waveArrow(v,R,A,k,cc.omega,tsim);
+    gnomon(w,h); scaleBar(v,w,h);
     drawScope(fr);
     updateHud(fr,tsim);
+  }
+
+  // spar: shaded tapered capsule between screen points a (top J) and b (buoy)
+  function spar(a,b){
+    const dx=b.X-a.X, dy=b.Y-a.Y, len=Math.hypot(dx,dy)||1, nx=-dy/len, ny=dx/len, wt=3.4, wb=2.2;
+    const e=C('--ink-2'), ctr=mix(hx(e),[255,255,255],0.45);
+    const g=vctx.createLinearGradient(a.X+nx*wt,a.Y+ny*wt,a.X-nx*wt,a.Y-ny*wt);
+    g.addColorStop(0,e); g.addColorStop(0.5,ctr); g.addColorStop(1,e);
+    vctx.beginPath(); vctx.moveTo(a.X+nx*wt,a.Y+ny*wt); vctx.lineTo(b.X+nx*wb,b.Y+ny*wb);
+    vctx.lineTo(b.X-nx*wb,b.Y-ny*wb); vctx.lineTo(a.X-nx*wt,a.Y-ny*wt); vctx.closePath();
+    vctx.fillStyle=g; vctx.fill();
+  }
+  // disc: circle of radius r centred at c in the plane perpendicular to unit u (the fin)
+  function disc(c,u,r,fillCss,edgeCss,v){
+    let ax=1,ay=0,az=0; if(Math.abs(u[0])>0.9){ax=0;ay=1;}
+    let e1=[u[1]*az-u[2]*ay,u[2]*ax-u[0]*az,u[0]*ay-u[1]*ax];
+    const n1=Math.hypot(e1[0],e1[1],e1[2])||1; e1=[e1[0]/n1,e1[1]/n1,e1[2]/n1];
+    const e2=[u[1]*e1[2]-u[2]*e1[1],u[2]*e1[0]-u[0]*e1[2],u[0]*e1[1]-u[1]*e1[0]];
+    vctx.beginPath();
+    for(let i=0;i<28;i++){const a=i/28*6.2831853, cc0=Math.cos(a)*r, ss=Math.sin(a)*r,
+      p=project(c[0]+cc0*e1[0]+ss*e2[0],c[1]+cc0*e1[1]+ss*e2[1],c[2]+cc0*e1[2]+ss*e2[2],v);
+      i?vctx.lineTo(p.X,p.Y):vctx.moveTo(p.X,p.Y);}
+    vctx.closePath(); vctx.fillStyle=fillCss; vctx.fill(); vctx.lineWidth=1; vctx.strokeStyle=edgeCss; vctx.stroke();
+  }
+  const MONO='ui-monospace,Consolas,"SF Mono",Menlo,monospace';
+  // wave-direction arrow lying on the sea, pointing +x (propagation)
+  function waveArrow(v,R,A,k,om,ts){
+    const yb=-R*0.82, a=project(-R*0.44,yb,0.06,v), b=project(R*0.40,yb,0.06,v);
+    vctx.strokeStyle=C('--accent'); vctx.fillStyle=C('--accent'); vctx.globalAlpha=0.9; vctx.lineWidth=2.4; vctx.lineCap="round";
+    vctx.beginPath(); vctx.moveTo(a.X,a.Y); vctx.lineTo(b.X,b.Y); vctx.stroke(); vctx.lineCap="butt";
+    const dx=b.X-a.X, dy=b.Y-a.Y, L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L, hs=12;
+    vctx.beginPath(); vctx.moveTo(b.X,b.Y);
+    vctx.lineTo(b.X-ux*hs-uy*hs*0.55, b.Y-uy*hs+ux*hs*0.55);
+    vctx.lineTo(b.X-ux*hs+uy*hs*0.55, b.Y-uy*hs-ux*hs*0.55); vctx.closePath(); vctx.fill();
+    vctx.globalAlpha=1; vctx.fillStyle=C('--muted'); vctx.font="600 11px "+MONO; vctx.textAlign="left"; vctx.textBaseline="bottom";
+    vctx.fillText("wave", a.X, a.Y-7);
+  }
+  // orientation gnomon (rotates with the camera), bottom-left
+  function gnomon(w,h){
+    const ox=46, oy=h-44, gs=22, ca=Math.cos(az),sa=Math.sin(az),ce=Math.cos(el),se=Math.sin(el);
+    const pj=(x,y,z)=>({X:ox+((-sa)*x+(ca)*y)*gs, Y:oy-((-se*ca)*x+(-se*sa)*y+(ce)*z)*gs});
+    for(const [d,lab,col] of [[[1,0,0],"x",C('--muted')],[[0,1,0],"y",C('--muted')],[[0,0,1],"z",C('--accent')]]){
+      const p=pj(d[0],d[1],d[2]); vctx.strokeStyle=col; vctx.lineWidth=1.8;
+      vctx.beginPath(); vctx.moveTo(ox,oy); vctx.lineTo(p.X,p.Y); vctx.stroke();
+      vctx.fillStyle=col; vctx.font="600 10px "+MONO; vctx.textAlign="center"; vctx.textBaseline="middle";
+      vctx.fillText(lab, ox+(p.X-ox)*1.22, oy+(p.Y-oy)*1.22); }
+  }
+  // adaptive scale bar (model metres), bottom-right
+  function scaleBar(v,w,h){
+    let L=1,px=v.s; for(const c of [0.5,1,2,5,10]){const q=c*v.s; if(q>=64){L=c;px=q;break;} L=c;px=q;}
+    const x1=w-22, x0=x1-px, y=h-22;
+    vctx.strokeStyle=C('--ink-2'); vctx.lineWidth=2; vctx.beginPath();
+    vctx.moveTo(x0,y);vctx.lineTo(x1,y); vctx.moveTo(x0,y-4);vctx.lineTo(x0,y+4); vctx.moveTo(x1,y-4);vctx.lineTo(x1,y+4); vctx.stroke();
+    vctx.fillStyle=C('--muted'); vctx.font="600 11px "+MONO; vctx.textAlign="center"; vctx.textBaseline="bottom";
+    vctx.fillText(L+" m", (x0+x1)/2, y-5);
   }
 
   // ---- oscilloscope strip chart ----
@@ -424,6 +500,9 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
     document.getElementById("ro-T").innerHTML=cc.T.toFixed(2)+'<small> s</small>';
     document.getElementById("ro-H").innerHTML=cc.H.toFixed(2)+'<small> m</small>';
     document.getElementById("ro-rao").textContent=cc.rao_buoy7.toFixed(2);
+    let pk=0; for(let f=0;f<cc.n_frames;f++){const hv=Math.abs(cc.frames[f][B7][2]); if(hv>pk)pk=hv;}
+    document.getElementById("ro-peak").innerHTML=(pk*1000).toFixed(0)+'<small> mm</small>';
+    document.getElementById("ro-tn").innerHTML=(TN[cc.fin]||0).toFixed(2)+'<small> s</small>';
     document.getElementById("caselabel").innerHTML="<b>"+cc.label.split("--")[0].trim()+"</b><br>"+cc.label.split("--")[1].trim();
     document.getElementById("seek").max=cc.n_frames-1;
   }
@@ -448,6 +527,16 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
   const exagEl=document.getElementById("exag");
   function exagLabel(){document.getElementById("exagval").textContent=exag===1?"1× true":exag+"×";}
   exagEl.oninput=()=>{exag=+exagEl.value; exagLabel();};
+  document.getElementById("orbit").onclick=e=>{autorot=!autorot; e.currentTarget.setAttribute("aria-pressed",autorot?"true":"false");};
+  window.addEventListener("keydown",e=>{
+    const tag=e.target&&e.target.tagName; if(tag==="INPUT"||tag==="TEXTAREA")return;
+    if(e.key===" "){e.preventDefault(); setPlay(!playing);}
+    else if(e.key==="ArrowRight"){setPlay(false); frame=(frame+1)%curCase().n_frames; seek.value=frame;}
+    else if(e.key==="ArrowLeft"){setPlay(false); frame=(frame-1+curCase().n_frames)%curCase().n_frames; seek.value=frame;}
+    else if(e.key==="ArrowUp"){e.preventDefault(); exag=Math.min(40,exag+1); exagEl.value=exag; exagLabel();}
+    else if(e.key==="ArrowDown"){e.preventDefault(); exag=Math.max(1,exag-1); exagEl.value=exag; exagLabel();}
+    else if(e.key==="r"||e.key==="R"){az=AZ0; el=EL0; zoom=1;}
+  });
 
   // ---- orbit drag ----
   view.addEventListener("pointerdown",e=>{drag={x:e.clientX,y:e.clientY};view.setPointerCapture(e.pointerId);});
@@ -471,6 +560,7 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
   // ---- loop ----
   function tick(now){
     const dt=(now-last)/1000; last=now;
+    if(autorot) az+=0.3*dt;
     const cc=curCase();
     if(playing){ acc+=dt*speed; const adv=Math.floor(acc/cc.dt_frame_s);
       if(adv>0){ frame=(frame+adv)%cc.n_frames; acc-=adv*cc.dt_frame_s; } }
