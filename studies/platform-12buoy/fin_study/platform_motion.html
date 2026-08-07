@@ -155,7 +155,6 @@
   <section class="card stage">
     <canvas id="view"></canvas>
     <div class="badge caselabel" id="caselabel"></div>
-    <div class="badge compass"><span>wave</span><span class="arrow">→ +x</span></div>
     <div class="hud" id="hud"></div>
     <div class="legend">
       <div class="row"><span class="cbar"></span><span>heave ↓ / ↑</span></div>
@@ -317,8 +316,6 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
       const cph=Math.cos(ph),sph=Math.sin(ph),cth=Math.cos(th),sth=Math.sin(th),cps=Math.cos(ps),sps=Math.sin(ps);
       wp[bi]=[J[0]-L*(sth*cph*cps+sph*sps), J[1]-L*(sth*cph*sps-sph*cps), J[2]-L*cth*cph];
     }
-    // one soft shadow of the above-water platform footprint, lying flat on the sea
-    seaShadow(0,0,0.002,1.7,v);
 
     const finR = cc.fin==="0215"?0.215 : cc.fin==="015"?0.15 : 0.084;
     for(let bi=0;bi<bodies.length;bi++){ const par=bodies[bi].parent; if(par<0)continue;
@@ -348,10 +345,10 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
     for(const pr of prims){
       vctx.globalAlpha=fade(pr.d);
       if(pr.t==="deck"){ vctx.beginPath(); pr.q.forEach((p,i)=>i?vctx.lineTo(p.X,p.Y):vctx.moveTo(p.X,p.Y)); vctx.closePath();
-        vctx.fillStyle=`color-mix(in srgb, ${accent} 14%, transparent)`; vctx.fill();
-        vctx.lineWidth=1.4; vctx.strokeStyle=`color-mix(in srgb, ${accent} 60%, transparent)`; vctx.stroke(); }
+        vctx.fillStyle=`color-mix(in srgb, ${accent} 18%, transparent)`; vctx.fill();
+        vctx.lineWidth=2; vctx.strokeStyle=`color-mix(in srgb, ${accent} 82%, transparent)`; vctx.stroke(); }
       else if(pr.t==="arm"){ vctx.lineCap="round"; vctx.beginPath(); vctx.moveTo(pr.pa.X,pr.pa.Y); vctx.lineTo(pr.pb.X,pr.pb.Y);
-        vctx.lineWidth=2; vctx.strokeStyle=`color-mix(in srgb, ${accent} 55%, ${line})`; vctx.stroke(); vctx.lineCap="butt"; }
+        vctx.lineWidth=pr.kind==="hubarm"?2.6:2.4; vctx.strokeStyle=`color-mix(in srgb, ${accent} 78%, ${line})`; vctx.stroke(); vctx.lineCap="butt"; }
       else if(pr.t==="spar"){ spar(pr.pa,pr.pb); }
       else if(pr.t==="fin"){ disc(pr.c,pr.u,finR,`color-mix(in srgb, ${warm} 60%, transparent)`,warm,v); }
       else { const p=pr.p;
@@ -370,7 +367,7 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
       }
     }
     vctx.globalAlpha=1;
-    waveArrow(v,R,A,k,cc.omega,tsim);
+    waveCorner(w,h);
     gnomon(w,h); scaleBar(v,w,h);
     drawScope(fr);
     updateHud(fr,tsim);
@@ -409,19 +406,19 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
     vctx.beginPath(); pts.forEach((p,i)=>i?vctx.lineTo(p.X,p.Y):vctx.moveTo(p.X,p.Y)); vctx.closePath();
     vctx.fillStyle=g; vctx.fill();
   }
-  // wave-direction arrow: short, in the near/front open water below the platform, riding the wave
-  function waveArrow(v,R,A,k,om,ts){
-    const yb=R*0.92, x0=-R*0.24, x1=R*0.22;  // head at the +x (larger-x) end
-    const za=A*Math.cos(k*x0-om*ts)+0.03, zb=A*Math.cos(k*x1-om*ts)+0.03;
-    const a=project(x0,yb,za,v), b=project(x1,yb,zb,v);
-    vctx.strokeStyle=C('--accent'); vctx.fillStyle=C('--accent'); vctx.globalAlpha=0.9; vctx.lineWidth=2.2; vctx.lineCap="round";
-    vctx.beginPath(); vctx.moveTo(a.X,a.Y); vctx.lineTo(b.X,b.Y); vctx.stroke(); vctx.lineCap="butt";
-    const dx=b.X-a.X, dy=b.Y-a.Y, L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L, hs=12;
-    vctx.beginPath(); vctx.moveTo(b.X,b.Y);
-    vctx.lineTo(b.X-ux*hs-uy*hs*0.55, b.Y-uy*hs+ux*hs*0.55);
-    vctx.lineTo(b.X-ux*hs+uy*hs*0.55, b.Y-uy*hs-ux*hs*0.55); vctx.closePath(); vctx.fill();
-    vctx.globalAlpha=1; vctx.fillStyle=C('--muted'); vctx.font="600 11px "+MONO; vctx.textAlign="left"; vctx.textBaseline="bottom";
-    vctx.fillText("wave", a.X, a.Y-7);
+  // wave-direction indicator in the top-right corner: a short arrow along the
+  // projected +x axis (re-orients as you orbit) with a "wave" label
+  function waveCorner(w,h){
+    const sa=Math.sin(az),ca=Math.cos(az),se=Math.sin(el);
+    let dx=-sa, dy=se*ca; const L=Math.hypot(dx,dy)||1; dx/=L; dy/=L;  // screen dir of world +x
+    const ox=w-42, oy=46, len=20, bx=ox+dx*len, by=oy+dy*len;
+    vctx.fillStyle=C('--muted'); vctx.font="600 10px "+MONO; vctx.textAlign="right"; vctx.textBaseline="alphabetic";
+    vctx.fillText("wave", w-16, 26);
+    vctx.strokeStyle=C('--accent'); vctx.fillStyle=C('--accent'); vctx.lineWidth=2.2; vctx.lineCap="round";
+    vctx.beginPath(); vctx.moveTo(ox-dx*len,oy-dy*len); vctx.lineTo(bx,by); vctx.stroke(); vctx.lineCap="butt";
+    const hs=8; vctx.beginPath(); vctx.moveTo(bx,by);
+    vctx.lineTo(bx-dx*hs-dy*hs*0.6, by-dy*hs+dx*hs*0.6);
+    vctx.lineTo(bx-dx*hs+dy*hs*0.6, by-dy*hs-dx*hs*0.6); vctx.closePath(); vctx.fill();
   }
   // orientation gnomon (rotates with the camera), bottom-left
   function gnomon(w,h){
