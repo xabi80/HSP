@@ -409,12 +409,12 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
     vctx.beginPath(); pts.forEach((p,i)=>i?vctx.lineTo(p.X,p.Y):vctx.moveTo(p.X,p.Y)); vctx.closePath();
     vctx.fillStyle=g; vctx.fill();
   }
-  // wave-direction arrow, on the sea's front edge (clear of the platform), riding the wave
+  // wave-direction arrow: short, in the near/front open water below the platform, riding the wave
   function waveArrow(v,R,A,k,om,ts){
-    const yb=-R*0.96, x0=-R*0.5, x1=R*0.34;
+    const yb=R*0.92, x0=-R*0.24, x1=R*0.22;  // head at the +x (larger-x) end
     const za=A*Math.cos(k*x0-om*ts)+0.03, zb=A*Math.cos(k*x1-om*ts)+0.03;
     const a=project(x0,yb,za,v), b=project(x1,yb,zb,v);
-    vctx.strokeStyle=C('--accent'); vctx.fillStyle=C('--accent'); vctx.globalAlpha=0.9; vctx.lineWidth=2.4; vctx.lineCap="round";
+    vctx.strokeStyle=C('--accent'); vctx.fillStyle=C('--accent'); vctx.globalAlpha=0.9; vctx.lineWidth=2.2; vctx.lineCap="round";
     vctx.beginPath(); vctx.moveTo(a.X,a.Y); vctx.lineTo(b.X,b.Y); vctx.stroke(); vctx.lineCap="butt";
     const dx=b.X-a.X, dy=b.Y-a.Y, L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L, hs=12;
     vctx.beginPath(); vctx.moveTo(b.X,b.Y);
@@ -436,7 +436,7 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
   // adaptive scale bar (model metres), bottom-right
   function scaleBar(v,w,h){
     let L=1,px=v.s; for(const c of [0.5,1,2,5,10]){const q=c*v.s; if(q>=64){L=c;px=q;break;} L=c;px=q;}
-    const x1=w-22, x0=x1-px, y=h-22;
+    const x0=w*0.5-px/2, x1=w*0.5+px/2, y=h-16;
     vctx.strokeStyle=C('--ink-2'); vctx.lineWidth=2; vctx.beginPath();
     vctx.moveTo(x0,y);vctx.lineTo(x1,y); vctx.moveTo(x0,y-4);vctx.lineTo(x0,y+4); vctx.moveTo(x1,y-4);vctx.lineTo(x1,y+4); vctx.stroke();
     vctx.fillStyle=C('--muted'); vctx.font="600 11px "+MONO; vctx.textAlign="center"; vctx.textBaseline="bottom";
