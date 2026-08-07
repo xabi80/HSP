@@ -189,9 +189,9 @@
 
   <footer id="foot">
     Data: FloatSim time-domain solver (Cummins + velocity-level KKT joints + Morison drag), coupled 72-DOF
-    Capytaine BEM. Settled window, decimated. Structure follows the deck's joint topology — each buoy hangs
-    on a vertical spar reaching up to a horizontal hub arm; the deck plane and its tilt follow from the
-    buoys' differential heave. <b>All displacements are exaggerated by the same factor.</b>
+    Capytaine BEM. Settled window, decimated. Rigid skeleton per the deck's joint topology — constant-length
+    hub arms and spars; each buoy's spar tilts about its hub-arm tip as the buoy pitches. <b>Translations are
+    exaggerated by the slider factor; rotations at half that, so the pendulum tilt stays legible.</b>
   </footer>
 </div>
 
@@ -282,29 +282,47 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
 
     // collect primitives with depth for painter's sort
     const prims=[];
-    // members, per the deck's joint topology:
-    //   buoy  -> vertical spar up to its joint point J (directly above the buoy)
-    //   hub   -> horizontal arm out to each buoy's J; and hub -> platform link
+    // RIGID skeleton. wp[] = the world point we draw each body at. Hubs/platform
+    // sit at their solver positions. The hub arm is a RIGID member (constant
+    // length): its tip J = hub + fixed equilibrium offset. The spar is RIGID too
+    // (constant length SPAR_LEN): it hangs from J and TILTS to point at the buoy's
+    // solver position, so the buoy rides the spar tip. Exaggeration thus shows as
+    // spar tilt + whole-structure heave/pitch, never as members stretching.
+    const wp=new Array(bodies.length), Jpt={};
+    for(let bi=0;bi<bodies.length;bi++) wp[bi]=pos(fr,bi,EX);
+    for(let bi=0;bi<bodies.length;bi++){
+      if(bodies[bi].type!=="buoy") continue;
+      const par=bodies[bi].parent, hp=wp[par], d=cc.frames[fr][bi];
+      const J=[hp[0]+(bodies[bi].x0-bodies[par].x0), hp[1]+(bodies[bi].y0-bodies[par].y0), hp[2]];
+      Jpt[bi]=J;
+      // rigid spar of length SPAR_LEN hangs from J, oriented by the buoy's OWN
+      // rotation -- so it tilts about J like a pendulum, never stretches.
+      // spar_vec = R_zyx(roll,pitch,yaw) @ [0,0,SPAR_LEN]; buoy = J - vec. Rotation
+      // uses half the translation exaggeration -- the buoy's few-degree pitch, at
+      // the full heave factor, would swing the spar flat; half keeps it legible.
+      const rEX=EX*0.5, ph=rEX*d[3], th=rEX*d[4], ps=rEX*d[5], L=SPAR_LEN;
+      const cph=Math.cos(ph),sph=Math.sin(ph),cth=Math.cos(th),sth=Math.sin(th),cps=Math.cos(ps),sps=Math.sin(ps);
+      wp[bi]=[J[0]-L*(sth*cph*cps+sph*sps), J[1]-L*(sth*cph*sps-sph*cps), J[2]-L*cth*cph];
+    }
     for(let bi=0;bi<bodies.length;bi++){ const par=bodies[bi].parent; if(par<0)continue;
       if(bodies[bi].type==="buoy"){
-        const bp=pos(fr,bi,EX), hp=pos(fr,par,EX), J=[bp[0],bp[1],bp[2]+SPAR_LEN];
-        const pB=project(bp[0],bp[1],bp[2],v), pJ=project(J[0],J[1],J[2],v), pH=project(hp[0],hp[1],hp[2],v);
-        prims.push({t:"arm",d:(pB.d+pJ.d)/2,pa:pB,pb:pJ,kind:"spar"});
-        prims.push({t:"arm",d:(pH.d+pJ.d)/2,pa:pH,pb:pJ,kind:"hubarm"});
-      } else { // hub -> platform
-        const a=pos(fr,bi,EX), b=pos(fr,par,EX);
-        prims.push({t:"arm",d:(project(a[0],a[1],a[2],v).d+project(b[0],b[1],b[2],v).d)/2,
-          pa:project(a[0],a[1],a[2],v),pb:project(b[0],b[1],b[2],v),kind:"platarm"});
+        const J=Jpt[bi], pJ=project(J[0],J[1],J[2],v),
+              pH=project(wp[par][0],wp[par][1],wp[par][2],v),
+              pB=project(wp[bi][0],wp[bi][1],wp[bi][2],v);
+        prims.push({t:"arm",d:(pH.d+pJ.d)/2,pa:pH,pb:pJ,kind:"hubarm"});   // rigid hub arm
+        prims.push({t:"arm",d:(pJ.d+pB.d)/2,pa:pJ,pb:pB,kind:"spar"});     // rigid spar, tilts about J
+      } else {
+        const pa=project(wp[bi][0],wp[bi][1],wp[bi][2],v), pb=project(wp[par][0],wp[par][1],wp[par][2],v);
+        prims.push({t:"arm",d:(pa.d+pb.d)/2,pa,pb,kind:"platarm"});
       }}
     // platform deck quad through the 4 hubs
     const hubs=bodies.map((b,i)=>i).filter(i=>bodies[i].type==="hub");
-    if(hubs.length===4){ const q=hubs.map(i=>{const p=pos(fr,i,EX);return project(p[0],p[1],p[2],v);});
-      // order by angle around centroid for a clean quad
+    if(hubs.length===4){ const q=hubs.map(i=>project(wp[i][0],wp[i][1],wp[i][2],v));
       const cxq=q.reduce((s,p)=>s+p.X,0)/4, cyq=q.reduce((s,p)=>s+p.Y,0)/4;
       q.sort((p1,p2)=>Math.atan2(p1.Y-cyq,p1.X-cxq)-Math.atan2(p2.Y-cyq,p2.X-cxq));
       prims.push({t:"deck",d:q.reduce((s,p)=>s+p.d,0)/4,q});}
-    // nodes: buoys, hubs, platform
-    for(let bi=0;bi<bodies.length;bi++){ const p3=pos(fr,bi,EX), p=project(p3[0],p3[1],p3[2],v);
+    // nodes: buoys, hubs, platform (at wp)
+    for(let bi=0;bi<bodies.length;bi++){ const p=project(wp[bi][0],wp[bi][1],wp[bi][2],v);
       prims.push({t:"node",d:p.d,p,bi,typ:bodies[bi].type,
         heave:cc.frames[fr][bi][2], norm:cc.frames[fr][bi][2]/HMAX});}
     prims.sort((a,b)=>b.d-a.d);
