@@ -162,7 +162,7 @@
   </section>
 
   <section class="card scopewrap">
-    <div class="ttl"><h2>Heave traces over one wave cycle</h2><span class="u" id="scope-u">mm · buoy 7 payload band</span></div>
+    <div class="ttl"><h2>Heave traces over one wave cycle</h2><span class="u" id="scope-u">mm · true amplitude (buoy 7 &amp; platform)</span></div>
     <canvas id="scope"></canvas>
   </section>
 
@@ -182,7 +182,7 @@
       </div>
     </div>
     <div class="ctl"><label for="exag">Exaggerate</label>
-      <input type="range" id="exag" min="2" max="40" value="8" step="1">
+      <input type="range" id="exag" min="1" max="40" value="8" step="1">
       <span class="val" id="exagval">8×</span>
     </div>
   </section>
@@ -191,7 +191,9 @@
     Data: FloatSim time-domain solver (Cummins + velocity-level KKT joints + Morison drag), coupled 72-DOF
     Capytaine BEM. Settled window, decimated. Rigid skeleton per the deck's joint topology — constant-length
     hub arms and spars; each buoy's spar tilts about its hub-arm tip as the buoy pitches. <b>Every displacement —
-    heave, surge, sway and rotation — is exaggerated by the same slider factor.</b>
+    heave, surge, sway and rotation — is exaggerated by the same slider factor.</b> The readouts and oscilloscope
+    always show true amplitude; set the slider to 1× for a true-scale view (real motion is millimetres — nearly
+    imperceptible on a metres-wide platform, which is the point of the exaggeration).
   </footer>
 </div>
 
@@ -418,7 +420,6 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
     document.getElementById("ro-rao").textContent=cc.rao_buoy7.toFixed(2);
     document.getElementById("caselabel").innerHTML="<b>"+cc.label.split("--")[0].trim()+"</b><br>"+cc.label.split("--")[1].trim();
     document.getElementById("seek").max=cc.n_frames-1;
-    document.getElementById("scope-u").textContent="mm · exaggeration ×"+exag;
   }
 
   // ---- controls ----
@@ -439,8 +440,8 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
     speed=+b.dataset.s; document.querySelectorAll("#speed button").forEach(x=>x.setAttribute("aria-pressed","false"));
     b.setAttribute("aria-pressed","true");});
   const exagEl=document.getElementById("exag");
-  exagEl.oninput=()=>{exag=+exagEl.value; document.getElementById("exagval").textContent=exag+"×";
-    document.getElementById("scope-u").textContent="mm · exaggeration ×"+exag; buildChannels();};
+  function exagLabel(){document.getElementById("exagval").textContent=exag===1?"1× true":exag+"×";}
+  exagEl.oninput=()=>{exag=+exagEl.value; exagLabel();};
 
   // ---- orbit drag ----
   view.addEventListener("pointerdown",e=>{drag={x:e.clientX,y:e.clientY};view.setPointerCapture(e.pointerId);});
@@ -459,7 +460,7 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
     draw();
     requestAnimationFrame(tick);
   }
-  setCase(0); setPlay(playing);
+  setCase(0); setPlay(playing); exagLabel();
   requestAnimationFrame(t=>{last=t;tick(t);});
   window.addEventListener("resize",()=>draw());
 })();
