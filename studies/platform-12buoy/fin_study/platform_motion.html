@@ -182,16 +182,16 @@
       </div>
     </div>
     <div class="ctl"><label for="exag">Exaggerate</label>
-      <input type="range" id="exag" min="4" max="80" value="14" step="1">
-      <span class="val" id="exagval">14×</span>
+      <input type="range" id="exag" min="2" max="40" value="8" step="1">
+      <span class="val" id="exagval">8×</span>
     </div>
   </section>
 
   <footer id="foot">
     Data: FloatSim time-domain solver (Cummins + velocity-level KKT joints + Morison drag), coupled 72-DOF
     Capytaine BEM. Settled window, decimated. Rigid skeleton per the deck's joint topology — constant-length
-    hub arms and spars; each buoy's spar tilts about its hub-arm tip as the buoy pitches. <b>Translations are
-    exaggerated by the slider factor; rotations at half that, so the pendulum tilt stays legible.</b>
+    hub arms and spars; each buoy's spar tilts about its hub-arm tip as the buoy pitches. <b>Every displacement —
+    heave, surge, sway and rotation — is exaggerated by the same slider factor.</b>
   </footer>
 </div>
 
@@ -214,7 +214,7 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
   function C(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
 
   // ---- state ----
-  let ci=0, frame=0, playing=!reduce, speed=1, exag=14;
+  let ci=0, frame=0, playing=!reduce, speed=1, exag=8;
   let az=0.62, el=0.46, drag=null;
   let acc=0, last=performance.now(), HMAX=1;
 
@@ -297,10 +297,9 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
       Jpt[bi]=J;
       // rigid spar of length SPAR_LEN hangs from J, oriented by the buoy's OWN
       // rotation -- so it tilts about J like a pendulum, never stretches.
-      // spar_vec = R_zyx(roll,pitch,yaw) @ [0,0,SPAR_LEN]; buoy = J - vec. Rotation
-      // uses half the translation exaggeration -- the buoy's few-degree pitch, at
-      // the full heave factor, would swing the spar flat; half keeps it legible.
-      const rEX=EX*0.5, ph=rEX*d[3], th=rEX*d[4], ps=rEX*d[5], L=SPAR_LEN;
+      // spar_vec = R_zyx(roll,pitch,yaw) @ [0,0,SPAR_LEN]; buoy = J - vec. One
+      // exaggeration factor for every displacement, translation and rotation alike.
+      const ph=EX*d[3], th=EX*d[4], ps=EX*d[5], L=SPAR_LEN;
       const cph=Math.cos(ph),sph=Math.sin(ph),cth=Math.cos(th),sth=Math.sin(th),cps=Math.cos(ps),sps=Math.sin(ps);
       wp[bi]=[J[0]-L*(sth*cph*cps+sph*sps), J[1]-L*(sth*cph*sps-sph*cps), J[2]-L*cth*cph];
     }
