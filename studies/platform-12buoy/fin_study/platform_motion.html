@@ -189,8 +189,9 @@
 
   <footer id="foot">
     Data: FloatSim time-domain solver (Cummins + velocity-level KKT joints + Morison drag), coupled 72-DOF
-    Capytaine BEM. Settled window, decimated. <b>Heave, surge, sway and platform tilt are shown at the same
-    exaggeration factor.</b>
+    Capytaine BEM. Settled window, decimated. Structure follows the deck's joint topology — each buoy hangs
+    on a vertical spar reaching up to a horizontal hub arm; the deck plane and its tilt follow from the
+    buoys' differential heave. <b>All displacements are exaggerated by the same factor.</b>
   </footer>
 </div>
 
@@ -202,6 +203,11 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
   const reduce = matchMedia("(prefers-reduced-motion:reduce)").matches;
   const bodies = DATA.bodies, PLAT = bodies.findIndex(b=>b.type==="platform");
   const UP = DATA.upwave_buoy, DN = DATA.downwave_buoy;
+  // spar length = equilibrium (hub z - buoy z); the joint sits straight above the
+  // buoy at hub level (deck attach_a = [0,0,z_hub-z_buoy]), so each buoy hangs on a
+  // vertical spar and a horizontal hub arm reaches out to that joint point.
+  const SPAR_LEN = (()=>{for(let i=0;i<bodies.length;i++) if(bodies[i].type==="buoy")
+    return bodies[bodies[i].parent].z0 - bodies[i].z0; return 1.689;})();
   const view = document.getElementById("view"), scope = document.getElementById("scope");
   const vctx = view.getContext("2d"), sctx = scope.getContext("2d");
   const css = getComputedStyle.bind(null);
@@ -276,11 +282,20 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
 
     // collect primitives with depth for painter's sort
     const prims=[];
-    // arms (parent links)
+    // members, per the deck's joint topology:
+    //   buoy  -> vertical spar up to its joint point J (directly above the buoy)
+    //   hub   -> horizontal arm out to each buoy's J; and hub -> platform link
     for(let bi=0;bi<bodies.length;bi++){ const par=bodies[bi].parent; if(par<0)continue;
-      const a=pos(fr,bi,EX), b=pos(fr,par,EX);
-      const pa=project(a[0],a[1],a[2],v), pb=project(b[0],b[1],b[2],v);
-      prims.push({t:"arm",d:(pa.d+pb.d)/2,pa,pb,kind:bodies[bi].type});}
+      if(bodies[bi].type==="buoy"){
+        const bp=pos(fr,bi,EX), hp=pos(fr,par,EX), J=[bp[0],bp[1],bp[2]+SPAR_LEN];
+        const pB=project(bp[0],bp[1],bp[2],v), pJ=project(J[0],J[1],J[2],v), pH=project(hp[0],hp[1],hp[2],v);
+        prims.push({t:"arm",d:(pB.d+pJ.d)/2,pa:pB,pb:pJ,kind:"spar"});
+        prims.push({t:"arm",d:(pH.d+pJ.d)/2,pa:pH,pb:pJ,kind:"hubarm"});
+      } else { // hub -> platform
+        const a=pos(fr,bi,EX), b=pos(fr,par,EX);
+        prims.push({t:"arm",d:(project(a[0],a[1],a[2],v).d+project(b[0],b[1],b[2],v).d)/2,
+          pa:project(a[0],a[1],a[2],v),pb:project(b[0],b[1],b[2],v),kind:"platarm"});
+      }}
     // platform deck quad through the 4 hubs
     const hubs=bodies.map((b,i)=>i).filter(i=>bodies[i].type==="hub");
     if(hubs.length===4){ const q=hubs.map(i=>{const p=pos(fr,i,EX);return project(p[0],p[1],p[2],v);});
@@ -300,7 +315,9 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
         vctx.fillStyle=`color-mix(in srgb, ${accent} 12%, transparent)`; vctx.fill();
         vctx.lineWidth=1.4; vctx.strokeStyle=`color-mix(in srgb, ${accent} 55%, transparent)`; vctx.stroke(); }
       else if(pr.t==="arm"){ vctx.beginPath(); vctx.moveTo(pr.pa.X,pr.pa.Y); vctx.lineTo(pr.pb.X,pr.pb.Y);
-        vctx.lineWidth=pr.kind==="buoy"?1.6:2.2; vctx.strokeStyle=pr.kind==="buoy"?line:`color-mix(in srgb, ${accent} 45%, ${line})`; vctx.stroke(); }
+        if(pr.kind==="spar"){ vctx.lineWidth=2.6; vctx.strokeStyle=C('--ink-2'); }
+        else { vctx.lineWidth=2; vctx.strokeStyle=`color-mix(in srgb, ${accent} 50%, ${line})`; }
+        vctx.stroke(); }
       else { const p=pr.p;
         if(pr.typ==="buoy"){ const rad=9;
           const col=heaveColor(pr.norm);
