@@ -317,14 +317,8 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
       const cph=Math.cos(ph),sph=Math.sin(ph),cth=Math.cos(th),sth=Math.sin(th),cps=Math.cos(ps),sps=Math.sin(ps);
       wp[bi]=[J[0]-L*(sth*cph*cps+sph*sps), J[1]-L*(sth*cph*sps-sph*cps), J[2]-L*cth*cph];
     }
-    // soft contact shadows: each buoy's footprint dropped onto the sea (z=0)
-    vctx.save();
-    for(let bi=0;bi<bodies.length;bi++){ if(bodies[bi].type!=="buoy") continue;
-      const s0=project(wp[bi][0],wp[bi][1],0,v), rr=0.34*v.s;
-      const gsh=vctx.createRadialGradient(s0.X,s0.Y,0,s0.X,s0.Y,rr);
-      gsh.addColorStop(0,"rgba(0,0,0,0.26)"); gsh.addColorStop(1,"rgba(0,0,0,0)");
-      vctx.fillStyle=gsh; vctx.beginPath(); vctx.arc(s0.X,s0.Y,rr,0,7); vctx.fill(); }
-    vctx.restore();
+    // one soft shadow of the above-water platform footprint, lying flat on the sea
+    seaShadow(0,0,0.002,1.7,v);
 
     const finR = cc.fin==="0215"?0.215 : cc.fin==="015"?0.15 : 0.084;
     for(let bi=0;bi<bodies.length;bi++){ const par=bodies[bi].parent; if(par<0)continue;
@@ -405,9 +399,21 @@ const DATA = {"meta":{"scale":"1:50 (model)","n_bodies":17,"dof_order":["surge",
     vctx.closePath(); vctx.fillStyle=fillCss; vctx.fill(); vctx.lineWidth=1; vctx.strokeStyle=edgeCss; vctx.stroke();
   }
   const MONO='ui-monospace,Consolas,"SF Mono",Menlo,monospace';
-  // wave-direction arrow lying on the sea, pointing +x (propagation)
+  // soft shadow disc lying flat on the sea plane (sampled horizontal circle + radial fill)
+  function seaShadow(cx,cy,cz,r,v){
+    const pts=[]; let mx=0,my=0;
+    for(let i=0;i<30;i++){const a=i/30*6.2831853, p=project(cx+Math.cos(a)*r,cy+Math.sin(a)*r,cz,v); pts.push(p); mx+=p.X; my+=p.Y;}
+    mx/=30; my/=30; let rad=1; for(const p of pts) rad=Math.max(rad,Math.hypot(p.X-mx,p.Y-my));
+    const g=vctx.createRadialGradient(mx,my,0,mx,my,rad);
+    g.addColorStop(0,"rgba(0,0,0,0.20)"); g.addColorStop(0.6,"rgba(0,0,0,0.10)"); g.addColorStop(1,"rgba(0,0,0,0)");
+    vctx.beginPath(); pts.forEach((p,i)=>i?vctx.lineTo(p.X,p.Y):vctx.moveTo(p.X,p.Y)); vctx.closePath();
+    vctx.fillStyle=g; vctx.fill();
+  }
+  // wave-direction arrow, on the sea's front edge (clear of the platform), riding the wave
   function waveArrow(v,R,A,k,om,ts){
-    const yb=-R*0.82, a=project(-R*0.44,yb,0.06,v), b=project(R*0.40,yb,0.06,v);
+    const yb=-R*0.96, x0=-R*0.5, x1=R*0.34;
+    const za=A*Math.cos(k*x0-om*ts)+0.03, zb=A*Math.cos(k*x1-om*ts)+0.03;
+    const a=project(x0,yb,za,v), b=project(x1,yb,zb,v);
     vctx.strokeStyle=C('--accent'); vctx.fillStyle=C('--accent'); vctx.globalAlpha=0.9; vctx.lineWidth=2.4; vctx.lineCap="round";
     vctx.beginPath(); vctx.moveTo(a.X,a.Y); vctx.lineTo(b.X,b.Y); vctx.stroke(); vctx.lineCap="butt";
     const dx=b.X-a.X, dy=b.Y-a.Y, L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L, hs=12;
