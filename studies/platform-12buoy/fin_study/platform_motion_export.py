@@ -22,11 +22,13 @@ from pathlib import Path
 import numpy as np
 
 _HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(_HERE))  # fin_study (platform_timeseries)
 sys.path.insert(0, str(_HERE.parent))  # platform-12buoy
 sys.path.insert(0, str(_HERE.parent.parent / "cluster-3buoy-rigid"))
 
 import platform_fin_fan as pff  # noqa: E402
 import platform_rao_pilot as prp  # noqa: E402
+import platform_timeseries as pts  # noqa: E402  (point kinematics for the scope signals)
 
 _OUT = _HERE / "platform_motion.json"
 _N_FRAMES = 180
@@ -58,8 +60,29 @@ def _bodies(deck):  # type: ignore[no-untyped-def]
     return out
 
 
-def _frames(c):  # type: ignore[no-untyped-def]
-    """Keep an integer number of periods (clean loop), decimate to _N_FRAMES."""
+def _signals(c, t, m, idx, sig_points):  # type: ignore[no-untyped-def]
+    """Per-point displacement/velocity/acceleration time histories (true amplitude,
+    m / m·s⁻¹ / m·s⁻²) on the SAME window+decimation as the animation frames, via
+    the rigid-body point kinematics (``platform_timeseries._point_kinematics``:
+    reference accel from the integrator's xi_ddot + the buoy-top lever terms)."""
+    xi = np.asarray(c["xi"], dtype=float)
+    acc = np.asarray(c["acc"], dtype=float)
+    out = {}
+    for key, bi, lever in sig_points:
+        sl = slice(6 * bi, 6 * bi + 6)
+        dsp, vel, ac = pts._point_kinematics(xi[:, sl], acc[:, sl], t, lever)
+        dw, vw, aw = dsp[m][idx], vel[m][idx], ac[m][idx]
+        out[key] = {
+            "disp": [[round(float(dw[f, j]), 6) for j in range(3)] for f in range(dw.shape[0])],
+            "vel": [[round(float(vw[f, j]), 6) for j in range(3)] for f in range(vw.shape[0])],
+            "acc": [[round(float(aw[f, j]), 5) for j in range(3)] for f in range(aw.shape[0])],
+        }
+    return out
+
+
+def _frames(c, sig_points):  # type: ignore[no-untyped-def]
+    """Keep an integer number of periods (clean loop), decimate to _N_FRAMES.
+    Also returns the scope signals on the identical window+decimation."""
     t = np.asarray(c["t"], dtype=float)
     xi = np.asarray(c["xi"], dtype=float)  # (nw, 102)
     T = 2.0 * np.pi / float(c["omega"])
@@ -75,7 +98,8 @@ def _frames(c):  # type: ignore[no-untyped-def]
     frames = [[[round(float(xf[f, 6 * b + d]), 6) for d in range(6)] for b in range(nb)]
               for f in range(xf.shape[0])]
     dt_frame = k * T / _N_FRAMES
-    return frames, dt_frame
+    signals = _signals(c, t, m, idx, sig_points)
+    return frames, dt_frame, signals
 
 
 def main() -> None:
@@ -85,8 +109,14 @@ def main() -> None:
     buoys = [i for i, b in enumerate(bodies) if b["type"] == "buoy"]
     upwave = min(buoys, key=lambda i: bodies[i]["x0"])  # wave (heading 0) arrives at -x first
     downwave = max(buoys, key=lambda i: bodies[i]["x0"])
+    plat_idx = next(i for i, b in enumerate(bodies) if b["type"] == "platform")
+    # Scope signal points: platform centre (lever 0) + upwave/downwave buoy TOPS
+    # (spar-top attach point, body-frame lever Z_HUB-Z_BUOY). Same names the viewer
+    # oscilloscope reads (plat / up / dn).
+    sig_points = [("plat", plat_idx, 0.0), ("up", upwave, pts._L_TOP), ("dn", downwave, pts._L_TOP)]
     print(f"{len(bodies)} bodies; upwave={bodies[upwave]['name']} "
-          f"(x={bodies[upwave]['x0']}), downwave={bodies[downwave]['name']}", flush=True)
+          f"(x={bodies[upwave]['x0']}), downwave={bodies[downwave]['name']}; "
+          f"buoy-top lever {pts._L_TOP:.3f} m", flush=True)
 
     hdb_cache: dict = {}
     built: dict = {}
@@ -102,14 +132,15 @@ def main() -> None:
             setup = built[tag]
             c = prp.run_case(setup, hdb, hydro_dof, height_m=H, period_s=T,
                              ramp_s=20.0, cap_settle_s=350.0, window_periods=6.0, dt=0.01)
-        frames, dt_frame = _frames(c)
+        frames, dt_frame, signals = _frames(c, sig_points)
         cases_out.append({
             "fin": tag, "label": label, "H": H, "T": T,
             "omega": round(float(c["omega"]), 5), "amp_m": round(float(c["amp_m"]), 5),
             "rao_platform": round(float(c["rao"]["platform_heave"]), 4),
             "rao_buoy7": round(float(c["rao"]["buoy7_heave"]), 4),
             "settled": bool(c["settled"]),
-            "n_frames": len(frames), "dt_frame_s": round(dt_frame, 5), "frames": frames})
+            "n_frames": len(frames), "dt_frame_s": round(dt_frame, 5), "frames": frames,
+            "sig": signals})
         print(f"  {label}: {len(frames)} frames, dt={dt_frame:.4f}s, settled={c['settled']}",
               flush=True)
 
@@ -117,6 +148,13 @@ def main() -> None:
         "meta": {"scale": "1:50 (model)", "n_bodies": len(bodies),
                  "dof_order": ["surge", "sway", "heave", "roll", "pitch", "yaw"],
                  "units": "m / rad", "heading_deg": 0.0,
+                 "sig": {"points": ["plat (platform centre)", "up (upwave buoy top)",
+                                    "dn (downwave buoy top)"],
+                         "buoy_top_lever_m": round(float(pts._L_TOP), 5),
+                         "quantities": {"disp": "m", "vel": "m/s", "acc": "m/s^2"},
+                         "comp_order": ["x (surge)", "y (sway)", "z (heave)"],
+                         "note": "true-amplitude point kinematics on the same window+decimation "
+                                 "as frames; scope reads case.sig[point][quantity][frame][comp]"},
                  "note": "displacements from equilibrium; heading 0 => wave travels +x, "
                          "arrives at -x (upwave) first"},
         "bodies": bodies, "upwave_buoy": upwave, "downwave_buoy": downwave, "cases": cases_out}

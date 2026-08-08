@@ -1,3 +1,5 @@
 timeseries/
 _test_viewer.html
 _demo*.png
+_export_log.txt
+*.bak
