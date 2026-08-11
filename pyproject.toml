@@ -20,6 +20,18 @@ dependencies = [
     # ingests them via xarray.open_dataset for clean labeled-dim indexing.
     "xarray>=2024.1",
     "netCDF4>=1.6",
+    # BEM solver. Every committed NetCDF dataset in studies/ reports
+    # capytaine_version == 2.3.1, and tests/validation/test_m11b_pr7_screening.py
+    # imports studies/platform-12buoy/platform_bem.py, so this is a hard test
+    # dependency and was previously undeclared.
+    #
+    # Pinned EXACTLY, not ranged: platform_bem.py injects a custom linear_solver
+    # into capytaine's BasicMatrixEngine with a __call__(A, b) contract and
+    # identity-caches the LU. That is a private-API coupling -- a minor release
+    # reorganising the solver internals would silently change which frequency
+    # slices the conditioning screen retains, and therefore the hydro database,
+    # without necessarily failing a test.
+    "capytaine==2.3.1",
 ]
 
 [project.optional-dependencies]
