@@ -1875,6 +1875,48 @@ to a dedicated PR.
 
 ---
 
+### PLATFORM-SURGE-DRIFT — unmoored surge drift (calm-water drag rectification)
+
+**Mechanism.** The 12-buoy platform drifts secularly in surge (the only
+unrestored translational DOF; unmoored) at ≈ −1.15 mm/s model, cross-validated
+to 6.5 % against FloatFEA. Driven by steady second-order rectification of the
+**calm-water** quadratic drag — specifically the plate-NORMAL term (−0.432 N,
+scales with Cd_n) minus the spar term (+0.417 N), a near-cancellation whose −x
+residual makes the drift; radiation is negligible (`B_surge(0) ≈ 0`, measured).
+Fully characterised in `docs/diagnostics/platform-surge-drift.md`; diagnostics
+in `studies/platform-12buoy/drift/`.
+
+**Audit reference.** `docs/diagnostics/platform-surge-drift.md` §4–8;
+`floatsim/driver.py:_build_drag_state_force` (`_calm_fluid`).
+
+**Why latent / visibility.** Invisible to the study metrics (heave RAO and
+acceleration channels are drift-immune) and to `run_case`, which returns only
+the final six periods (understating the excursion ~16×). Surfaces only in the
+platform *position* over a full integration (~2.3 spar diameters), which the
+FloatFEA position consumer depends on.
+
+**Scope.**
+- **DR2** — direct excitation sign-convention test (−0.003 N vs 95 N swing is
+  suggestive, not decisive; keep first).
+- **Exact force-balance closure** — re-evaluate all rows at the integrator's
+  generalized-α weighted states to drive the ~0.014 N post-hoc residual to
+  numerical zero (a check; all Cummins terms are already accounted).
+- **Wave-relative drag (M10 A4)** — the deferred `_calm_fluid` replacement; the
+  dominant real-world (downwave, +x) drift term. Enabling it is expected to add
+  a larger +x drift that may dominate or flip the sign.
+
+**Estimated effort.** DR2 + exact closure ~0.5 wk; wave-relative drag is the
+M10 A4 item (separately scoped).
+
+**Blocks.** Any downstream use of platform *position* (FloatFEA mean-wetted-
+surface / snapshot comparability). Sign and magnitude of the drift are
+**provisional** until wave-relative drag lands.
+
+**Status.** Open. Surfaced 2026-08-07 (drift check requested during the fin
+study). Mechanism measured; three follow-ups above remain.
+
+---
+
 ## Resolved entries
 
 *(none yet)*
