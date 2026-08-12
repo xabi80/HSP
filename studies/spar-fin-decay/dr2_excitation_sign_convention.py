@@ -106,18 +106,18 @@ def main() -> None:
         reg = "below" if T > tn else "above"
         Xfd, Xtd = _fd(hdb, lhs, omega), _td(lhs, kernel, hdb, eq.xi_eq, omega)
         print(f"=== T = {T} s  (ω = {omega:.3f}, {reg} the {tn:.2f} s heave resonance) ===")
-        print(f"  {'DOF':6} {'FD phase':>10} {'TD phase':>10} {'Δphase':>9} "
-              f"{'|X|_FD':>10} {'|X|_TD':>10}")
+        print(f"  {'DOF':6} {'FD phase':>12} {'TD phase':>12} {'Δ(TD−FD)':>12} "
+              f"{'|X|_FD':>11} {'|X|_TD':>11}")
         for name, d in _DOF.items():
             pf, pt = np.degrees(np.angle(Xfd[d])), np.degrees(np.angle(Xtd[d]))
-            print(f"  {name:6} {pf:9.1f}° {pt:9.1f}° {_wrap(pt - pf):8.1f}° "
-                  f"{abs(Xfd[d]):10.3e} {abs(Xtd[d]):10.3e}")
+            print(f"  {name:6} {pf:11.4f}° {pt:11.4f}° {_wrap(pt - pf):11.4f}° "
+                  f"{abs(Xfd[d]):11.3e} {abs(Xtd[d]):11.3e}")
         if T > tn:  # physical anchor: long wave -> heave rides the wave (in phase)
             ph = np.degrees(np.angle(Xtd[2]))
             verdict = "IN PHASE (convention OK)" if abs(_wrap(ph)) < 30 else \
                 ("ANTI-PHASE (SIGN FLIP!)" if abs(_wrap(ph - 180)) < 30 else "ambiguous")
             print(f"  physical anchor: heave should ride the long wave -> arg≈0°; "
-                  f"measured {ph:+.1f}° -> {verdict}")
+                  f"measured {ph:+.4f}° -> {verdict}")
         print()
 
 

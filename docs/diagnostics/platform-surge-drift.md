@@ -174,6 +174,14 @@ wave-relative drag (M10 A4) is expected to add a larger +x drift that may
 dominate or flip the sign.** Anything built downstream around the current drift
 (direction or magnitude) is **provisional** until that term is included.
 
+**Do not enable it yet.** M10 A4 changes the *solve path* (it is not an additive
+load), so it breaks additive-only composition, moves the model tag and
+invalidates G1.5 — and FloatFEA needs a stable load source for the next ~8 weeks.
+When it does land, the drift consequences must be **re-derived, not adjusted**:
+FF1's 2.3-spar-diameter excursion, G4.6's magnitude and F5's snapshot
+comparability all descend from a drift number whose **sign may flip**, so patching
+them would be worse than recomputing from the new solve.
+
 ## 8. Open items
 
 - **DR2 — PASSED (§9).** Excitation sign convention validated by a direct
@@ -191,27 +199,54 @@ design, not here.
 
 ## 9. DR2 — excitation sign convention: PASS
 
-The excitation channel the drift analysis (and the downstream panel-pressure
-module) are built on is validated on a **single isolated spar-fin buoy** — the
-convention is a per-body property, so one 6-DOF body isolates it and the
-frequency-domain solution is a closed-form 6×6. Conditions: **drag off** (linear
-FD vs linear TD), **off-resonance** (phase flat in ω), **surge and heave** (a sign
-error may be axis-specific).
+Validated on a **single isolated spar-fin buoy** — the convention is a per-body
+property, so one 6-DOF body isolates it (no assembly, no joints). Conditions:
+**drag off**, **off-resonance**, **surge and heave**. **Phase is the entire test —
+a 180° sign error leaves |RAO| unchanged**, so an amplitude check would pass a
+flipped convention.
 
-**Phase is the entire test — a 180° sign error leaves |RAO| unchanged**, so an
-amplitude check would pass a flipped convention. Response phase (relative to the
-wave elevation at the body) from the full TD pipeline
-(`make_regular_wave_force` → `integrate_cummins`) vs an independent FD closed form
-`X = [−ω²(M+A(ω)) + iωB(ω) + C]⁻¹ (RAO·A)`, and vs the physical long-wave limit:
+**Primary result — the physical anchor.** Below the heave resonance (long waves)
+the buoy rides the wave, so heave must be **in phase with the elevation η at the
+body**. This is the test that matters, because it probes the *relative*
+consistency between excitation and kinematics using **no BEM convention on either
+side** — and a relative inconsistency is the only real failure: a *globally*
+consistent sign flip is a coordinate choice (identical physics), not a defect.
 
-| T (s) | regime | surge Δ(TD−FD) | heave Δ(TD−FD) | heave phase vs η |
-|-------|--------|---------------:|---------------:|------------------|
-| 6.0 | below res | 0.8° | 0.0° | −0.0° — in phase (rides wave) ✓ |
-| 4.5 | below res | 0.4° | 0.0° | +0.0° — in phase ✓ |
-| 2.0 | above res | 1.8° | 0.0° | (near a response node, \|X\|→0) |
+| T (s) | ω (rad/s) | heave phase vs η | \|X\|_heave |
+|-------|-----------|-----------------:|-----------|
+| 6.0 | 1.047 | **−0.003°** (in phase) | 2.06e-2 |
+| 4.5 | 1.396 | **+0.036°** (in phase) | 2.24e-2 |
 
-TD reproduces the FD phase to **< 2°** in both axes, and heave is **in phase with
-η at long waves** (arg ≈ 0°) as physics demands — a flipped sign would read 180°.
-Surge sits at −90° (FD and TD agree), consistent with the body following the
-horizontal orbital motion. Convention confirmed; no axis-specific sign error.
+Heave rides the wave to **within 0.04°**; a flipped sign would read 180°. Pass.
+
+**Coverage — two clean points, stated honestly.** The pass rests on the two
+long-wave rows above. A third frequency, T = 2.0 s (above resonance), sits near a
+heave response node (|X| = 2.3e-4, ~90× smaller) where the phase is numerically
+meaningless and contributes nothing. Two points suffice: a convention sign error
+is **frequency-independent by construction**, so it needs no sweep.
+
+**Corroboration — TD vs FD.** The full TD pipeline
+(`make_regular_wave_force` → `integrate_cummins`) reproduces an independent FD
+closed form `X = [−ω²(M+A(ω)) + iωB(ω) + C]⁻¹ (RAO·A)`:
+
+| T (s) | surge Δ(TD−FD) | heave Δ(TD−FD) |
+|-------|---------------:|---------------:|
+| 6.0 | 0.758° | −0.003° |
+| 4.5 | 0.436° | +0.036° |
+| 2.0 | 1.837° | +0.006° |
+
+This is *corroboration, not the primary test* — FD and TD read the excitation
+phase from the same reader, so they could agree while both wrong; only the anchor
+rules that out. **Heave Δ is clean (< 0.04°) while surge scatters 0.4–1.8°**:
+heave has hydrostatic restoring and is well-conditioned; surge on a free body has
+none, so its phase is intrinsically sensitive to the small free-decay residual in
+the fit. That pattern *supports* the result — it is conditioning, not a convention
+problem.
+
+**Phase convention (so this is re-checkable).** Time convention `e^{+iωt}`:
+`x(t) = Re{X·e^{+iωt}}`, `η(t) = Re{A·e^{+iωt}}` with A real (phase 0), so the
+reported phase is `arg(X)` relative to η. Surge = **−90°** means `X = −i|X|`, i.e.
+`x(t) = |X|·sin(ωt)`, which **lags** η = cos(ωt) by 90° — the body following the
+horizontal orbital displacement, which lags the elevation by 90° for a +x
+progressive wave (FD and TD both give −90°, confirming no axis-specific error).
 Diagnostic: `studies/spar-fin-decay/dr2_excitation_sign_convention.py`.

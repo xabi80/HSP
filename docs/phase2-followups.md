@@ -1908,8 +1908,13 @@ FloatFEA position consumer depends on.
   where it also removes a ~3.2 % FloatFEA-G4.1 equilibrium floor. Not a
   standalone drift-closure item.
 - **Wave-relative drag (M10 A4)** — the deferred `_calm_fluid` replacement; the
-  dominant real-world (downwave, +x) drift term. Enabling it is expected to add
-  a larger +x drift that may dominate or flip the sign.
+  dominant real-world (downwave, +x) drift term. **Do not pick up now:** it
+  changes the *solve path* (breaks additive-only, moves the model tag,
+  invalidates G1.5), and FloatFEA needs a stable load source for ~8 weeks. When
+  it lands, the drift consequences must be **RE-DERIVED, NOT ADJUSTED** — FF1's
+  2.3-spar-diameter excursion, G4.6's magnitude and F5's comparability all
+  descend from a drift number whose sign may flip; patching them would be worse
+  than recomputing.
 
 **Estimated effort.** DR2 + exact closure ~0.5 wk; wave-relative drag is the
 M10 A4 item (separately scoped).
