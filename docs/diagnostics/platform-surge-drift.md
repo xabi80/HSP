@@ -1,6 +1,7 @@
 # Platform surge drift — characterization
 
-**Status:** characterized (mechanism measured, not inferred). **Scope:** the
+**Status:** characterized (mechanism measured, not inferred); DR2 excitation
+sign-convention **PASS** (§9). **Scope:** the
 12-buoy articulated platform time-domain runs (fin study + M11b PR8 pilot).
 **Case anchor:** fin 0.215, T = 3.141 s, H = 0.08 m, ramp 20 s, unless noted.
 
@@ -54,9 +55,9 @@ is ramp-duration-independent (a one-time impulse would shrink adiabatically):
 second-order rectification** of the quadratic Morison drag. The wave excitation
 is exonerated too: its mean surge force is **−0.003 N against a 95 N swing**.
 
-> **DR2 (excitation sign convention) remains formally untested.** −0.003 N vs a
-> 95 N swing is *suggestive, not decisive*; it is not a substitute for a direct
-> sign-convention test. DR2 stays first, not downgraded.
+> **DR2 (excitation sign convention) — now validated (§9).** The −0.003 N vs a
+> 95 N swing was suggestive, not decisive, on its own; the direct single-buoy
+> phase test in §9 confirms the convention independently.
 
 ## 4. Mechanism — resolve the drag by component, never net it
 
@@ -84,14 +85,17 @@ v0 ≪ v_osc) separates them **by measurement**:
 | plate-NORMAL | −0.432 | **−0.433** (−x, ∝ Cd_n) | +0.001 |
 | spar cylinder | +0.417 | **+0.216** (+x, Cd_n-indep.) | +0.201 |
 | plate-tangential | +0.002 | +0.001 | +0.001 |
-| **net** | −0.014 | **−0.220 (−x — the driver)** | **+0.203 (the brake)** |
+| **net drag** | **−0.013** | **−0.216 (−x — the driver)** | **+0.203 (the brake)** |
 
-So the **driver is the net rectification, −0.220 N** — the plate-normal term
-(the heave-plate load gaining a surge component as the buoy pitches, captured by
-the *distributed* normal patches) winning over the spar's own +x rectification —
-and the **brake is the drift-resistance, +0.203 N**, almost entirely the spar's
-quadratic resistance to v0. They balance at v0 = −1.15 mm/s (the ~0.017 N gap is
-the §5 evaluation offset, not a physical imbalance).
+(Drag rows only, so every column closes: each row's total = rect + resist, and
+the net row's −0.216 + 0.203 = −0.013.) So the **driver is the net drag
+rectification, −0.216 N** — the plate-normal term (the heave-plate load gaining a
+surge component as the buoy pitches, captured by the *distributed* normal
+patches) winning over the spar's own +x rectification — and the **brake is the
+drift-resistance, +0.203 N**, almost entirely the spar's quadratic resistance to
+v0. Adding the near-zero excitation mean −0.003 N (convention validated, §9)
+gives the total driving force −0.219 N; it balances the +0.203 N resistance at v0 = −1.15 mm/s,
+the ~0.016 N gap being the §5 evaluation offset, not a physical imbalance.
 
 This makes FloatFEA's **Cd_n/10 sign reversal a measurement**: a pure brake
 cannot reverse a drift, so the reversal *requires* a genuine Cd_n-independent +x
@@ -172,11 +176,42 @@ dominate or flip the sign.** Anything built downstream around the current drift
 
 ## 8. Open items
 
-- **DR2** — direct excitation sign-convention test (still first; −0.003 N vs a
-  95 N swing is suggestive, not decisive).
+- **DR2 — PASSED (§9).** Excitation sign convention validated by a direct
+  single-buoy phase test. No longer open.
 - **α-state force export** (was "exact force-balance closure") — the §5 residual
   is a step-indexed vs α-weighted force mismatch, not a physics gap. Its
   resolution belongs in the **solve-state export design** (write each force at
   the α-state the integrator evaluated it at), where it also removes a ~3.2 %
   FloatFEA-G4.1 equilibrium floor. Tracked there, not as a drift item.
 - **Wave-relative drag (M10 A4)** — the dominant real-world term; §7.
+
+With DR2 passed, the drift investigation closes on the FloatSim side (pending
+FloatFEA's ⟨θ·f_n⟩ reproduction); the α-residual lives in the solve-state export
+design, not here.
+
+## 9. DR2 — excitation sign convention: PASS
+
+The excitation channel the drift analysis (and the downstream panel-pressure
+module) are built on is validated on a **single isolated spar-fin buoy** — the
+convention is a per-body property, so one 6-DOF body isolates it and the
+frequency-domain solution is a closed-form 6×6. Conditions: **drag off** (linear
+FD vs linear TD), **off-resonance** (phase flat in ω), **surge and heave** (a sign
+error may be axis-specific).
+
+**Phase is the entire test — a 180° sign error leaves |RAO| unchanged**, so an
+amplitude check would pass a flipped convention. Response phase (relative to the
+wave elevation at the body) from the full TD pipeline
+(`make_regular_wave_force` → `integrate_cummins`) vs an independent FD closed form
+`X = [−ω²(M+A(ω)) + iωB(ω) + C]⁻¹ (RAO·A)`, and vs the physical long-wave limit:
+
+| T (s) | regime | surge Δ(TD−FD) | heave Δ(TD−FD) | heave phase vs η |
+|-------|--------|---------------:|---------------:|------------------|
+| 6.0 | below res | 0.8° | 0.0° | −0.0° — in phase (rides wave) ✓ |
+| 4.5 | below res | 0.4° | 0.0° | +0.0° — in phase ✓ |
+| 2.0 | above res | 1.8° | 0.0° | (near a response node, \|X\|→0) |
+
+TD reproduces the FD phase to **< 2°** in both axes, and heave is **in phase with
+η at long waves** (arg ≈ 0°) as physics demands — a flipped sign would read 180°.
+Surge sits at −90° (FD and TD agree), consistent with the body following the
+horizontal orbital motion. Convention confirmed; no axis-specific sign error.
+Diagnostic: `studies/spar-fin-decay/dr2_excitation_sign_convention.py`.

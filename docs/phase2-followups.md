@@ -1896,8 +1896,11 @@ platform *position* over a full integration (~2.3 spar diameters), which the
 FloatFEA position consumer depends on.
 
 **Scope.**
-- **DR2** — direct excitation sign-convention test (−0.003 N vs 95 N swing is
-  suggestive, not decisive; keep first).
+- **DR2 — PASSED (2026-08-07).** Excitation sign convention validated on a single
+  isolated spar-fin buoy, phase-based (drag off, off-resonance, surge + heave):
+  TD reproduces the FD closed-form phase to <2° and heave rides long waves in
+  phase with η (a 180° sign error leaves |RAO| unchanged, so amplitude proves
+  nothing). `studies/spar-fin-decay/dr2_excitation_sign_convention.py`.
 - **α-state force export** — the ~0.014 N post-hoc residual is a step-indexed
   vs generalized-α-weighted force mismatch (0.014/0.432 = 3.2 %), not a physics
   gap (all Cummins terms are accounted). Resolve it in the **solve-state export

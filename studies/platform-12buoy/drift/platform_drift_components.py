@@ -155,9 +155,13 @@ def main() -> None:
                            ("plate-TANG", ptt, pt0)]:
         print(f"  {lab:13}: total {act:+.4e} = rectification {rect:+.4e} + "
               f"drift-resistance {act - rect:+.4e}")
-    net_rect = e_ + sp0 + pn0 + pt0
-    print(f"  net rectification at v0=0 (the true driver): {net_rect:+.4e} N "
-          f"{'(-x, drives the drift)' if net_rect < 0 else '(+x)'}")
+    drag_tot, drag_rect = sp + pnn + ptt, sp0 + pn0 + pt0
+    print(f"  {'net drag':13}: total {drag_tot:+.4e} = rectification {drag_rect:+.4e} + "
+          f"drift-resistance {drag_tot - drag_rect:+.4e}   (columns close)")
+    net_driver = e_ + drag_rect  # + excitation (radiation ~0)
+    print(f"  net drag rectification = {drag_rect:+.4e} N; + excitation {e_:+.4e} = "
+          f"total driver {net_driver:+.4e} N "
+          f"{'(-x, drives the drift)' if net_driver < 0 else '(+x)'}")
     print("  A3 check: a pure brake cannot reverse a drift -> the Cd_n/10 sign flip needs a")
     print(f"  genuine Cd_n-independent +x rectification; spar rectification = {sp0:+.4e} N "
           f"{'supplies it' if sp0 > 0 else 'does NOT'}.")
