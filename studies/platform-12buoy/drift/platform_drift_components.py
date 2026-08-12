@@ -113,6 +113,20 @@ def main() -> None:
     ma = float(np.mean([(setup.lhs.M_plus_Ainf @ r.xi_ddot[n])[_SIDX].sum() for n in idx]))
     cx = float(np.mean([(setup.lhs.C @ r.xi[n])[_SIDX].sum() for n in idx]))
 
+    # A3: separate pure rectification from drift-resistance. Each drag row is the
+    # oscillation-rectified force PLUS the quadratic resistance to the -x drift,
+    # inseparable at one drift state. Re-evaluate with the mean drift velocity
+    # removed from the surge DOFs (= zero drift, exact since v0 << v_osc): what
+    # remains is pure rectification; the difference is the drift-resistance.
+    def msum0(fn):  # type: ignore[no-untyped-def]
+        acc = 0.0
+        for n in idx:
+            xd = r.xi_dot[n].copy()
+            xd[_SIDX] -= v0
+            acc += fn(r.t[n], r.xi[n], xd)[_SIDX].sum()
+        return acc / len(idx)
+    sp0, pn0, pt0 = msum0(spar_f), msum0(pn_f), msum0(pt_f)
+
     print(f"Case fin 0.215 T={_T}s H={_H}m ramp{_RAMP:g}s  |  drift v0 = {v0*1000:.4f} mm/s  "
           f"(-x)\nkappa(surge radiation damping) = {kappa:.3f} N*s/m\n")
     print("Mean SYSTEM surge force over the steady window (N)   [+x downwave / -x upwave]:")
@@ -135,6 +149,18 @@ def main() -> None:
     print("  BRAKING (+x):  " + ", ".join(f"{l.split()[1]}={v:+.4f}" for l, v in brakes))
     print(f"\n  excitation mean = {e_:+.4e} N vs {0.5*np.ptp([ext(r.t[n])[_SIDX].sum() for n in idx]):.1f} N "
           "swing  (DR2: suggestive, sign convention still formally untested)")
+
+    print("\nA3 -- pure rectification (drift velocity removed) vs drift-resistance (N):")
+    for lab, act, rect in [("spar", sp, sp0), ("plate-NORMAL", pnn, pn0),
+                           ("plate-TANG", ptt, pt0)]:
+        print(f"  {lab:13}: total {act:+.4e} = rectification {rect:+.4e} + "
+              f"drift-resistance {act - rect:+.4e}")
+    net_rect = e_ + sp0 + pn0 + pt0
+    print(f"  net rectification at v0=0 (the true driver): {net_rect:+.4e} N "
+          f"{'(-x, drives the drift)' if net_rect < 0 else '(+x)'}")
+    print("  A3 check: a pure brake cannot reverse a drift -> the Cd_n/10 sign flip needs a")
+    print(f"  genuine Cd_n-independent +x rectification; spar rectification = {sp0:+.4e} N "
+          f"{'supplies it' if sp0 > 0 else 'does NOT'}.")
 
 
 if __name__ == "__main__":

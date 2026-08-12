@@ -1898,9 +1898,12 @@ FloatFEA position consumer depends on.
 **Scope.**
 - **DR2** — direct excitation sign-convention test (−0.003 N vs 95 N swing is
   suggestive, not decisive; keep first).
-- **Exact force-balance closure** — re-evaluate all rows at the integrator's
-  generalized-α weighted states to drive the ~0.014 N post-hoc residual to
-  numerical zero (a check; all Cummins terms are already accounted).
+- **α-state force export** — the ~0.014 N post-hoc residual is a step-indexed
+  vs generalized-α-weighted force mismatch (0.014/0.432 = 3.2 %), not a physics
+  gap (all Cummins terms are accounted). Resolve it in the **solve-state export
+  design** — write each force at the α-state the integrator evaluated it at —
+  where it also removes a ~3.2 % FloatFEA-G4.1 equilibrium floor. Not a
+  standalone drift-closure item.
 - **Wave-relative drag (M10 A4)** — the deferred `_calm_fluid` replacement; the
   dominant real-world (downwave, +x) drift term. Enabling it is expected to add
   a larger +x drift that may dominate or flip the sign.
