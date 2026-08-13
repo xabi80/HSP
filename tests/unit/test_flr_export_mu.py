@@ -113,7 +113,7 @@ def test_mu_satisfies_the_steady_state_radiation_identity(omega: float) -> None:
     xi_dot[:, 0] = amp * np.cos(omega * t)
     xi_ddot[:, 0] = -amp * omega * np.sin(omega * t)
 
-    mu = recompute_mu(kernel, xi_dot)
+    mu, _ = recompute_mu(kernel, xi_dot, from_run_start=True)
 
     a_minus_ainf = -s / omega
     predicted = a_minus_ainf * xi_ddot + b * xi_dot
@@ -158,7 +158,7 @@ def test_convolution_quadrature_is_first_order() -> None:
         xi_ddot = np.zeros((t.size, 6), dtype=np.float64)
         xi_dot[:, 0] = amp * np.cos(omega * t)
         xi_ddot[:, 0] = -amp * omega * np.sin(omega * t)
-        mu = recompute_mu(kernel, xi_dot)
+        mu, _ = recompute_mu(kernel, xi_dot, from_run_start=True)
         predicted = (-s / omega) * xi_ddot + b * xi_dot
         settled = t > _T_MAX + 1.0
         errors.append(
@@ -183,15 +183,16 @@ def test_mu_startup_is_zero_matching_the_integrator() -> None:
     """
     kernel = _kernel()
     xi_dot = np.ones((50, 6), dtype=np.float64)
-    mu = recompute_mu(kernel, xi_dot)
+    mu, valid_from = recompute_mu(kernel, xi_dot, from_run_start=True)
     assert mu[0, 0] == 0.0
+    assert valid_from == 0
 
 
 def test_recompute_mu_rejects_a_dof_mismatch() -> None:
     """A velocity history from a different run must not be silently accepted."""
     kernel = _kernel()
     with pytest.raises(ValueError, match="same run"):
-        recompute_mu(kernel, np.zeros((10, 3)))
+        recompute_mu(kernel, np.zeros((10, 3)), from_run_start=True)
 
 
 def test_integrator_block_carries_alpha_m_as_well_as_alpha_f() -> None:
@@ -210,3 +211,28 @@ def test_integrator_block_carries_alpha_m_as_well_as_alpha_f() -> None:
     # Chung & Hulbert 1993 at rho_inf = 0.9.
     assert block["alpha_m"] == pytest.approx(0.8 / 1.9)
     assert block["alpha_f"] == pytest.approx(0.9 / 1.9)
+
+
+def test_truncated_window_marks_the_whole_mu_history_invalid() -> None:
+    """A window without pre-history is INVALID for a kernel-memory length.
+
+    ``mu[0] = 0`` is right at a true run start and wrong at the start of a
+    window with prior history, and it stays wrong until the buffer refills. For
+    the 12-buoy platform this bites hard: a 60 s kernel is 6000 lags while
+    ``run_case`` returns ~1955 samples, so the entire window is invalid.
+    """
+    kernel = _kernel()
+    xi_dot = np.ones((50, 6), dtype=np.float64)
+    _, valid_from = recompute_mu(kernel, xi_dot, from_run_start=False)
+    assert valid_from == kernel.K.shape[2]
+    assert valid_from > 50, "this fixture should demonstrate a wholly-invalid window"
+
+
+def test_from_run_start_has_no_default() -> None:
+    """It must be stated, because a wrong default yields plausible numbers."""
+    import inspect
+
+    sig = inspect.signature(recompute_mu)
+    param = sig.parameters["from_run_start"]
+    assert param.default is inspect.Parameter.empty
+    assert param.kind is inspect.Parameter.KEYWORD_ONLY

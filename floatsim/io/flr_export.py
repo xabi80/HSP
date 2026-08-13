@@ -110,7 +110,9 @@ def integrator_block(rho_inf: float, dt: float) -> dict[str, object]:
 def recompute_mu(
     kernel: RetardationKernel,
     xi_dot: NDArray[np.floating],
-) -> NDArray[np.float64]:
+    *,
+    from_run_start: bool,
+) -> tuple[NDArray[np.float64], int]:
     """Replay the radiation convolution to recover ``mu[n]`` as applied.
 
     Reproduces ``newmark.py``'s sequence exactly: the buffer is seeded with
@@ -119,17 +121,41 @@ def recompute_mu(
     O(dt) artifact the integrator deliberately skips), and thereafter each step
     pushes ``xi_dot[n+1]`` and then evaluates.
 
+    Verified faithful, not argued: instrumenting ``integrate_cummins`` on a
+    throwaway branch to record the in-solve ``mu`` and diffing against this
+    replay gave **bit-identical** results, 0 of 4806 elements differing. The
+    instrumentation was never merged, so the exporter stays additive.
+
+    The warm-up region
+    ------------------
+    ``mu[0] = 0`` is correct **only at a true run start**, where the solver's own
+    buffer was also empty. Given a *truncated window* with prior history the
+    zero-padding is simply wrong, and it stays wrong until the buffer refills --
+    so the leading samples are **invalid, not merely approximate**.
+
+    ``from_run_start`` is a required keyword with no default, because a wrong
+    default here produces plausible numbers rather than an error. Callers must
+    state which case they are in.
+
     Parameters
     ----------
     kernel
         The retardation kernel the run used. Its ``dt`` must match the run's.
     xi_dot
         ``(N, n_dof)`` generalized velocity history from the same run.
+    from_run_start
+        ``True`` when ``xi_dot[0]`` is the first sample of the run, so the
+        zero-padded buffer matches the solver's own startup. ``False`` for any
+        window with history before it.
 
     Returns
     -------
-    ``(N, n_dof)`` float64, the convolution term at each step as the integrator
-    applied it.
+    ``(mu, valid_from)`` -- ``(N, n_dof)`` float64 and the first index at which
+    ``mu`` is trustworthy. ``valid_from`` is 0 at a run start and
+    ``kernel.n_lags`` otherwise. **If ``valid_from >= N`` the entire array is
+    invalid**, which is the common case for a short window against a long
+    kernel: the 12-buoy platform runs a 60 s kernel (6000 lags) while
+    ``run_case`` returns roughly 1955 samples.
     """
     v = np.asarray(xi_dot, dtype=np.float64)
     if v.ndim != 2:
@@ -150,7 +176,9 @@ def recompute_mu(
     for n in range(n_samples - 1):
         buffer.push(v[n + 1])
         mu[n + 1] = buffer.evaluate()
-    return mu
+
+    valid_from = 0 if from_run_start else int(buffer.n_lags)
+    return mu, valid_from
 
 
 def write_solve_state(
@@ -165,6 +193,7 @@ def write_solve_state(
     water_density: float,
     water_depth: float,
     scale: str = "model",
+    from_run_start: bool,
 ) -> None:
     """Write the solve-state half of a ``.flr`` record.
 
@@ -197,7 +226,23 @@ def write_solve_state(
         "integrator": integrator_block(rho_inf, dt),
     }
 
-    mu = recompute_mu(kernel, result.xi_dot)
+    mu, mu_valid_from = recompute_mu(
+        kernel, result.xi_dot, from_run_start=from_run_start
+    )
+    if mu_valid_from >= t.size:
+        raise ValueError(
+            f"the entire mu history would be invalid: the kernel carries "
+            f"{mu_valid_from} lags of memory but only {t.size} samples were "
+            "supplied. Export from the full run rather than a truncated window, "
+            "or carry at least one kernel length of pre-history."
+        )
+    meta["mu_valid_from"] = int(mu_valid_from)
+    meta["window"] = {
+        "from_run_start": bool(from_run_start),
+        "t_first": float(t[0]),
+        "t_last": float(t[-1]),
+        "n_samples": int(t.size),
+    }
 
     with h5py.File(str(path), "w") as h:
         h.attrs["meta"] = json.dumps(meta)
@@ -227,6 +272,9 @@ def write_solve_state(
             r.create_dataset("mu", data=mu[:, sl])
             r.attrs["time_alignment"] = "state_n"
             r.attrs["mu_treatment"] = MU_TREATMENT
+            # Samples before this index saw a zero-padded buffer that the solver
+            # did not. The validator rejects any case screened inside it.
+            r.attrs["valid_from"] = int(mu_valid_from)
 
         if result.lam is not None:
             j = h.create_group("joints")
