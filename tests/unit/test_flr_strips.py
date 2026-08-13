@@ -168,3 +168,90 @@ def test_history_shape_mismatch_is_rejected() -> None:
             spars[0], xi=xi, xi_dot=xi_dot[:, :6], t=t,
             fluid_velocity_fn=_wave_field, rho=_RHO,
         )
+
+
+def test_fixture_pose_is_far_enough_from_zero_to_discriminate() -> None:
+    """Guard the guard: the pose control below is vacuous at theta = 0.
+
+    All three of FloatSim's readings of ``xi[3:6]`` agree EXACTLY at zero
+    rotation, so a near-zero fixture would make the next test pass without
+    testing anything -- and a vacuous negative control is worse than none,
+    because it certifies. The difference is O(theta^2), so this asserts the
+    fixture is far enough out for the 1e-12 tolerance to discriminate.
+    """
+    from scipy.spatial.transform import Rotation
+
+    from floatsim.bodies.rigid_body import quaternion_from_euler_zyx, rotation_matrix
+
+    _, xi, _ = _state()
+    worst = 0.0
+    for i in range(xi.shape[0]):
+        for sl in (slice(3, 6), slice(9, 12)):
+            th = xi[i, sl]
+            assert np.linalg.norm(th) > 1e-3, "fixture pose is degenerately small"
+            a = Rotation.from_rotvec(th).as_matrix()
+            b = rotation_matrix(
+                quaternion_from_euler_zyx(
+                    roll_rad=float(th[0]), pitch_rad=float(th[1]), yaw_rad=float(th[2])
+                )
+            )
+            worst = max(worst, float(np.abs(a - b).max()))
+    # Measured 4.7e-4 to 1.2e-3 across the fixture -- nine orders above the
+    # 1e-12 tolerance the sum-to-whole tests use.
+    assert worst > 1e-5, (
+        f"the two rotation readings differ by only {worst:.2e} on this fixture; "
+        "the pose negative control would not discriminate"
+    )
+
+
+def test_the_axis_angle_pose_reading_fails_the_sum_to_whole() -> None:
+    """Pose negative control: the ZYX choice is load-bearing, not cosmetic.
+
+    ``morison.py`` reads ``xi[3:6]`` as ZYX-intrinsic Euler while ``joints.py``
+    reads the same slice as an axis-angle rotation vector. They agree only to
+    first order. Reconstructing with the wrong one must FAIL, or the declared
+    ``rotation_parameterisation`` is a comment rather than a constraint -- and
+    the triple-interpretation split is the most dangerous property in that
+    codebase to leave untested.
+    """
+    from scipy.spatial.transform import Rotation
+
+    from floatsim.hydro.morison import _body_velocity_at, morison_element_force
+
+    spars, _ = _elements()
+    t, xi, xi_dot = _state()
+    closure = make_morison_state_force(
+        spars, n_dof=_N_DOF, fluid_velocity_fn=_wave_field, rho=_RHO
+    )
+    applied = np.array([closure(float(t[i]), xi[i], xi_dot[i])[0:6] for i in range(t.size)])
+
+    total = np.zeros_like(applied)
+    for e in spars:
+        sl = slice(6 * e.body_index, 6 * e.body_index + 6)
+        mid_body = 0.5 * (e.node_a_body + e.node_b_body)
+        axis_body = e.node_b_body - e.node_a_body
+        for i in range(t.size):
+            # WRONG ON PURPOSE: axis-angle instead of ZYX-intrinsic Euler.
+            R = Rotation.from_rotvec(xi[i, sl][3:6]).as_matrix()
+            r_ref = xi[i, sl][0:3]
+            mid = r_ref + R @ mid_body
+            ax = R @ axis_body
+            ax = ax / float(np.linalg.norm(ax))
+            v_body = _body_velocity_at(xi_dot[i, sl], R, mid - r_ref)
+            total[i] += morison_element_force(
+                e,
+                midpoint_inertial=mid,
+                axis_hat_inertial=ax,
+                body_velocity_at_midpoint=v_body,
+                body_acceleration_at_midpoint=None,
+                fluid_velocity=_wave_field(mid, float(t[i])),
+                fluid_acceleration=None,
+                rho=_RHO,
+                reference_point_inertial=r_ref,
+            )
+
+    dev = float(np.abs(total - applied).max())
+    assert dev > 1e-9, (
+        "the axis-angle pose reading reproduced the applied force, so the "
+        f"declared ZYX convention is untested (deviation {dev:.3e})"
+    )
