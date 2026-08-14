@@ -53,6 +53,12 @@ N_HYDRO_DOF: Final[int] = 72
 
 PANEL_SOURCES: Final[tuple[str, ...]] = ("froude_krylov", "diffraction", "radiation")
 
+# Measured, not assumed: F_rad = w^2 A + i w B holds in capytaine 2.3.1, which
+# fixes the time dependence. With coefficients stored rather than samples, the
+# READER applies this -- so it is declared in every record.
+TIME_CONVENTIONS: Final[tuple[str, ...]] = ("exp_minus_i_omega_t", "exp_plus_i_omega_t")
+TIME_CONVENTION: Final[str] = "exp_minus_i_omega_t"
+
 
 @dataclass(frozen=True)
 class PanelGeometry:
@@ -159,3 +165,95 @@ def displacement_from_reference(
     if bp.ndim != 2 or bp.shape[1] < 3:
         raise ValueError(f"body_pose must be (K, >=3); got {bp.shape}")
     return np.linalg.norm(bp[:, 0:3] - rp[0:3], axis=1)
+
+
+# ---------------------------------------------------------------------------
+# Coefficient-storage writer
+# ---------------------------------------------------------------------------
+
+
+def write_panel_fields(
+    handle: Any,
+    *,
+    body: str,
+    geometry: PanelGeometry,
+    omega: NDArray[np.floating],
+    froude_krylov: NDArray[np.complexfloating],
+    diffraction: NDArray[np.complexfloating],
+    radiation: NDArray[np.complexfloating],
+    reference_pose: NDArray[np.floating],
+    body_pose: NDArray[np.floating],
+    validity_bound: float,
+    validity_bound_basis: str,
+    time_convention: str = TIME_CONVENTION,
+) -> None:
+    """Write ``/panels/<body>/`` as COMPLEX COEFFICIENTS, not time samples.
+
+    Storing coefficients rather than samples is a decision with arithmetic behind
+    it (schema §5.0.2): the time-domain field over the full platform mesh is
+    ~1.73 GB against ~232 MB of coefficients, and the reconstruction is *exact*
+    at the fundamental in steady periodic motion, so nothing is lost. The lever
+    if it ever binds is the number of distinct case frequencies, not the window
+    length -- the opposite of where one would look by default.
+
+    Shapes
+    ------
+    ``froude_krylov`` and ``diffraction`` are ``(n_omega, P)``. ``radiation`` is
+    ``(n_omega, n_radiating_dof, P)`` -- the **full** radiating-DOF dimension,
+    because the database is a genuine multi-body solve and the field on one hull
+    depends on every hull's motion.
+
+    Required metadata, all rejected by the reader if absent
+    ------------------------------------------------------
+    ``time_convention``
+        Because the reader reconstructs from coefficients, **the reader applies
+        the convention**. A reader assuming the other sign puts a 180 degree
+        phase error on every damping term while leaving added mass correct.
+    ``reference_pose`` / ``body_pose`` / ``validity_bound``
+        The BEM computes the field for a hull at its reference position and
+        linear theory assumes small motion about it. The platform translates
+        ~2.3 spar diameters over a run, so a screened snapshot far from the
+        reference is being loaded with a field that does not describe where the
+        hull is.
+    ``validity_bound_basis``
+        The bound's justification lives in the record, not in a code comment. A
+        threshold whose reasoning is a comment is a number nobody can re-check.
+    """
+    if time_convention not in TIME_CONVENTIONS:
+        raise ValueError(
+            f"time_convention must be one of {TIME_CONVENTIONS}; got {time_convention!r}"
+        )
+    if not validity_bound_basis.strip():
+        raise ValueError(
+            "validity_bound_basis must state WHY the bound has its value; an "
+            "unjustified threshold is a number nobody can re-check."
+        )
+    p = geometry.n_panels
+    n_w = int(np.asarray(omega).size)
+    for name, arr, want in (
+        ("froude_krylov", froude_krylov, (n_w, p)),
+        ("diffraction", diffraction, (n_w, p)),
+    ):
+        if np.asarray(arr).shape != want:
+            raise ValueError(f"{name} must have shape {want}; got {np.asarray(arr).shape}")
+    rad = np.asarray(radiation)
+    if rad.ndim != 3 or rad.shape[0] != n_w or rad.shape[2] != p:
+        raise ValueError(
+            f"radiation must have shape (n_omega, n_radiating_dof, {p}); got {rad.shape}"
+        )
+
+    g = handle.create_group(f"panels/{body}")
+    g.create_dataset("centroid", data=np.asarray(geometry.centroid, dtype=np.float64))
+    g.create_dataset("area", data=np.asarray(geometry.area, dtype=np.float64))
+    g.create_dataset("normal", data=np.asarray(geometry.normal, dtype=np.float64))
+    g.create_dataset("omega", data=np.asarray(omega, dtype=np.float64))
+    g.create_dataset("froude_krylov", data=np.asarray(froude_krylov, dtype=np.complex128))
+    g.create_dataset("diffraction", data=np.asarray(diffraction, dtype=np.complex128))
+    g.create_dataset("radiation", data=rad.astype(np.complex128))
+    g.create_dataset("reference_pose", data=np.asarray(reference_pose, dtype=np.float64))
+    g.create_dataset("body_pose", data=np.asarray(body_pose, dtype=np.float64))
+    g.attrs["storage"] = "complex_coefficients"
+    g.attrs["time_convention"] = time_convention
+    g.attrs["validity_bound"] = float(validity_bound)
+    g.attrs["validity_bound_basis"] = validity_bound_basis
+    g.attrs["n_radiating_dof"] = int(rad.shape[1])
