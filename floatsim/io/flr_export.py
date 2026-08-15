@@ -194,12 +194,20 @@ def write_solve_state(
     water_depth: float,
     scale: str = "model",
     from_run_start: bool,
+    rotation_validity_bound: float,
+    time_convention: str = "exp_minus_i_omega_t",
 ) -> None:
     """Write the solve-state half of a ``.flr`` record.
 
     Writes ``/meta``, ``/time``, ``/kinematics/<body>`` and, when the run
     carried constraints, ``/joints/<id>/lam``. Strip, patch and panel groups
     belong to the other two export modules.
+
+    ``rotation_validity_bound`` is **required and has no default**. The record
+    declares it and the reader enforces it; deciding the right *value* is an open
+    physics question (FloatFEA Q2), but the mechanism must be complete. Passing a
+    bound one does not believe is a declaration; omitting it would be a way to
+    pass by having made no claim.
 
     ``gravity`` is written as the vector ``(0, 0, -g)`` using **FloatSim's**
     value, not standard gravity -- FloatSim runs at 9.81 and a mismatch would
@@ -224,6 +232,10 @@ def write_solve_state(
         "scale": scale,
         "assumptions": [],
         "integrator": integrator_block(rho_inf, dt),
+        # Required at v1.2. The reader reconstructs the time domain from stored
+        # coefficients, so the READER applies this; a wrong assumption is a 180
+        # degree phase error on every damping term.
+        "time_convention": time_convention,
     }
 
     mu, mu_valid_from = recompute_mu(
@@ -267,6 +279,11 @@ def write_solve_state(
             # across its own modules and they agree only to first order. See
             # FloatFEA docs/conventions.md sec. Rotations.
             g.attrs["rotation_parameterisation"] = "zyx_intrinsic_euler"
+            # The bound TRAVELS IN THE RECORD; the validator enforces whatever is
+            # declared here, and FloatFEA Q2 decides what should be declared. A
+            # required argument with no default, because omitting it must not be a
+            # way to pass a rotation check by having made no claim.
+            g.attrs["rotation_validity_bound"] = float(rotation_validity_bound)
 
             r = h.create_group(f"loads/{name}/radiation")
             r.create_dataset("mu", data=mu[:, sl])
