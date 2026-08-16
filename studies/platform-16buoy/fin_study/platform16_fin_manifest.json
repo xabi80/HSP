@@ -1,0 +1,28 @@
+{
+  "grid_heights_m": [
+    0.04,
+    0.06,
+    0.08,
+    0.1,
+    0.12
+  ],
+  "grid_periods_s": [
+    2.0,
+    2.3,
+    2.4,
+    2.5,
+    2.6,
+    2.65,
+    2.8,
+    3.0,
+    3.141,
+    3.257,
+    3.3,
+    3.4,
+    3.5,
+    3.6,
+    3.7,
+    3.8
+  ],
+  "note": "16-buoy platform (4 clusters x 4 buoys); parametric BEM per fin; reference_single hydrostatic tiled; chunked per-case resume (126 DOF)"
+}

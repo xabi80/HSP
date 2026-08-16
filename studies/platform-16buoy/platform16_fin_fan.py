@@ -30,7 +30,10 @@ from floatsim.hydro.readers.capytaine import read_capytaine  # noqa: E402
 _STUDY = _HERE / "fin_study"
 _REF = _HERE.parent / "cluster-3buoy-rigid" / "reference_single_bem.nc"
 _HEIGHTS = [0.04, 0.06, 0.08, 0.10, 0.12]
-_PERIODS = [2.0, 2.3, 2.4, 2.5, 2.6, 2.65, 2.8, 3.0, 3.141, 3.257, 3.3]
+_PERIODS = [2.0, 2.3, 2.4, 2.5, 2.6, 2.65, 2.8, 3.0, 3.141, 3.257, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8]
+# Grid extended to 3.8 s (was 3.3): the larger 16-buoy platform's 0.215-fin heave
+# resonance moved beyond the 12-buoy's 3.3 s edge (RAO still climbing at 3.3).
+# 0.15 / no-fin peaks (2.8 / 2.5 s) are in-grid, so their summaries stay as-is.
 _CAP = 350.0
 _CENTER = 6 * prp16._buoy_body_index_platform() + 2  # platform ref heave DOF = 122
 _BUOY = 6 * prp16._buoy_body_index(6) + 2  # buoy7 heave DOF

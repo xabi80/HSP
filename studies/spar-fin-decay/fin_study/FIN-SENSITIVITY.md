@@ -132,16 +132,66 @@ sequence of bounded fresh subprocesses (`run_platform_fin_fan.py`, 12 cases each
 per-case row-JSON resume), which caps peak RAM ~24 GB and reclaims it on each
 process exit. RAO values are byte-identical to a single-process run.
 
-## Decision summary (all three models)
+## 16-buoy platform (4 clusters × 4 buoys) — the trend turns over
+
+Repeated on a **16-buoy** platform: same 4 clusters (0/90/180/270°, 1.0 m arm) but
+**4 buoys per cluster** at 0/90/180/270° on the same 0.5 m circle (a square, vs the
+12-buoy's 120° triangle) → 16 spar-fin hulls, 21 bodies, 126 DOF, 20 yaw-locked
+joints. Min buoy-centre gap 0.707 m (roomier than the 12-buoy's 0.620 m; fin-edge
+clearance +0.277 m, no overlap); draft re-derived on the mesh (`PLATFORM_DZ`
+0.207 m, per-buoy support 33.30 kg). Rigorous **96-DOF coupled** BEM per fin
+(heave-block A₃₃ 360.5 / 101.1 / 25.0 kg for 0.215 / 0.15 / none = ~22.5 / 6.3 /
+1.6 kg per buoy, matching the per-buoy single/cluster/12 values).
+
+**The 0.215-fin resonance moved off the 12-buoy grid.** The larger platform's
+coupled added mass lengthened the 0.215 heave resonance to ~3.4 s (12-buoy 3.15 s),
+so the original 2.0–3.3 s grid truncated its peak (RAO still climbing at 3.3 s). The
+grid was extended to 3.8 s for the 0.215 configs; the peak then turns over cleanly
+(broad plateau, RAO 1.58 @ 3.3–3.4 s). 0.15 (2.8 s) and no-fin (2.5 s) peak in-grid.
+
+Peak **buoy** heave RAO and Nz-accel (Cd_n=5), now four models:
+
+| fin | buoy RAO (single / cluster / 12 / **16**) | buoy Nz-accel (single / cluster / 12 / **16**) |
+|-----|-------------------------------------------|-------------------------------------------------|
+| 0.215 | 1.62 / 1.73 / 1.84 / **1.58** | 0.25 / 0.24 / 0.25 / **0.220** m/s² |
+| 0.15 | 1.97 / 2.23 / 2.37 / **1.89** | 0.44 / 0.44 / 0.47 / **0.381** m/s² |
+| none (+cap) | 3.30 / 3.81 / 4.27 / **2.80** | 0.84 / 0.86 / 0.92 / **0.672** m/s² |
+
+**The buoy response is NON-monotonic in platform size** — it rises single → cluster
+→ 12-buoy, then **falls at 16-buoy** (every fin ~15–35 % below the 12-buoy peak).
+Mechanism: more hydrodynamic coupling — 16 buoys radiate more collectively, adding
+both coupled added mass (resonances lengthen: 0.215/0.15 move to 3.4/2.8 s) **and**
+collective radiation damping (peaks fall). The "buoy RAO rises with model size"
+trend from the 1/3/12 study is therefore *not* universal; it reverses once the array
+is dense enough. (Observation-level; a modal decomposition would separate the
+added-mass and damping contributions.)
+
+**The fin conclusion still reproduces at 16 buoys:** bigger fin = less motion,
+monotonic in fin size at *every* model (16-buoy Cd5: 0.215 < 0.15 < none in RAO and
+accel). Under Cd_n=1 the 16-buoy peaks are 0.215 RAO 3.15 / Nz 0.457 and 0.15 RAO
+3.67 / Nz 0.770.
+
+**Effective plate drag (Cd_n·area), not fin size, sets the peak acceleration.**
+Across all five 16-buoy configs, peak Nz ranks *inversely* with the plate's Cd_n·A:
+0.215-Cd5 (Cd·A 0.73 → 0.22) < 0.15-Cd5 (0.35 → 0.38) < 0.215-Cd1 (0.15 → 0.46) <
+no-fin-cap (0.11 → 0.67) < 0.15-Cd1 (0.071 → 0.77). This is why the no-fin cap
+(small radius but Cd_n=5) shows *lower* accel than the lightly-damped 0.15-Cd1 fin:
+its effective drag (0.11) exceeds the 0.15-Cd1's (0.071). At *equal* Cd the expected
+order holds (no-fin worst).
+
+## Decision summary (all four models)
 
 **Keep a full-size fin (≥ 0.215 m).** Shrinking to 0.15 m costs ~+20-30 % peak
 buoy RAO and ~+80-90 % peak buoy vertical acceleration (0.25 → 0.44-0.47 m/s²);
-removing the fin roughly doubles peak RAO again (to ~4 at platform scale) and
+removing the fin roughly doubles peak RAO again (to ~4 at 12-buoy scale) and
 leaves the heave resonance essentially undamped (finite only because of the
 modelled spar bottom-cap drag; a bare finless spar diverges). The fin is the
 buoy's dominant heave added mass **and** its only meaningful heave damper, so
-this holds identically across the single buoy, the 3-cluster, and the 12-buoy
-platform.
+this holds identically across the single buoy, the 3-cluster, the 12-buoy, and the
+16-buoy platform. **Absolute** peak levels are not universal, though: the buoy
+response is non-monotonic in platform size (peaks at 12 buoys, falls at 16), so a
+denser array's per-buoy motion must be read from its own coupled BEM, not
+extrapolated from a smaller platform.
 
 ## Files
 
@@ -153,6 +203,11 @@ platform.
 - 12-buoy platform: `../../platform-12buoy/fin_study/` + `platform_fin_bem.py`,
   `platform_fin_fan.py`, `run_platform_fin_fan.py` (chunked runner),
   `platform_fin_plots.py`.
+- 16-buoy platform (4 clusters × 4 buoys): `../../platform-16buoy/` +
+  `platform16_common.py`, `platform16_fin_bem.py`, `platform16_rao.py`,
+  `platform16_fin_fan.py`, `run_platform16_fin_fan_ordered.py`,
+  `platform16_fin_plots.py`; figures `platform16_fin_sensitivity.png` +
+  `fin_single_vs_cluster_vs_12_vs_16.png`.
 
 - `sparfin_fin_bem.py` — parametric mesh + BEM per fin (`capytaine_fin{0215,015,none}.nc`).
 - `sparfin_fin_fan.py` — the RAO+accel fan (matched plate drag; t_max=60 kernel).
