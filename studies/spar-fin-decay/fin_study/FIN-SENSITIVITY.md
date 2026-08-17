@@ -165,13 +165,22 @@ damping explanation**: the per-buoy collective-heave *radiation* damping rises
 **monotonically** (0.07 → 0.17 → 0.48 → 0.65 across single/3/12/16) and is ~20×
 below the bottom-cap Morison drag, while the per-buoy wave *excitation* is flat
 (~78) — neither tracks the non-monotonic peak RAO (proxy `|X|/(ω·B)` is monotonic
-too, 400 → 41). So the turnaround is a **coupled mode-shape effect** — how much an
-individual buoy heaves within the articulated array at resonance, which happens to
-peak at 12 buoys — and quantifying it needs the resonant-mode eigenvector (per-buoy
-participation factor), *not* a scalar damping argument. The "buoy RAO rises with
-model size" trend from the 1/3/12 study is therefore not universal; the *reason* it
-turns over is an open, mode-shape question (an earlier "more collective radiation
-damping" reading was refuted by the 4-model data above).
+too, 400 → 41). The turnaround is a **mode-STRUCTURE change × quadratic drag**, resolved by a
+constrained frequency-domain analysis (`mode_shape.py`, `[Z Gᵀ; G 0][ξ;λ]=[F;0]`):
+the 12-buoy's dominant wave-excited heave resonance is a **collective** mode (buoys
+and platform heave together, buoy/platform ≈ 1.2 at T = 2.50 s), whereas the
+16-buoy's is a **buoy-relative** mode (buoys heave hard against a near-stationary
+platform, buoy/platform ≈ 280 at T = 2.35 s) — the 4-buoys-per-cluster (square)
+geometry shifts the excited mode. The buoy-relative mode carries far more per-buoy
+velocity, so the dominant quadratic Morison drag (~20× the radiation) dissipates
+much more of it, and the *drag-limited* (measured) response is suppressed below the
+12-buoy — even though the undamped/linear response is *higher* (the radiation-only
+FD predicts 16 > 12, the opposite of the measured trend, confirming it is a drag ×
+mode-structure effect, not a linear one). So the "buoy RAO rises with model size"
+trend from the 1/3/12 study is not universal, and the reason it reverses is the
+excited heave mode changing from collective to buoy-relative with the denser
+cluster. (Ruled out along the way: radiation damping — monotonic and ~20× below
+the drag; excitation — flat; linear mode-shape amplitude — predicts the wrong sign.)
 
 **The fin conclusion still reproduces at 16 buoys:** bigger fin = less motion,
 monotonic in fin size at *every* model (16-buoy Cd5: 0.215 < 0.15 < none in RAO and
