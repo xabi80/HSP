@@ -158,13 +158,20 @@ Peak **buoy** heave RAO and Nz-accel (Cd_n=5), now four models:
 | none (+cap) | 3.30 / 3.81 / 4.27 / **2.80** | 0.84 / 0.86 / 0.92 / **0.672** m/s² |
 
 **The buoy response is NON-monotonic in platform size** — it rises single → cluster
-→ 12-buoy, then **falls at 16-buoy** (every fin ~15–35 % below the 12-buoy peak).
-Mechanism: more hydrodynamic coupling — 16 buoys radiate more collectively, adding
-both coupled added mass (resonances lengthen: 0.215/0.15 move to 3.4/2.8 s) **and**
-collective radiation damping (peaks fall). The "buoy RAO rises with model size"
-trend from the 1/3/12 study is therefore *not* universal; it reverses once the array
-is dense enough. (Observation-level; a modal decomposition would separate the
-added-mass and damping contributions.)
+→ 12-buoy, then **falls at 16-buoy** (every fin ~15–35 % below the 12-buoy peak);
+the resonances also lengthen (0.215/0.15 → 3.4/2.8 s). A per-model BEM extraction
+(`array_radiation_damping.py`, no-fin, each at its own resonance) **refutes a simple
+damping explanation**: the per-buoy collective-heave *radiation* damping rises
+**monotonically** (0.07 → 0.17 → 0.48 → 0.65 across single/3/12/16) and is ~20×
+below the bottom-cap Morison drag, while the per-buoy wave *excitation* is flat
+(~78) — neither tracks the non-monotonic peak RAO (proxy `|X|/(ω·B)` is monotonic
+too, 400 → 41). So the turnaround is a **coupled mode-shape effect** — how much an
+individual buoy heaves within the articulated array at resonance, which happens to
+peak at 12 buoys — and quantifying it needs the resonant-mode eigenvector (per-buoy
+participation factor), *not* a scalar damping argument. The "buoy RAO rises with
+model size" trend from the 1/3/12 study is therefore not universal; the *reason* it
+turns over is an open, mode-shape question (an earlier "more collective radiation
+damping" reading was refuted by the 4-model data above).
 
 **The fin conclusion still reproduces at 16 buoys:** bigger fin = less motion,
 monotonic in fin size at *every* model (16-buoy Cd5: 0.215 < 0.15 < none in RAO and
@@ -206,8 +213,9 @@ extrapolated from a smaller platform.
 - 16-buoy platform (4 clusters × 4 buoys): `../../platform-16buoy/` +
   `platform16_common.py`, `platform16_fin_bem.py`, `platform16_rao.py`,
   `platform16_fin_fan.py`, `run_platform16_fin_fan_ordered.py`,
-  `platform16_fin_plots.py`; figures `platform16_fin_sensitivity.png` +
-  `fin_single_vs_cluster_vs_12_vs_16.png`.
+  `platform16_fin_plots.py`, `array_radiation_damping.py`; figures
+  `platform16_fin_sensitivity.png`, `fin_single_vs_cluster_vs_12_vs_16.png` +
+  `array_radiation_damping_1_3_12_16.png`.
 
 - `sparfin_fin_bem.py` — parametric mesh + BEM per fin (`capytaine_fin{0215,015,none}.nc`).
 - `sparfin_fin_fan.py` — the RAO+accel fan (matched plate drag; t_max=60 kernel).
