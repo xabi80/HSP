@@ -208,6 +208,33 @@ gap narrows as H rises (ratio 1.63 at H = 0.01 → 1.53 at H = 0.04 → 1.44 at 
 approaching the radiation-only ratio (2.16) only in the vanishing-amplitude limit —
 the textbook quadratic-drag signature.
 
+*Why the reversal is BIGGEST for no-fin (and shrinks with fin size).* The 12→16 drop
+is ×1.53 (none), ×1.25 (0.15), ×1.16 (0.215) — larger where there is *less* fin drag,
+which looks backwards for a "quadratic-drag" effect. It is not: it is a direct
+consequence. A *uniform* collective heave (every buoy moving with the platform) is
+**N-independent** — excitation and drag both scale with N, so `X ~ √(N·F / N·c)` is
+flat. The reversal therefore lives *entirely* in the buoys' articulation **overshoot**
+of the platform. The drag-FD (`drag_fd_fin_decomp.py`, each fin at its own measured
+peak, reproduces all six measured RAOs to <1 %) confirms the platform heave RAO is
+~N-invariant for every fin, so the reversal equals the overshoot ratio:
+
+| fin | reversal (RAO 12/16) | overshoot @12 (buoy/plat) | overshoot @16 |
+|----:|:--------------------:|:-------------------------:|:-------------:|
+| none  | 1.53 | **1.36** | 0.90 |
+| 0.15  | 1.25 | **1.26** | 0.98 |
+| 0.215 | 1.16 | **1.14** | 0.99 |
+
+(reversal ≈ overshoot₁₂ / overshoot₁₆.) The 12-buoy overshoot is set by how
+**under-damped** the buoy's articulation is: no-fin buoys are lightly damped and
+overshoot the platform most (1.36); the fin adds heave added-mass **and** drag that
+damps the overshoot toward 1 (1.14 at 0.215). Adding the 4th buoy per cluster damps
+whatever overshoot exists — so the no-fin case, with the most overshoot to lose, shows
+the biggest reversal. **More fin drag ⇒ less overshoot ⇒ smaller reversal.** It is the
+standard sensitivity of a resonant peak to damping: a bit more damping drops a lightly
+damped (high-Q) peak far more than an already-damped one. The fin's own drag has already
+pinned the buoy near the collective motion, leaving little for the incremental
+array drag to remove.
+
 > **CORRECTION (2026-08-16):** an earlier version of this paragraph claimed the
 > 16-buoy resonates in a *buoy-relative* mode at T = 2.35 s (buoy/platform ≈ 280)
 > and that the radiation-only FD "predicts 16 > 12." That was an artifact: 2.35 s is
