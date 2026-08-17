@@ -34,9 +34,13 @@ _VIEWER = _R / "platform-12buoy/fin_study/platform_motion.html"
 _OUT_HTML = _R / "platform-16buoy/fin_study/platform16_motion.html"
 
 # (fin tag, plate_r, cd, T, H, label) -- no-fin resonance first (shows the overshoot).
+# NOTE: the viewer does label.split("--")[1] for the subtitle, so labels MUST contain
+# a " -- " separator (a "—" em-dash breaks draw() with a TypeError).
 _CASES = [
-    ("none", pff._R_SPAR, 5.0, 2.500, 0.04, "16-buoy · no fin — resonance (T=2.5 s): buoys OVERSHOOT? (ratio 0.90)"),
-    ("0215", 0.215, 5.0, 3.400, 0.04, "16-buoy · 0.215 m fin — resonance (T=3.4 s): buoys pinned to platform"),
+    ("none", pff._R_SPAR, 5.0, 2.500, 0.04,
+     "16-buoy, no fin -- resonance T=2.5 s: buoys move WITH the platform (ratio 0.90, no overshoot)"),
+    ("0215", 0.215, 5.0, 3.400, 0.04,
+     "16-buoy, 0.215 m fin -- resonance T=3.4 s: buoys pinned to the platform (ratio 0.99)"),
 ]
 
 
