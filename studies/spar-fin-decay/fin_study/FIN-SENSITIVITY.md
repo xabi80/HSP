@@ -167,21 +167,40 @@ below the bottom-cap Morison drag, while the per-buoy wave *excitation* is flat
 (~78) — neither tracks the non-monotonic peak RAO (proxy `|X|/(ω·B)` is monotonic
 too, 400 → 41).
 
-**Mechanism — what is settled and what is still open** (a first "mode-structure"
-explanation was retracted here; see the CORRECTION note below). A constrained
-frequency-domain sweep (`mode_shape_fd.py`, `[Z Gᵀ; G 0][ξ;λ]=[F;0]`, radiation
-damping only) shows that at the **measured resonance (T = 2.50 s) both the 12- and
-16-buoy platforms heave in a *collective* mode** (buoy/platform ≈ 1.0–1.2 — buoys
-and platform move together), and read at that shared period the linear FD already
-gives 16 < 12 (buoy7 24.9 vs 51.0), i.e. the **same direction as the measured trend**
-(2.80 < 4.27). So the reversal is *not* a change of excited mode shape. What is
-solid: (i) the measured response is **drag-limited** — the bottom-cap Morison drag
-is ~20× the radiation damping, so the radiation-only FD magnitude is not the
-governing model; (ii) radiation damping is monotonic and excitation is flat, so
-neither alone sets the non-monotonic peak. The full quantitative reason the
-*drag-limited* 16-buoy peak sits below the 12-buoy is **still open** — it needs an
-equivalent-linearized-drag FD (drag folded into `Z(ω)` and iterated to the response
-amplitude), not the radiation-only sweep.
+**Mechanism — resolved by an equivalent-linearized-drag FD** (a first "mode-structure"
+explanation was retracted first; see the CORRECTION note below). Two frequency-domain
+tools were needed. First, a radiation-only sweep (`mode_shape_fd.py`, `[Z Gᵀ; G 0]
+[ξ;λ]=[F;0]`) established that at the **measured resonance (T = 2.50 s) both the 12-
+and 16-buoy platforms heave in a *collective* mode** (buoy/platform ≈ 1.0–1.2 — buoys
+and platform move together): the reversal is **not** a change of excited mode shape.
+But the measured response is **drag-limited** (bottom-cap Morison drag ~20× the
+radiation), so a radiation-only FD cannot set the amplitude. Second, an
+equivalent-linearized-drag FD (`drag_fd.py`) folds the **first-harmonic of the exact
+FloatSim calm-water drag closure** into `Z(ω)` and iterates to the response amplitude.
+It **reproduces both measured buoy RAOs to <0.1 %** — an independent confirmation
+(harmonic-linearized FD vs the nonlinear time-domain KKT fan):
+
+| model | radiation-only FD | drag-limited FD | measured fan |
+|------:|:-----------------:|:---------------:|:------------:|
+| 12-buoy | 53.9 | **4.273** | **4.27** |
+| 16-buoy | 24.9 | **2.798** | **2.80** |
+
+Decomposition of the drag-limited solution (T = 2.50 s, H = 0.04):
+
+- **Per-buoy wave excitation is unchanged** (1.63 vs 1.65) — not an excitation effect.
+- **Platform heave RAO is unchanged** (3.14 vs 3.11) — the platform response is the same.
+- **Total linearized drag scales ~linearly with N** (Σb 100 → 133 ≈ ×16/12).
+- **The buoy motion *relative to* the platform drops**: buoy/platform 1.36 → 0.90.
+  The buoys go from *overshooting* the shared platform (12-buoy) to *undershooting* it
+  (16-buoy). The denser 4-per-cluster (square) layout piles more aggregate quadratic
+  drag onto the one shared collective heave mode without giving each buoy more
+  independent excitation, so the buoys' heave-relative-to-platform is damped down and
+  each buoy's absolute heave falls below the 12-buoy value.
+
+So the drag-limited answer: same period, same excitation, same platform — the 16-buoy
+buoys simply lose their articulation *overshoot* to the extra collective drag. (Ruled
+out along the way: radiation damping — monotonic, ~20× too small to set the amplitude;
+excitation — flat; excited mode shape — collective in both.)
 
 > **CORRECTION (2026-08-16):** an earlier version of this paragraph claimed the
 > 16-buoy resonates in a *buoy-relative* mode at T = 2.35 s (buoy/platform ≈ 280)
