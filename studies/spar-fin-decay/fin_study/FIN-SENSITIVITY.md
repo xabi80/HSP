@@ -202,6 +202,12 @@ buoys simply lose their articulation *overshoot* to the extra collective drag. (
 out along the way: radiation damping — monotonic, ~20× too small to set the amplitude;
 excitation — flat; excited mode shape — collective in both.)
 
+*Regime confirmation.* The buoy RAO scales as ≈ H^−0.5 with wave height (12-buoy
+exponent −0.52, 16-buoy −0.45; pure quadratic-drag-limited is −0.5), and the 12/16 RAO
+gap narrows as H rises (ratio 1.63 at H = 0.01 → 1.53 at H = 0.04 → 1.44 at H = 0.08),
+approaching the radiation-only ratio (2.16) only in the vanishing-amplitude limit —
+the textbook quadratic-drag signature.
+
 > **CORRECTION (2026-08-16):** an earlier version of this paragraph claimed the
 > 16-buoy resonates in a *buoy-relative* mode at T = 2.35 s (buoy/platform ≈ 280)
 > and that the radiation-only FD "predicts 16 > 12." That was an artifact: 2.35 s is
