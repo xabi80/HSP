@@ -165,22 +165,33 @@ damping explanation**: the per-buoy collective-heave *radiation* damping rises
 **monotonically** (0.07 → 0.17 → 0.48 → 0.65 across single/3/12/16) and is ~20×
 below the bottom-cap Morison drag, while the per-buoy wave *excitation* is flat
 (~78) — neither tracks the non-monotonic peak RAO (proxy `|X|/(ω·B)` is monotonic
-too, 400 → 41). The turnaround is a **mode-STRUCTURE change × quadratic drag**, resolved by a
-constrained frequency-domain analysis (`mode_shape.py`, `[Z Gᵀ; G 0][ξ;λ]=[F;0]`):
-the 12-buoy's dominant wave-excited heave resonance is a **collective** mode (buoys
-and platform heave together, buoy/platform ≈ 1.2 at T = 2.50 s), whereas the
-16-buoy's is a **buoy-relative** mode (buoys heave hard against a near-stationary
-platform, buoy/platform ≈ 280 at T = 2.35 s) — the 4-buoys-per-cluster (square)
-geometry shifts the excited mode. The buoy-relative mode carries far more per-buoy
-velocity, so the dominant quadratic Morison drag (~20× the radiation) dissipates
-much more of it, and the *drag-limited* (measured) response is suppressed below the
-12-buoy — even though the undamped/linear response is *higher* (the radiation-only
-FD predicts 16 > 12, the opposite of the measured trend, confirming it is a drag ×
-mode-structure effect, not a linear one). So the "buoy RAO rises with model size"
-trend from the 1/3/12 study is not universal, and the reason it reverses is the
-excited heave mode changing from collective to buoy-relative with the denser
-cluster. (Ruled out along the way: radiation damping — monotonic and ~20× below
-the drag; excitation — flat; linear mode-shape amplitude — predicts the wrong sign.)
+too, 400 → 41).
+
+**Mechanism — what is settled and what is still open** (a first "mode-structure"
+explanation was retracted here; see the CORRECTION note below). A constrained
+frequency-domain sweep (`mode_shape_fd.py`, `[Z Gᵀ; G 0][ξ;λ]=[F;0]`, radiation
+damping only) shows that at the **measured resonance (T = 2.50 s) both the 12- and
+16-buoy platforms heave in a *collective* mode** (buoy/platform ≈ 1.0–1.2 — buoys
+and platform move together), and read at that shared period the linear FD already
+gives 16 < 12 (buoy7 24.9 vs 51.0), i.e. the **same direction as the measured trend**
+(2.80 < 4.27). So the reversal is *not* a change of excited mode shape. What is
+solid: (i) the measured response is **drag-limited** — the bottom-cap Morison drag
+is ~20× the radiation damping, so the radiation-only FD magnitude is not the
+governing model; (ii) radiation damping is monotonic and excitation is flat, so
+neither alone sets the non-monotonic peak. The full quantitative reason the
+*drag-limited* 16-buoy peak sits below the 12-buoy is **still open** — it needs an
+equivalent-linearized-drag FD (drag folded into `Z(ω)` and iterated to the response
+amplitude), not the radiation-only sweep.
+
+> **CORRECTION (2026-08-16):** an earlier version of this paragraph claimed the
+> 16-buoy resonates in a *buoy-relative* mode at T = 2.35 s (buoy/platform ≈ 280)
+> and that the radiation-only FD "predicts 16 > 12." That was an artifact: 2.35 s is
+> a separate, razor-sharp, near-undamped *internal* mode that the radiation-only FD
+> blows up but **quadratic drag suppresses entirely** — it does not appear in the
+> measured fan (16-buoy goes 2.30→1.39, 2.40→1.97, no 2.35 s spike). The "16 > 12"
+> claim came from comparing that 2.35 s artifact-peak against the 12-buoy's genuine
+> 2.50 s peak — apples to oranges. Compared at the *same* period both are collective
+> and the linear FD gives 16 < 12. The mode-structure mechanism is withdrawn.
 
 **The fin conclusion still reproduces at 16 buoys:** bigger fin = less motion,
 monotonic in fin size at *every* model (16-buoy Cd5: 0.215 < 0.15 < none in RAO and
