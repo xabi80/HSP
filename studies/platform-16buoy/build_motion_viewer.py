@@ -38,9 +38,9 @@ _OUT_HTML = _R / "platform-16buoy/fin_study/platform16_motion.html"
 # a " -- " separator (a "—" em-dash breaks draw() with a TypeError).
 _CASES = [
     ("none", pff._R_SPAR, 5.0, 2.500, 0.04,
-     "16-buoy, no fin -- resonance T=2.5 s: buoys move WITH the platform (ratio 0.90, no overshoot)"),
+     "16-buoy · no fin -- ratio 0.90 (no overshoot)"),
     ("0215", 0.215, 5.0, 3.400, 0.04,
-     "16-buoy, 0.215 m fin -- resonance T=3.4 s: buoys pinned to the platform (ratio 0.99)"),
+     "16-buoy · 0.215 m fin -- ratio 0.99 (pinned)"),
 ]
 
 
@@ -132,6 +132,13 @@ def _splice(data_obj):  # type: ignore[no-untyped-def]
     newh = h[:d] + "const DATA=" + newjson + h[semi:]
     newh = newh.replace("Platform Motion Viewer — FloatSim",
                         "16-buoy Platform Motion — FloatSim (overshoot vs fin)", 1)
+    # Layout: the 16-buoy deck sits high enough to touch the top-left case caption.
+    # Shift the whole scene down ~10% of canvas height so the deck clears the caption
+    # at every phase (caption is also trimmed to 2 short lines via _CASES labels).
+    cam_old, cam_new = "cy:h*0.5+gsy*s", "cy:h*0.6+gsy*s"
+    if cam_old not in newh:
+        raise SystemExit(f"camera string {cam_old!r} not found -- viewer changed, fix the splice")
+    newh = newh.replace(cam_old, cam_new)
     _OUT_HTML.write_text(newh, encoding="utf-8")
     return len(newh)
 
