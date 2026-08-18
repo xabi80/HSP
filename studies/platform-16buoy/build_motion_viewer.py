@@ -33,15 +33,18 @@ _NF = 120
 _VIEWER = _R / "platform-12buoy/fin_study/platform_motion.html"
 _OUT_HTML = _R / "platform-16buoy/fin_study/platform16_motion.html"
 
-# (fin tag, plate_r, cd, T, H, label) -- no-fin resonance first (shows the overshoot).
+# (fin tag, plate_r, cd, T, H, label). SAME 5 operating points the 12-buoy motion
+# viewer used (platform_motion_export.py) so the two viewers compare case-for-case.
 # NOTE: the viewer does label.split("--")[1] for the subtitle, so labels MUST contain
-# a " -- " separator (a "—" em-dash breaks draw() with a TypeError).
+# a " -- " separator (a "—" em-dash breaks draw() with a TypeError). 0215 first for build reuse.
 _CASES = [
-    ("none", pff._R_SPAR, 5.0, 2.500, 0.04,
-     "16-buoy · no fin -- ratio 0.90 (no overshoot)"),
-    ("0215", 0.215, 5.0, 3.400, 0.04,
-     "16-buoy · 0.215 m fin -- ratio 0.99 (pinned)"),
+    ("0215", 0.215, 5.0, 3.141, 0.04, "0.215 m fin · T=3.14 s -- H=0.04 m"),
+    ("0215", 0.215, 5.0, 3.141, 0.12, "0.215 m fin · T=3.14 s -- H=0.12 m"),
+    ("0215", 0.215, 5.0, 2.500, 0.08, "0.215 m fin · T=2.5 s (off-res) -- H=0.08 m"),
+    ("none", pff._R_SPAR, 5.0, 2.500, 0.08, "no fin · T=2.5 s -- H=0.08 m"),
+    ("none", pff._R_SPAR, 5.0, 2.500, 0.04, "no fin · T=2.5 s -- H=0.04 m"),
 ]
+_BUILD_CACHE: dict = {}  # reuse the (BEM db, Cummins system) per fin across its cases
 
 
 def _bodies():  # type: ignore[no-untyped-def]
@@ -73,8 +76,10 @@ def _series(cvec, omega):  # type: ignore[no-untyped-def]
 
 
 def _make_case(fin, plate_r, T, H, label, bodies):  # type: ignore[no-untyped-def]
-    hdb = pff._hdb(fin)
-    setup = pff._build(plate_r, 5.0, hdb)
+    if (fin, plate_r) not in _BUILD_CACHE:
+        hdb = pff._hdb(fin)
+        _BUILD_CACHE[(fin, plate_r)] = (hdb, pff._build(plate_r, 5.0, hdb))
+    hdb, setup = _BUILD_CACHE[(fin, plate_r)]
     hydro = np.asarray(prp._hydro_dof(prp._deck_with_drag()))
     bhv = [6 * prp._buoy_body_index(k) + 2 for k in range(16)]
     phv = 6 * prp._buoy_body_index_platform() + 2
