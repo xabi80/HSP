@@ -10,6 +10,7 @@ Reads the fan summary CSVs.
 from __future__ import annotations
 
 import csv
+import sys
 from pathlib import Path
 
 import matplotlib
@@ -18,10 +19,18 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import cm
-from matplotlib.colors import Normalize
 
 _R = Path("studies")
-_OUT = _R / "platform-16buoy/fin_study/accel_HT_surf3d_4models.png"
+# metric: "center" (platform/centre reference point) or "buoy" (representative buoy-7 top)
+_WHICH = sys.argv[1] if len(sys.argv) > 1 else "center"
+_METRIC = "acc_buoy_amp" if _WHICH == "buoy" else "acc_center_amp"
+_OUT = _R / ("platform-16buoy/fin_study/"
+             + ("accel_buoy_HT_surf3d_4models.png" if _WHICH == "buoy"
+                else "accel_HT_surf3d_4models.png"))
+_WHATLBL = ("representative buoy (buoy-7 top; the single buoy for 'single')"
+            if _WHICH == "buoy" else
+            "centre/reference point (buoy for single, cluster centre for 3-cluster, "
+            "platform for 12/16)")
 
 # (column label, folder, filename prefix)
 _MODELS = [
@@ -45,7 +54,7 @@ def _load(path: Path):  # type: ignore[no-untyped-def]
     Ts = sorted({float(r["period_s"]) for r in rows})
     Z = np.full((len(Hs), len(Ts)), np.nan)
     for r in rows:
-        Z[Hs.index(float(r["height_m"])), Ts.index(float(r["period_s"]))] = float(r["acc_center_amp"])
+        Z[Hs.index(float(r["height_m"])), Ts.index(float(r["period_s"]))] = float(r[_METRIC])
     return np.array(Hs), np.array(Ts), Z
 
 
@@ -82,10 +91,10 @@ def main() -> None:
             ax.tick_params(labelsize=6)
             ax.view_init(elev=26, azim=-122)
         _ = row_axes  # z-axis carries the scale; colour is only for surface shading
-    fig.suptitle("Centre/reference-point heave acceleration surfaces — single / 3-cluster / "
-                 "12-buoy / 16-buoy\none row per fin/Cd config · Z-scale shared within each row "
-                 "· ● = peak · (centre = buoy for single, cluster centre for 3-cluster, platform "
-                 "for 12/16)", fontsize=13, y=0.995)
+    what = "Representative-buoy" if _WHICH == "buoy" else "Centre/reference-point"
+    fig.suptitle(f"{what} heave acceleration surfaces — single / 3-cluster / 12-buoy / 16-buoy\n"
+                 f"one row per fin/Cd config · Z-scale shared within each row · ● = peak · "
+                 f"({_WHATLBL})", fontsize=13, y=0.995)
     fig.subplots_adjust(left=0.03, right=0.99, top=0.965, bottom=0.02, wspace=0.02, hspace=0.14)
     fig.savefig(_OUT, dpi=115)
     plt.close(fig)
