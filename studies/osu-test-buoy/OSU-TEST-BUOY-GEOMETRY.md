@@ -56,10 +56,35 @@ So:
 The spar physics carries over almost unchanged (heave period still ~2.5 s); the plate is
 the piece that needs the real hydro.
 
+## Mass / floating condition (from `OSU Spar Buoy Platform Metric.xlsx` + measured waterline)
+Anchors: **structure = 8.16 kg** (all parts minus the ballast box), **unloaded waterline =
+967 mm** from the cylinder bottom (= 0.574·L). Reconciled (`hydro_from_measurements.py`):
+
+| quantity | value |
+|---|---|
+| total floating mass | **≈21.5 kg (fresh) / 22.1 kg (salt)** — geometry check (cyl+frame+lead=21.8 kg) agrees ~1.5% |
+| ballast (lead), to float at 967 mm | ~13.4 kg |
+| CoG | **z = −0.907 m** (waterline frame; 0.059 m above cyl bottom) — deep, very stable |
+| cylinder | z ∈ **[−0.967, +0.717]** (submerged 0.967 m, freeboard 0.717 m) |
+| heave-plate/ballast frame | z ∈ [−1.10, −1.43] (base plate ~−1.38 m); draft 1.425 m |
+
+(OSU Hinsdale lab is **fresh** water; period is density-independent for a free-floating body.)
+
+## Spar BEM (capytaine)
+Wetted spar cylinder (Ø0.1593, immersed 0.967 m), `hydro_from_measurements.py`:
+- **C33 = 194 N/m** (matches the spreadsheet ~195 ✓); spar heave added mass only ~1.1 kg →
+  **spar-only heave period 2.14 s**.
+- **Heave-plate bracket:** a *solid* equal-area disc (Ø0.29) adds ~7.9 kg → 2.49 s (upper
+  bound); the real perforated/webbed plate adds **less** → heave period likely **~2.2–2.4 s**.
+  (Our current FloatSim buoy is ~3.0 s — its fin is larger; the OSU plate is smaller/
+  perforated, so a **shorter** period. Re-point the model accordingly.)
+
 ## Status / next
-- **DONE (this record):** exact geometry, mesh (`mesh_from_step.py` → `OSU_Test_Buoy.stl`,
-  30 MB, not committed — regenerate), figures.
-- **PENDING (option a):** mass / CoG / inertia need **material list + ballast masses +
-  carriage position** (Xabier to provide, or CATIA mass-properties export). Then: compute
-  draft → extract wetted hull, clip at waterline → Capytaine BEM for the spar → drop-in
-  A(ω)/B(ω)/C/RAO; heave-plate hydro from the tank test.
+- **DONE:** exact geometry + mesh; mass/CoG/draft reconciled; spar BEM (C33, heave added
+  mass, period) — the spar hydro is a reliable drop-in.
+- **NEXT (integration):** build the full FloatSim buoy database (all DOFs + RAO over the ω
+  grid from the spar BEM), update the buoy constants (`R_SPAR 0.0841→0.0795`, spar length
+  →1.683 m, mass 21.5 kg, CoG −0.907 m), re-run the decay/RAO.
+- **OPEN (needs the tank):** the perforated heave-plate's **added mass AND damping** — a
+  potential-flow BEM over-predicts them for an open frame; a heave/pitch free-decay or
+  forced-oscillation at the design KC pins both (ties to the pitch-damping option-b test).
