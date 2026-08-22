@@ -26,9 +26,9 @@ _NC = _HERE / "capytaine_osu_buoy.nc"
 RHO, G = 998.0, 9.806                     # fresh water (OSU Hinsdale lab)
 M_BODY = 21.52                            # total floating mass (unloaded, from spreadsheet + WL)
 CoG_Z = -0.907                            # CoG in the waterline frame
-I_XX = I_YY = 10.0                        # pitch/roll inertia estimate (kg·m²) -- PLACEHOLDER
-I_ZZ = 0.12
-DT, DURATION, KERNEL_TMAX = 0.01, 60.0, 20.0   # t_max <= Nyquist (π/dω≈21 s) for this ω grid
+I_XX = I_YY = 10.2                        # pitch/roll inertia about CoG (kg·m²), from gmsh
+I_ZZ = 0.063                              # per-part inertia + lead-at-plate (uniform eff. density)
+DT, DURATION, KERNEL_TMAX = 0.01, 60.0, 30.0   # matches the validated single-buoy grid/kernel
 
 # --- drag geometry (waterline frame) ---
 _SPAR_D, _SPAR_CD = 0.1593, 1.2

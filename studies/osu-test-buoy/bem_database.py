@@ -58,7 +58,13 @@ def main() -> None:
                    for b_ in DOFS] for a in DOFS])
     print(f"C33={C[2, 2]:.1f}  C55={C[4, 4]:.2f}")
 
-    om = np.concatenate([np.linspace(0.20, 4.0, 26), np.linspace(4.3, 12.0, 12)])
+    # Reuse the omega grid of the validated single-buoy BEM (fine at low ω, out to 30 rad/s):
+    # this is what makes the slender-spar surge/roll radiation kernel decay below FloatSim's
+    # Check-3 gate. A uniform coarse grid does not.
+    _ref = xr.open_dataset(Path(__file__).resolve().parents[2] / "studies/spar-fin-decay/capytaine_bem.nc")
+    om = np.sort(np.asarray(_ref["omega"].values))
+    om = np.ascontiguousarray(om[np.isfinite(om)])
+    _ref.close()
     om_all = np.append(om, np.inf)
     solver = cpt.BEMSolver()
     nA = len(om_all)
@@ -72,8 +78,9 @@ def main() -> None:
                 B[i, j, :] = [res.radiation_dampings[d] for d in DOFS]
         if i % 8 == 0:
             print(f"  radiation {i + 1}/{nA} (ω={w:.2f})", flush=True)
-    # excitation (FK + diffraction) at finite ω, heading 0
-    Fexc = np.zeros((len(om), 1, 6), complex)
+    # excitation (FK + diffraction) at finite ω, heading 0; on the SAME omega axis as
+    # added_mass (the ω=inf entry stays 0 and is stripped by the reader's finite mask).
+    Fexc = np.zeros((nA, 1, 6), complex)
     for i, w in enumerate(om):
         dp = cpt.DiffractionProblem(body=body, omega=w, wave_direction=0.0, rho=RHO, g=G, water_depth=np.inf)
         dres = solver.solve(dp, keep_details=False)
@@ -85,16 +92,14 @@ def main() -> None:
             added_mass=(("omega", "radiating_dof", "influenced_dof"), A),
             radiation_damping=(("omega", "radiating_dof", "influenced_dof"), B),
             hydrostatic_stiffness=(("radiating_dof", "influenced_dof"), C),
-            excitation_force=(("complex", "omega_f", "wave_direction", "influenced_dof"),
+            excitation_force=(("complex", "omega", "wave_direction", "influenced_dof"),
                               np.stack([Fexc.real, Fexc.imag], 0)),
         ),
-        coords=dict(omega=("omega", om_all), omega_f=("omega_f", om), wave_direction=("wave_direction", [0.0]),
+        coords=dict(omega=("omega", om_all), wave_direction=("wave_direction", [0.0]),
                     radiating_dof=("radiating_dof", DOFS), influenced_dof=("influenced_dof", DOFS),
                     complex=("complex", ["re", "im"])),
         attrs=dict(rho=RHO, g=G, water_depth="inf", body_name="osu_test_buoy_placeholder"),
     )
-    # excitation must share the 'omega' dim name the reader expects; rename omega_f->omega on that var
-    ds["excitation_force"] = ds["excitation_force"].rename({"omega_f": "omega"})
     ds.to_netcdf(_OUT)
     print(f"wrote {_OUT}")
 

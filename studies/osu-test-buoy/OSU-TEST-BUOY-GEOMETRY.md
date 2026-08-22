@@ -82,18 +82,25 @@ Wetted spar cylinder (Ø0.1593, immersed 0.967 m), `hydro_from_measurements.py`:
 ## Adapted FloatSim model (placeholder plate) — built & decay-checked
 Full 6-DOF Capytaine database `capytaine_osu_buoy.nc` (spar + a **placeholder** solid
 equal-area disc for the heave plate), read by FloatSim's `read_capytaine`. Build:
-`bem_database.py`; buoy constants + drag: `osu_buoy_common.py`; decay: `osu_decay.py`.
+`bem_database.py`; buoy constants + drag: `osu_buoy_common.py`; decay: `osu_decay.py`;
+inertia: `inertia_from_step.py`.
 - Hydrostatics **C33 = 194.5 N/m** ✓; A∞(heave) = 9.7 kg (spar ~1.1 + placeholder plate ~8.6).
-- **Heave free-decay T = 2.52 s** (matches the FD prediction) — the placeholder value.
-  The real perforated/webbed plate adds *less* added mass → **shorter, ~2.3–2.4 s**.
-- Pitch decay 2.09 s (placeholder I_YY = 10 kg·m² + placeholder plate).
+- BEM on the **validated fine ω-grid** (reused from the single-buoy BEM; fine at low ω, out
+  to 30 rad/s) → the radiation kernel **passes FloatSim's Check-3 decay gate with no
+  override** (a coarse grid did not; the slender spar's surge/roll kernels ring long).
+- **Heave free-decay T = 2.52 s** (matches the FD) — the placeholder value. The real
+  perforated/webbed plate adds *less* added mass → **shorter, ~2.3–2.4 s**.
+- **Pitch decay 2.11 s**, with **I_xx=I_yy=10.2, I_zz=0.063 kg·m²** — inertia about the CoG
+  from gmsh's exact per-part tensors + the mass model (structure 8.16 kg over the solids at a
+  uniform effective density; lead 13.36 kg at the ballast). Uniform-density is the one
+  assumption (no per-part material list); replace with CATIA mass properties if available.
 
 ## Status / next
-- **DONE:** geometry + mesh; mass/CoG/draft; spar BEM; **full placeholder database + adapted
-  buoy model + decay check** (heave 2.52 s).
-- **REFINE for production:** (1) the perforated heave-plate's **added mass AND damping** from
-  the **tank test** (BEM over-predicts an open frame; disc is only a stand-in) — ties to the
-  pitch-damping option-b test; (2) the slender-spar **surge/roll radiation kernel** decays
-  slowly and trips the Check-3 gate (heave kernel is clean) — re-run `bem_database.py` with a
-  finer/wider ω grid so it passes without the study-side bypass in `osu_decay.py`; (3) real
-  pitch/roll inertia (from CATIA or per-part gmsh volumes + materials).
+- **DONE:** geometry + mesh; mass/CoG/draft; spar BEM; full placeholder database + adapted
+  buoy model + decay check (heave 2.52 s, pitch 2.11 s); **production-grade kernel** (fine
+  grid, no override); **real inertia** (gmsh).
+- **OPEN (needs the tank):** the perforated heave-plate's **added mass AND damping** — a
+  potential-flow BEM over-predicts them for an open frame, so the disc is a bracket; a
+  heave/pitch free-decay or forced-oscillation at the design KC pins both (same campaign as
+  the pitch-damping option-b test). Optional: CATIA mass properties to replace the
+  uniform-density inertia assumption.
