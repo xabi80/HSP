@@ -79,12 +79,21 @@ Wetted spar cylinder (Ø0.1593, immersed 0.967 m), `hydro_from_measurements.py`:
   (Our current FloatSim buoy is ~3.0 s — its fin is larger; the OSU plate is smaller/
   perforated, so a **shorter** period. Re-point the model accordingly.)
 
+## Adapted FloatSim model (placeholder plate) — built & decay-checked
+Full 6-DOF Capytaine database `capytaine_osu_buoy.nc` (spar + a **placeholder** solid
+equal-area disc for the heave plate), read by FloatSim's `read_capytaine`. Build:
+`bem_database.py`; buoy constants + drag: `osu_buoy_common.py`; decay: `osu_decay.py`.
+- Hydrostatics **C33 = 194.5 N/m** ✓; A∞(heave) = 9.7 kg (spar ~1.1 + placeholder plate ~8.6).
+- **Heave free-decay T = 2.52 s** (matches the FD prediction) — the placeholder value.
+  The real perforated/webbed plate adds *less* added mass → **shorter, ~2.3–2.4 s**.
+- Pitch decay 2.09 s (placeholder I_YY = 10 kg·m² + placeholder plate).
+
 ## Status / next
-- **DONE:** exact geometry + mesh; mass/CoG/draft reconciled; spar BEM (C33, heave added
-  mass, period) — the spar hydro is a reliable drop-in.
-- **NEXT (integration):** build the full FloatSim buoy database (all DOFs + RAO over the ω
-  grid from the spar BEM), update the buoy constants (`R_SPAR 0.0841→0.0795`, spar length
-  →1.683 m, mass 21.5 kg, CoG −0.907 m), re-run the decay/RAO.
-- **OPEN (needs the tank):** the perforated heave-plate's **added mass AND damping** — a
-  potential-flow BEM over-predicts them for an open frame; a heave/pitch free-decay or
-  forced-oscillation at the design KC pins both (ties to the pitch-damping option-b test).
+- **DONE:** geometry + mesh; mass/CoG/draft; spar BEM; **full placeholder database + adapted
+  buoy model + decay check** (heave 2.52 s).
+- **REFINE for production:** (1) the perforated heave-plate's **added mass AND damping** from
+  the **tank test** (BEM over-predicts an open frame; disc is only a stand-in) — ties to the
+  pitch-damping option-b test; (2) the slender-spar **surge/roll radiation kernel** decays
+  slowly and trips the Check-3 gate (heave kernel is clean) — re-run `bem_database.py` with a
+  finer/wider ω grid so it passes without the study-side bypass in `osu_decay.py`; (3) real
+  pitch/roll inertia (from CATIA or per-part gmsh volumes + materials).
