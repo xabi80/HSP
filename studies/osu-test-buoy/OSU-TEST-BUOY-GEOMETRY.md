@@ -95,6 +95,70 @@ inertia: `inertia_from_step.py`.
   uniform effective density; lead 13.36 kg at the ballast). Uniform-density is the one
   assumption (no per-part material list); replace with CATIA mass properties if available.
 
+## Heave decay prediction (pre-test)
+Before the tank test, the decay splits cleanly into a part we can predict and a part
+the test exists to measure (`predict_decay.py` → `OSU_heave_decay_prediction.png`):
+
+- **Period is predictable.** `T = 2π·√((M + A₃₃)/C₃₃)`. `M = 21.52 kg` and
+  `C₃₃ = 194.5 N/m` are pinned (mass/waterline and the 6″ pipe diameter). The only
+  unknown is the heave-plate added mass `A₃₃`, and it is *bounded*: spar-only ≈ 1.5 kg
+  (T = 2.16 s) → near-solid equal-area disc ≈ 8.5 kg (T = 2.47 s). Best estimate
+  `A₃₃ ≈ 4–5 kg` → **T ≈ 2.3–2.4 s** (band 2.2–2.5 s).
+- **Damping is the measurement.** Quadratic (Morison) drag on the perforated/webbed
+  plate → amplitude-dependent log-decrement (curved envelope, largest on the first
+  swing). The open frame's `Cd` is exactly what potential-flow BEM cannot give, so the
+  prediction is a band: **ζ₁ ≈ 8–15 %** of critical on a 100 mm release, decaying over
+  ~10–20 cycles.
+
+| the test measures… | …which pins |
+|---|---|
+| oscillation **period** | plate **added mass** `A₃₃` (closes the 2.2–2.5 s bracket) |
+| **decay rate** vs amplitude | plate **drag** `Cd` (the perforated-frame unknown) |
+
+A measured period well below ~2.2 s is a flag to recheck mass/waterline before trusting
+the damping fit.
+
+## Capytaine diffraction & radiation analysis — how to explain it
+(`capytaine_explainer.py` → `Capytaine_explained.png`; used to build the BEM database in
+`bem_database.py`.) Capytaine is a **boundary-element (panel) solver for linear
+potential-flow hydrodynamics**: give it the wetted hull as panels, it solves the flow
+(velocity potential φ) around it in regular waves at each frequency ω. "Potential flow"
+means **inviscid, irrotational, small (linear)** waves and motions — that single
+assumption drives both its outputs and its limits.
+
+Because the problem is linear, the wave-body interaction **splits by superposition into
+two sub-problems** solved separately and added:
+
+1. **Radiation — "body as a wavemaker."** Turn incident waves off; force the body to
+   oscillate in still water, one DOF at a time, at each ω. The reaction force gives the
+   part in phase with acceleration → **added mass A(ω)** and the part in phase with
+   velocity → **radiation damping B(ω)** (6×6 matrices per ω, with cross-DOF coupling).
+2. **Diffraction — "body as an obstacle."** Hold the body *fixed*; let waves scatter off
+   it. The net wave-pressure force is the **excitation force F_exc(ω, β)** =
+   **Froude–Krylov** (undisturbed incident pressure) + **diffraction** (scattering
+   correction).
+
+Outputs per frequency: **A(ω), B(ω), F_exc(ω)**, plus the hydrostatic stiffness **C**
+(geometry). These are written to `capytaine_osu_buoy.nc`.
+
+**Bridge to the time domain (Cummins).** Frequency-domain A(ω)/B(ω) can't be dropped into
+a time-stepper directly (a transient contains all frequencies), so:
+
+> `(M + A∞) ẍ + ∫₀ᵗ K(t−τ) ẋ(τ) dτ + C x = F_exc(t) + F_drag(ẋ)`
+
+with **A∞** = infinite-frequency added mass and **K(t) = (2/π)∫B(ω)cos(ωt)dω** the
+*retardation kernel* (fluid memory of previously radiated waves). Radiation → `A∞ + K(t)`;
+diffraction → `F_exc`; hydrostatics → `C`. FloatSim integrates this (`compute_retardation_kernel`,
+`assemble_cummins_lhs`).
+
+**Limits worth stating (and why the heave plate needs the tank):** potential flow is
+**inviscid**, so (i) all viscous/quadratic damping is added separately as **Morison drag**
+`F_drag`, *not* from the BEM; and (ii) a panel model treats every surface as solid, so it
+**over-predicts added mass for the open/perforated heave-plate frame** (it blocks flow the
+real perforations pass). The spar BEM is reliable; the plate's A and B are BEM
+*stand-ins* until the tank test measures them — the same `A₃₃`/`Cd` bracket as the
+prediction above.
+
 ## Status / next
 - **DONE:** geometry + mesh; mass/CoG/draft; spar BEM; full placeholder database + adapted
   buoy model + decay check (heave 2.52 s, pitch 2.11 s); **production-grade kernel** (fine
