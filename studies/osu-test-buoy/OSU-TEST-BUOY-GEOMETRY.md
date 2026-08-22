@@ -119,7 +119,8 @@ A measured period well below ~2.2 s is a flag to recheck mass/waterline before t
 the damping fit.
 
 ## Capytaine diffraction & radiation analysis — how to explain it
-(`capytaine_explainer.py` → `Capytaine_explained.png`; used to build the BEM database in
+(`capytaine_explainer.py` → `Capytaine_explained.png`; the BEM mesh itself is in
+`OSU_buoy_mesh_capytaine.png` via `mesh_view.py`; the database is built by
 `bem_database.py`.) Capytaine is a **boundary-element (panel) solver for linear
 potential-flow hydrodynamics**: give it the wetted hull as panels, it solves the flow
 (velocity potential φ) around it in regular waves at each frequency ω. "Potential flow"
@@ -151,6 +152,31 @@ with **A∞** = infinite-frequency added mass and **K(t) = (2/π)∫B(ω)cos(ωt
 diffraction → `F_exc`; hydrostatics → `C`. FloatSim integrates this (`compute_retardation_kernel`,
 `assemble_cummins_lhs`).
 
+### Who computes what — Capytaine vs FloatSim
+Capytaine is run **once, offline**, and produces only the *linear, inviscid hydrodynamic
+coefficients* (frequency domain). FloatSim then builds and solves the *actual equation of
+motion in time* — and supplies everything potential flow can't see (viscous drag, the
+body's own mass/inertia, mooring, equilibrium). Explicit split:
+
+| Step | Tool | Domain | Produces |
+|---|---|---|---|
+| Panel mesh of the wetted hull | **Capytaine** | geometry | 3408 wetted panels (`mesh_view.py`) |
+| Radiation problem (per ω) | **Capytaine** | frequency | added mass `A(ω)`, `A∞`; radiation damping `B(ω)` |
+| Diffraction problem (per ω, heading) | **Capytaine** | frequency | excitation `F_exc(ω,β)` = Froude-Krylov + diffraction |
+| Hydrostatics | **Capytaine** | geometry | buoyancy stiffness `C` (gravity term added by FloatSim) |
+| *→ written to `capytaine_osu_buoy.nc`* | | | *the hand-off* |
+| Retardation kernel `K(t)` from `B(ω)` | **FloatSim** | time | fluid-memory convolution kernel |
+| Rigid-body mass & inertia `M` | **FloatSim** | — | from the structure (gmsh + spreadsheet) |
+| Assemble LHS `(M+A∞)`, `C` + `m·g·z_G` | **FloatSim** | — | Cummins left-hand side (incl. gravity restoring) |
+| Viscous / quadratic **Morison drag** `F_drag` | **FloatSim** | time | spar + heave-plate drag — *not* in the BEM |
+| Static equilibrium | **FloatSim** | — | trim / draft |
+| Time integration of the Cummins EoM | **FloatSim** | time | motion `x(t)` → decay period `T` & damping `ζ` |
+
+In one line: **Capytaine gives the hydrodynamic coefficients; FloatSim assembles and
+time-integrates the equation of motion** (adding mass, viscous drag, mooring, equilibrium,
+and the `B(ω)→K(t)` conversion). The heave-decay period and damping are a FloatSim output,
+computed *from* the Capytaine coefficients — not something Capytaine reports.
+
 **Limits worth stating (and why the heave plate needs the tank):** potential flow is
 **inviscid**, so (i) all viscous/quadratic damping is added separately as **Morison drag**
 `F_drag`, *not* from the BEM; and (ii) a panel model treats every surface as solid, so it
@@ -158,6 +184,25 @@ diffraction → `F_exc`; hydrostatics → `C`. FloatSim integrates this (`comput
 real perforations pass). The spar BEM is reliable; the plate's A and B are BEM
 *stand-ins* until the tank test measures them — the same `A₃₃`/`Cd` bracket as the
 prediction above.
+
+## Assumptions & their basis
+The model inputs and the justification for each. The two ⚑ rows are placeholders the
+**tank measures** (period → plate added mass; decay rate → plate `Cd`). Coefficient ranges
+follow standard practice (DNV-RP-C205; Sarpkaya); the perforated-plate added-mass reduction
+follows porous-disk theory (Molin). Set in `osu_buoy_common.py` / `bem_database.py`.
+
+| Assumption | Value | Basis / support |
+|---|---|---|
+| Spar drag `Cd` (transverse) | 1.2 | Smooth circular cylinder (Morison); standard 1.0–1.2 (DNV-RP-C205, Sarpkaya). Sets surge & pitch drag; negligible in heave. |
+| Heave-plate normal `Cd_n` | **5.0** ⚑ | Flat disc at low KC (≈ 2–3 at a 100 mm release, `KC = 2πa/D`): flow separates, published `Cd ≈ 4–8`. Dominates heave damping. Placeholder → tank pins it. |
+| Heave-plate tangential `Cd_t` | 1.5 | Edge / skin friction on the rim; small contribution. |
+| Plate added mass | **solid equal-area disc, Ø0.287 m** ⚑ | Potential-flow UPPER bound; the perforated/webbed frame passes flow → adds less (porous-disk theory, Molin). Bracket → tank pins `A₃₃`. |
+| Mass / CoG | 21.52 kg / −0.907 m | Spreadsheet structure 8.16 kg + measured unloaded waterline 967 mm; independent geometry check (cyl+frame+lead) agrees ~1.5%. |
+| Pitch / roll inertia | 10.2 kg·m² | gmsh per-part inertia tensors + uniform effective density; the deep lead ballast dominates → robust to the internal mass split. CATIA would refine. |
+| Water & BEM | fresh (ρ=998); deep; linear | OSU Hinsdale lab is fresh (period density-independent for a free body); potential flow is inviscid → viscous drag added via Morison. Confirm tank depth vs 1.42 m draft. |
+
+`KC = 2πa/D` with release amplitude `a ≈ 0.1 m` and plate scale `D ≈ 0.20–0.29 m` → `KC ≈ 2–3`
+at the first swing (dropping as the motion decays) — the low-KC, high-`Cd` regime.
 
 ## Status / next
 - **DONE:** geometry + mesh; mass/CoG/draft; spar BEM; full placeholder database + adapted
