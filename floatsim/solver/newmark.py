@@ -386,8 +386,8 @@ def integrate_cummins(
     buffer.push(xi_dot_0)
 
     # mu at t_0: continuous value is 0; the buffer-evaluated artifact
-    # K_0 * xi_dot_0 * dt is O(dt) and skipped here to match the §9.3
-    # startup convention exactly at the first RHS.
+    # K_0 * xi_dot_0 * dt/2 (trapezoid lag-0 weight) is O(dt) and skipped
+    # here to match the §9.3 startup convention exactly at the first RHS.
     mu_n = np.zeros(n_dof, dtype=np.float64)
 
     xi_n = xi_0

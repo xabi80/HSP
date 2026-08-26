@@ -38,6 +38,8 @@ sources, not the riskiest.
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 import numpy as np
 import pytest
 
@@ -76,15 +78,15 @@ def _ogilvie(kernel: RetardationKernel, omega: float, *, rule: str) -> tuple[flo
     ``rule`` selects the quadrature deliberately, because the choice decides
     *what is being tested*:
 
-    ``"rectangle"``
-        Matches ``RadiationConvolution.evaluate``, which computes
-        ``sum_k K_k @ v_{n-k} * dt`` (retardation.py:811-812) -- a left-endpoint
-        sum. Comparing like with like isolates **the identity and the replay**
-        from the quadrature.
     ``"trapezoid"``
-        The continuous-limit reference. Comparing against it measures identity
-        *plus* quadrature error, which is O(dt) and is pinned separately by
-        :func:`test_convolution_quadrature_is_first_order`.
+        Matches ``RadiationConvolution.evaluate``, which computes the
+        trapezoidal convolution (endpoints half-weighted; retardation.py). Comparing
+        like with like isolates **the identity and the replay** from the quadrature.
+    ``"rectangle"``
+        The old left-endpoint sum (the fixed defect). Comparing the trapezoid
+        convolution against it would show the ``dt*K_0/2`` excess, which is why the
+        second-order convergence to the continuum is pinned separately by
+        :func:`test_convolution_quadrature_is_second_order`.
     """
     tau = kernel.t
     k = kernel.K[0, 0, :]
@@ -103,7 +105,7 @@ def _ogilvie(kernel: RetardationKernel, omega: float, *, rule: str) -> tuple[flo
 def test_mu_satisfies_the_steady_state_radiation_identity(omega: float) -> None:
     """``mu`` from the replay equals ``[A(w)-A_inf] xi_ddot + B(w) xi_dot``."""
     kernel = _kernel()
-    b, s = _ogilvie(kernel, omega, rule="rectangle")
+    b, s = _ogilvie(kernel, omega, rule="trapezoid")  # matches evaluate() (trapezoid)
 
     # Drive long enough that the convolution buffer is full before comparing.
     t = np.arange(0.0, 60.0, _DT)
@@ -133,34 +135,45 @@ def test_mu_satisfies_the_steady_state_radiation_identity(omega: float) -> None:
     )
 
 
-def test_convolution_quadrature_is_first_order() -> None:
-    """Against the CONTINUOUS reference the error is O(dt). Pin the rate.
+def test_convolution_quadrature_is_second_order() -> None:
+    """Against the ANALYTIC continuous reference the error is O(dt^2). Pin the rate.
 
-    RadiationConvolution uses a left-endpoint sum, so it approaches the
-    continuous Ogilvie relation at first order. Measured ratios are 2.00 at
-    every halving. Asserting the *rate* rather than a magnitude is what would
-    catch a regression to a zeroth-order rule, whose absolute error at any one
-    dt could still look acceptable -- the same reasoning as FloatFEA gate G4.5.
+    The trapezoidal convolution (endpoints half-weighted) converges to the
+    continuous Ogilvie relation at **second** order -- halving dt cuts the error
+    ~4x. This is the guard against a regression to the rectangular defect (a plain
+    left-endpoint sum is only first order, ratio ~2, and over-applies radiation
+    damping by dt*K_0/2). Same reasoning as FloatFEA gate G4.5, one order higher.
+
+    Reference is the closed-form Ogilvie integral for the fixture kernel
+    ``k(tau) = e^{-a tau} cos(w_k tau)`` -- dt-independent, so the measured rate is
+    the quadrature's, not a same-dt artifact:
+      B(w) = int_0^inf k cos(w tau) dtau = 1/2 [ a/(a^2+(w_k+w)^2) + a/(a^2+(w_k-w)^2) ]
+      S(w) = int_0^inf k sin(w tau) dtau = 1/2 [ (w+w_k)/(a^2+(w+w_k)^2) + (w-w_k)/(a^2+(w-w_k)^2) ]
     """
+    a, wk = _DECAY, _KERNEL_OMEGA
     omega, amp = 1.3, 0.37
+    t_max = 20.0  # e^{-a t_max} ~ 1e-7: truncation negligible vs the dt^2 error
+    b = 0.5 * (a / (a**2 + (wk + omega) ** 2) + a / (a**2 + (wk - omega) ** 2))
+    s = 0.5 * ((omega + wk) / (a**2 + (omega + wk) ** 2)
+               + (omega - wk) / (a**2 + (omega - wk) ** 2))
+
     errors = []
     for dt in (0.02, 0.01, 0.005):
-        tau = np.arange(0.0, _T_MAX, dt)
-        k = np.exp(-_DECAY * tau) * np.cos(_KERNEL_OMEGA * tau)
+        tau = np.arange(0.0, t_max, dt)
+        k = np.exp(-a * tau) * np.cos(wk * tau)
         K = np.zeros((6, 6, tau.size), dtype=np.float64)
         for i in range(6):
             K[i, i, :] = k
         kernel = RetardationKernel(K=K, t=tau, dt=dt)
-        b, s = _ogilvie(kernel, omega, rule="trapezoid")
 
-        t = np.arange(0.0, 60.0, dt)
+        t = np.arange(0.0, t_max + 30.0, dt)
         xi_dot = np.zeros((t.size, 6), dtype=np.float64)
         xi_ddot = np.zeros((t.size, 6), dtype=np.float64)
         xi_dot[:, 0] = amp * np.cos(omega * t)
         xi_ddot[:, 0] = -amp * omega * np.sin(omega * t)
         mu, _ = recompute_mu(kernel, xi_dot, from_run_start=True)
         predicted = (-s / omega) * xi_ddot + b * xi_dot
-        settled = t > _T_MAX + 1.0
+        settled = t > t_max + 1.0
         errors.append(
             float(
                 np.abs(mu[settled, 0] - predicted[settled, 0]).max()
@@ -168,9 +181,9 @@ def test_convolution_quadrature_is_first_order() -> None:
             )
         )
 
-    for coarse, fine in zip(errors[:-1], errors[1:], strict=True):
+    for coarse, fine in pairwise(errors):
         ratio = coarse / fine
-        assert 1.8 < ratio < 2.2, f"expected first-order convergence, got ratio {ratio:.3f}"
+        assert 3.3 < ratio < 4.7, f"expected second-order convergence, got ratio {ratio:.3f}"
 
 
 def test_mu_startup_is_zero_matching_the_integrator() -> None:

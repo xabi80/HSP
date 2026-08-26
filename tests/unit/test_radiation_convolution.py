@@ -1,11 +1,15 @@
 """Milestone 2 — radiation convolution buffer unit tests.
 
-Covers the circular-buffer discrete convolution
+Covers the circular-buffer discrete convolution, discretised with the
+**trapezoidal** rule (endpoints half-weighted; ARCHITECTURE.md §2.4):
 
-    mu_n = sum_{k=0}^{N_K-1} K_k @ xi_dot_{n-k} * dt   (ARCHITECTURE.md §2.4)
+    mu_n = dt * ( sum_{k=0}^{N_K-1} K_k @ xi_dot_{n-k}
+                  - 1/2 K_0 @ xi_dot_n - 1/2 K_{N_K-1} @ xi_dot_{n-(N_K-1)} )
 
-where the newest pushed velocity carries lag 0. Pure algebraic tests;
-no ODE integration yet — that lands in the M2 integrator PR.
+where the newest pushed velocity carries lag 0. The lag-0 half-weight is the
+fix for the FloatFEA-reported defect: a full-dt lag-0 weight (rectangle) over-
+applies radiation damping by dt*K_0/2 (see :meth:`RadiationConvolution.evaluate`).
+Pure algebraic tests; no ODE integration here.
 """
 
 from __future__ import annotations
@@ -35,6 +39,15 @@ def _random_symmetric_kernel(n_t: int, seed: int = 0) -> np.ndarray:
     return K
 
 
+def _trap_ref(K: np.ndarray, buf: list[np.ndarray], dt: float) -> np.ndarray:
+    """Independent trapezoidal reference: ``buf[k]`` is the sample at lag ``k``
+    (newest = lag 0). Endpoints lag 0 and lag N-1 carry half weight."""
+    n = K.shape[2]
+    mu = dt * sum(K[:, :, k] @ buf[k] for k in range(n))
+    mu -= 0.5 * dt * (K[:, :, 0] @ buf[0] + K[:, :, n - 1] @ buf[n - 1])
+    return mu
+
+
 # ---------- empty / freshly-reset buffer ----------
 
 
@@ -55,21 +68,24 @@ def test_reset_clears_history() -> None:
     np.testing.assert_allclose(conv.evaluate(), 0.0, atol=0.0)
 
 
-# ---------- lag mapping ----------
+# ---------- lag mapping (trapezoid: lag-0 endpoint carries HALF weight) ----------
 
 
-def test_single_push_applies_lag_zero_kernel() -> None:
+def test_single_push_applies_half_weight_lag_zero_kernel() -> None:
+    """One push: buffer is [v, 0, ...]; trapezoid halves the lag-0 endpoint
+    (and the zero last lag), so mu = 0.5 * dt * K_0 @ v -- NOT dt * K_0 @ v
+    (that full weight was the rectangular-rule defect)."""
     K = _random_symmetric_kernel(n_t=10, seed=1)
     dt = 0.1
     conv = RadiationConvolution(_make_kernel(K, dt))
     xi_dot = np.array([0.1, -0.2, 0.3, -0.4, 0.5, -0.6])
     conv.push(xi_dot)
-    expected = K[:, :, 0] @ xi_dot * dt
+    expected = 0.5 * dt * (K[:, :, 0] @ xi_dot)
     np.testing.assert_allclose(conv.evaluate(), expected, rtol=1e-12)
 
 
 def test_two_pushes_map_most_recent_to_lag_zero() -> None:
-    """Newer push -> lag 0; earlier push -> lag 1."""
+    """Newer push -> lag 0 (half-weighted endpoint); earlier push -> lag 1 (full)."""
     K = _random_symmetric_kernel(n_t=10, seed=2)
     dt = 0.05
     conv = RadiationConvolution(_make_kernel(K, dt))
@@ -77,22 +93,22 @@ def test_two_pushes_map_most_recent_to_lag_zero() -> None:
     v_new = np.array([0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
     conv.push(v_old)
     conv.push(v_new)
-    expected = (K[:, :, 0] @ v_new + K[:, :, 1] @ v_old) * dt
+    expected = dt * (0.5 * K[:, :, 0] @ v_new + K[:, :, 1] @ v_old)
     np.testing.assert_allclose(conv.evaluate(), expected, rtol=1e-12)
 
 
 def test_n_pushes_map_to_full_history() -> None:
-    """Push distinct velocities and verify each lag receives the right sample."""
+    """Push distinct velocities filling the buffer; verify against the
+    independent trapezoidal reference (both endpoints half-weighted)."""
     n_t = 5
     K = _random_symmetric_kernel(n_t=n_t, seed=3)
     dt = 0.1
     conv = RadiationConvolution(_make_kernel(K, dt))
-    # Push e_1, e_2, ..., e_n in order. After push: e_n is lag 0, e_1 is lag n-1.
     vels = [np.eye(6)[i % 6] for i in range(n_t)]
     for v in vels:
         conv.push(v)
-    expected = sum(K[:, :, k] @ vels[n_t - 1 - k] for k in range(n_t)) * dt
-    np.testing.assert_allclose(conv.evaluate(), expected, rtol=1e-12)
+    buf = [vels[n_t - 1 - k] for k in range(n_t)]  # lag k -> (n_t-1-k)-th pushed
+    np.testing.assert_allclose(conv.evaluate(), _trap_ref(K, buf, dt), rtol=1e-12)
 
 
 # ---------- circular wrap-around ----------
@@ -107,22 +123,18 @@ def test_buffer_drops_oldest_sample_after_wrap() -> None:
 
     first = np.array([999.0, -999.0, 0.0, 0.0, 0.0, 0.0])
     conv.push(first)
-    # Push n_t more samples — the "first" one must wrap out.
     follow = [np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]) for _ in range(n_t)]
     for v in follow:
         conv.push(v)
-    got = conv.evaluate()
-
-    # Expected: only the most recent n_t samples contribute; those are all `follow[k]`.
-    expected = sum(K[:, :, k] @ follow[n_t - 1 - k] for k in range(n_t)) * dt
-    np.testing.assert_allclose(got, expected, rtol=1e-12)
+    buf = [follow[n_t - 1 - k] for k in range(n_t)]  # `first` has wrapped out
+    np.testing.assert_allclose(conv.evaluate(), _trap_ref(K, buf, dt), rtol=1e-12)
 
 
 # ---------- steady state ----------
 
 
-def test_constant_velocity_reaches_sum_of_kernel() -> None:
-    """Push the same velocity N_K times -> mu = (sum_k K_k * dt) @ v_const."""
+def test_constant_velocity_reaches_trapezoid_sum_of_kernel() -> None:
+    """Push the same velocity N_K times -> mu = dt*(sum_k K_k - 1/2 K_0 - 1/2 K_{N-1}) @ v."""
     n_t = 20
     K = _random_symmetric_kernel(n_t=n_t, seed=5)
     dt = 0.05
@@ -130,7 +142,8 @@ def test_constant_velocity_reaches_sum_of_kernel() -> None:
     v = np.array([0.2, -0.1, 0.5, 0.0, -0.3, 0.1])
     for _ in range(n_t):
         conv.push(v)
-    expected = (K.sum(axis=2) * dt) @ v
+    trap_weight = K.sum(axis=2) - 0.5 * (K[:, :, 0] + K[:, :, -1])
+    expected = (trap_weight * dt) @ v
     np.testing.assert_allclose(conv.evaluate(), expected, rtol=1e-12)
 
 
@@ -138,7 +151,8 @@ def test_constant_velocity_reaches_sum_of_kernel() -> None:
 
 
 def test_diagonal_kernel_decouples_dofs() -> None:
-    """For a diagonal K_k at every lag, exciting only DOF 2 yields mu in DOF 2 only."""
+    """For a diagonal K_k at every lag, exciting only DOF 2 yields mu in DOF 2 only;
+    a single push gives the half-weighted lag-0 value."""
     n_t = 8
     K = np.zeros((6, 6, n_t))
     for i in range(6):
@@ -152,7 +166,7 @@ def test_diagonal_kernel_decouples_dofs() -> None:
     mask = np.ones(6, dtype=bool)
     mask[2] = False
     assert np.max(np.abs(mu[mask])) == 0.0
-    assert mu[2] == pytest.approx(K[2, 2, 0] * dt, rel=1e-12)
+    assert mu[2] == pytest.approx(0.5 * K[2, 2, 0] * dt, rel=1e-12)
 
 
 # ---------- input validation ----------

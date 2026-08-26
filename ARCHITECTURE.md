@@ -70,12 +70,23 @@ Computed once at setup via discrete cosine transform on the BEM frequency grid. 
 
 ### 2.4 Convolution evaluation
 
-At each time step:
+At each time step, by the **trapezoidal** rule (endpoints half-weighted):
 $$
-\mu(t) = \int_0^t K(t-\tau)\dot{\xi}(\tau)\,d\tau \approx \sum_{k=0}^{N_K-1} K_k \cdot \dot{\xi}_{n-k} \cdot \Delta t
+\mu(t) = \int_0^t K(t-\tau)\dot{\xi}(\tau)\,d\tau \approx \Delta t\left(\sum_{k=0}^{N_K-1} K_k \dot{\xi}_{n-k} - \tfrac{1}{2}K_0\dot{\xi}_n - \tfrac{1}{2}K_{N_K-1}\dot{\xi}_{n-(N_K-1)}\right)
 $$
 
 Using a circular buffer of past velocities. Cost: O(N_K · 36 · N²) per step — acceptable for N ≤ ~10 bodies.
+
+**Why trapezoid, not rectangle (fix, post-M11).** A plain rectangular sum (full `Δt` on
+every lag, including `k=0`) over-weights the lag-0 endpoint by `Δt·K_0/2`. Because
+`K_0 = K(0) = (2/π)∫B(ω)dω` is the *largest* value in the kernel and the lag-0 term
+`K_0·ξ̇_n` is proportional to the **instantaneous** velocity, that excess acts as a damping
+coefficient: it inflates applied radiation damping by `Δt·K_0/2` per DOF — a first-order-in-`Δt`
+error, negligible for small-band-integral DOFs (heave) but several-fold for broadband-`B` DOFs
+(pitch / surge / roll). Found by FloatFEA and confirmed independently (~7× ‖B‖ in Frobenius;
+~4× on a bare single-buoy pitch free-decay); it does not refine away except by shrinking `Δt`.
+The heave-centric M2–M11 damping validation could not see it. The trapezoid endpoint weighting
+is the fix; validate radiation damping on **pitch/surge** free-decay, not heave.
 
 *Optional future optimization:* state-space approximation of K(t) via Prony or vector fitting (eliminates convolution entirely).
 

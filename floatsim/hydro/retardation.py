@@ -738,7 +738,9 @@ def _validate_psd(omega: NDArray[np.float64], B: NDArray[np.float64]) -> None:
 
 
 class RadiationConvolution:
-    """Circular-buffer evaluator for ``mu_n = sum_k K_k @ xi_dot_{n-k} * dt``.
+    """Circular-buffer evaluator for the retardation convolution ``mu_n``,
+    discretised with the **trapezoidal** rule (endpoints half-weighted; see
+    :meth:`evaluate` for why the lag-0 endpoint must be halved).
 
     The buffer stores the last ``N_K`` pushed velocities. Before any push
     the buffer is zero-filled, so :meth:`evaluate` returns ``0`` — this
@@ -801,13 +803,31 @@ class RadiationConvolution:
         self._buffer[0, :] = v
 
     def evaluate(self) -> NDArray[np.float64]:
-        """Return the current convolution ``mu = sum_k K_k @ xi_dot_{n-k} * dt``.
+        """Return the current convolution ``mu = trapz_k K_k @ xi_dot_{n-k}``.
+
+        **Trapezoidal** quadrature of ``mu(t) = int_0^inf K(tau) xi_dot(t - tau) dtau``:
+        interior lags carry weight ``dt``; the two endpoints -- lag 0 (the newest
+        velocity) and the oldest stored lag -- carry ``dt / 2``.
+
+        Halving the lag-0 endpoint is not cosmetic. ``K(0) = (2/pi) int_0^inf B(omega)
+        domega`` is the *largest* value in the kernel, and the lag-0 term
+        ``K(0) @ xi_dot(t)`` is proportional to the instantaneous velocity, so it acts
+        as a damping coefficient. A plain rectangular sum (full ``dt`` on lag 0) therefore
+        over-applies radiation damping by ``dt * K(0) / 2`` per DOF -- a first-order-in-dt
+        error that is negligible for DOFs with a small band-integral of ``B`` (e.g. heave)
+        but several-fold for DOFs with a broadband ``B`` (pitch / surge / roll). It does
+        not refine away except by shrinking ``dt``. See the FloatFEA convolution-defect
+        report and ``studies/platform-16buoy/pin_vs_rigid/pvr_conv_check.py``.
 
         Returns
         -------
         ndarray of shape ``(n_dof,)``, float64
             Radiation force/moment vector ``mu`` in N / N*m per DOF.
         """
-        # mu_i = sum_k sum_j K[i, j, k] * buffer[k, j] * dt
+        # mu_i = dt * sum_k sum_j K[i,j,k] * buffer[k,j]  (rectangle) ...
         mu: NDArray[np.float64] = self._dt * np.einsum("ijk,kj->i", self._K, self._buffer)
+        # ... minus the half-weight trapezoidal correction on the two endpoints.
+        mu -= 0.5 * self._dt * (
+            self._K[:, :, 0] @ self._buffer[0] + self._K[:, :, -1] @ self._buffer[-1]
+        )
         return mu
