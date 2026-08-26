@@ -50,9 +50,9 @@ from scipy.spatial.transform import Rotation
 _EARTH: int = -1
 _FLOAT_EPS: float = 1.0e-12
 
-_JOINT_KINDS = ("hinge", "yaw_locked")
+_JOINT_KINDS = ("hinge", "yaw_locked", "rigid")
 # rows = 3 translational + rotational-lock rows
-_N_ROWS = {"hinge": 5, "yaw_locked": 4}
+_N_ROWS = {"hinge": 5, "yaw_locked": 4, "rigid": 6}
 _Z_AXIS: NDArray[np.float64] = np.array([0.0, 0.0, 1.0])
 
 
@@ -82,10 +82,12 @@ class Joint:
     ----------
     kind
         ``"hinge"`` (3 translations + 2 rotations perpendicular to the
-        axis locked; 1 free rotation about the axis -> 5 rows) or
+        axis locked; 1 free rotation about the axis -> 5 rows),
         ``"yaw_locked"`` (3 translations + rotation about the axis
         locked; 2 free rotations -> 4 rows; the 12-buoy joint with
-        ``axis = z``).
+        ``axis = z``), or ``"rigid"`` (all 6 relative DOF locked -- 3
+        translations + all 3 rotations -> 6 rows; a weld, the two bodies
+        move as one rigid body; ``axis`` unused).
     body_a, body_b
         Global body indices; ``-1`` is earth. ``body_a`` must be a real
         body; ``body_b`` may be earth.
@@ -158,6 +160,27 @@ def yaw_locked_joint(
     roll/pitch free (4 rows)."""
     return Joint(
         kind="yaw_locked",
+        body_a=body_a,
+        body_b=body_b,
+        attach_a=np.asarray(attach_a, dtype=np.float64),
+        attach_b=np.asarray(attach_b, dtype=np.float64),
+        axis=np.asarray(axis, dtype=np.float64),
+    )
+
+
+def rigid_joint(
+    body_a: int,
+    body_b: int,
+    *,
+    attach_a: NDArray[np.float64],
+    attach_b: NDArray[np.float64],
+    axis: NDArray[np.float64] = _Z_AXIS,
+) -> Joint:
+    """Rigid (weld) joint: all 6 relative DOF locked -- 3 translations + all
+    three rotations (6 rows). The two bodies move as one rigid body. ``axis``
+    is unused (kept for signature uniformity with the other joint builders)."""
+    return Joint(
+        kind="rigid",
         body_a=body_a,
         body_b=body_b,
         attach_a=np.asarray(attach_a, dtype=np.float64),
@@ -272,8 +295,10 @@ class JointSet:
         if j.kind == "hinge":
             t1, t2 = _orthonormal_perp(axis_world)
             proj = np.vstack([t1, t2])  # (2, 3): lock the two perpendicular components
-        else:  # yaw_locked -> lock the axis component
-            proj = axis_world.reshape(1, 3)
+        elif j.kind == "yaw_locked":
+            proj = axis_world.reshape(1, 3)  # lock the axis component
+        else:  # rigid -> lock all three rotational components
+            proj = np.eye(3)
         phi[3:] = proj @ rotvec_rel
         # rate: proj (omega_A - omega_B); rotational columns only.
         G[3:, a0 + 3 : a0 + 6] = proj

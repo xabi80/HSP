@@ -260,6 +260,7 @@ output:
 | Regular wave, free body (single) | Full Cummins loop | RAO-based steady-state amplitude | ✅ M3 |
 | Two bodies, rigid connector | Multi-body assembly, constraint handling | Combined-mass equivalent body | ✅ M4 |
 | Two bodies, mooring line | Catenary restoring | Static catenary analytic | ✅ M4 |
+| Two bodies, rigid **KKT weld joint** | Velocity-level 6-DOF constraint (3 translations + all 3 rotations locked) — the weld completion of the `hinge`(5-row)/`yaw_locked`(4-row) joint family | Combined-**mass** *and* combined-**inertia** equivalent body: heave `T=2π√(m/k)`; rigid-seesaw pitch `T=2π√(I_eff/K_eff)`, `I_eff=2I_c+md²/2`, `K_eff=kd²/2` (`rtol=1e-3`) | ✅ `tests/validation/test_rigid_joint_combined_mass.py` |
 | Drag free decay (Morison) | Quadratic-damping envelope | Hyperbolic recursion `ξ_n = ξ_0 / (1 + n·ξ_0·δ)` (Faltinsen Ch. 4) | ✅ M5 PR5 |
 | Three-reader BEM cross-check | OrcaWave / WAMIT / Capytaine on a fully-submerged sphere | Lamb 1932 §92 `A_ii = (2/3)·π·ρ·R³` to `rtol=1e-2` | 🟡 M5 PR3 — **deferred**: skeleton landed (`tests/validation/test_bem_reader_cross_check.py`) with per-fixture skip; activates when `tests/fixtures/bem/{orcaflex,wamit,capytaine}/sphere_submerged.*` ship. Tracking branch: `milestone-5-pr3-sphere-fixtures`. |
 | OrcaFlex cross-check | Full system | Output from licensed OrcaFlex for same deck | ⏭ M6 |

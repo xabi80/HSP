@@ -350,7 +350,20 @@ class YawLockedJoint(_Base):
     axis: Vec3 = Field(default_factory=lambda: [0.0, 0.0, 1.0])
 
 
-Joint = Annotated[HingeJoint | YawLockedJoint, Field(discriminator="type")]
+class RigidJoint(_Base):
+    """Weld: all 6 relative DOF locked (3 translations + all 3 rotations) --
+    the two bodies move as one rigid body. ``axis`` is unused (kept for
+    schema uniformity with the other joints)."""
+
+    type: Literal["rigid"]
+    body_a: Annotated[str, Field(min_length=1)]
+    body_b: Annotated[str, Field(min_length=1)]  # a body name or 'earth'
+    attach_a_body: Vec3
+    attach_b_body: Vec3
+    axis: Vec3 = Field(default_factory=lambda: [0.0, 0.0, 1.0])
+
+
+Joint = Annotated[HingeJoint | YawLockedJoint | RigidJoint, Field(discriminator="type")]
 
 
 # --------------------------------------------------------------------------

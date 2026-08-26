@@ -36,6 +36,7 @@ from floatsim.bodies.joints import (
     Joint,
     JointSet,
     hinge_joint,
+    rigid_joint,
     yaw_locked_joint,
 )
 
@@ -80,6 +81,10 @@ _PENDULUM = JointSet(
 )
 _YAW_BB = JointSet(
     joints=(yaw_locked_joint(0, 1, attach_a=[0.5, 0, 0], attach_b=[-0.5, 0, 0], axis=[0, 0, 1]),),
+    n_bodies=2,
+)
+_RIGID_BB = JointSet(
+    joints=(rigid_joint(0, 1, attach_a=[0.5, 0, 0], attach_b=[-0.5, 0, 0]),),
     n_bodies=2,
 )
 
@@ -163,12 +168,38 @@ def test_yaw_locked_frees_roll_pitch_locks_yaw() -> None:
     assert float(np.max(np.abs(g @ u_yaw))) > 0.5
 
 
+def test_rigid_locks_all_relative_motion_shared_twist_free() -> None:
+    """Body-body rigid weld at coincident attach points: a shared rigid twist
+    of the pair is free; every differential (relative) motion -- translation
+    or rotation about ANY axis -- is locked (unlike yaw_locked, which frees
+    roll/pitch)."""
+    xi = np.zeros(12)
+    xi[0:3] = [0.5, 0.0, 0.0]  # body0 ref so attach (=+x0) sits at origin
+    xi[6:9] = [-0.5, 0.0, 0.0]  # body1 ref so attach (=-x1) sits at origin
+    g = _RIGID_BB.jacobian(xi)
+    # shared roll of both bodies about the common joint (refs on the x-axis
+    # -> no reference-point translation) -> a free rigid-body mode of the pair
+    u_shared = np.zeros(12)
+    u_shared[3], u_shared[9] = 1.0, 1.0
+    assert float(np.max(np.abs(g @ u_shared))) < 1e-12
+    # differential rotation about x, y AND z -> all locked
+    for a in (3, 4, 5):
+        u = np.zeros(12)
+        u[a], u[a + 6] = 1.0, -1.0
+        assert float(np.max(np.abs(g @ u))) > 0.5, a
+    # differential translation -> locked
+    u_t = np.zeros(12)
+    u_t[0], u_t[6] = 1.0, -1.0
+    assert float(np.max(np.abs(g @ u_t))) > 0.5
+
+
 # ---------- shape / raise paths ----------
 
 
 def test_n_rows_and_n_constraints() -> None:
     assert hinge_joint(0, -1, attach_a=[0, 0, 0], attach_b=[0, 0, 0], axis=[0, 0, 1]).n_rows == 5
     assert yaw_locked_joint(0, 1, attach_a=[0, 0, 0], attach_b=[0, 0, 0]).n_rows == 4
+    assert rigid_joint(0, 1, attach_a=[0, 0, 0], attach_b=[0, 0, 0]).n_rows == 6
     js = JointSet(
         joints=(
             hinge_joint(0, -1, attach_a=[0, 0, 0], attach_b=[0, 0, 0], axis=[0, 1, 0]),
@@ -212,3 +243,28 @@ def test_body_index_out_of_range_raises() -> None:
 def test_phi_wrong_shape_raises() -> None:
     with pytest.raises(ValueError, match="xi must have shape"):
         _PENDULUM.phi(np.zeros(5))
+
+
+# ---------- rigid (weld) joint FD gate ----------
+# Appended last so its RNG draws do not shift the module RNG stream seen by the
+# order-sensitive small-angle test above.
+
+
+def test_rigid_translational_rows_exact_at_any_configuration() -> None:
+    """Rigid weld: translational rows equal FD to machine precision at finite
+    angle -- the geometric-stiffness part is exact, as for the other joints."""
+    worst = 0.0
+    for _ in range(30):
+        xi = _random_config(_RIGID_BB.n_bodies, 0.30)
+        g, gf = _RIGID_BB.jacobian(xi), _fd_jacobian(_RIGID_BB, xi)
+        worst = max(worst, float(np.max(np.abs(g[0:3] - gf[0:3]))))
+    assert worst < 1e-6, worst
+
+
+def test_rigid_full_jacobian_exact_at_zero_angle() -> None:
+    """At zero relative angle the whole 6-row rigid G equals FD -- structure
+    and signs of every translational and rotational-lock row."""
+    xi = np.zeros(_RIGID_BB.n_dof)
+    xi[0:3] = _RNG.standard_normal(3)
+    xi[6:9] = _RNG.standard_normal(3)
+    assert float(np.max(np.abs(_RIGID_BB.jacobian(xi) - _fd_jacobian(_RIGID_BB, xi)))) < 1e-7

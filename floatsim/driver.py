@@ -64,7 +64,7 @@ from floatsim.bodies.connector import (
     heave_rigid_link,
     make_connector_state_force,
 )
-from floatsim.bodies.joints import JointSet, hinge_joint, yaw_locked_joint
+from floatsim.bodies.joints import JointSet, hinge_joint, rigid_joint, yaw_locked_joint
 from floatsim.bodies.mass_properties import rigid_body_mass_matrix
 from floatsim.hydro.database import HydroDatabase
 from floatsim.hydro.hydrostatics import gravity_restoring_contribution
@@ -78,6 +78,7 @@ from floatsim.io.deck import (
     HingeJoint,
     LinearSpring,
     PlateMember,
+    RigidJoint,
     RigidLink,
     YawLockedJoint,
 )
@@ -498,9 +499,13 @@ def _build_joint_set(deck: Deck, name_to_index: dict[str, int]) -> JointSet | No
             built.append(
                 hinge_joint(body_a, body_b, attach_a=attach_a, attach_b=attach_b, axis=axis)
             )
-        elif isinstance(j, YawLockedJoint):  # pragma: no branch
+        elif isinstance(j, YawLockedJoint):
             built.append(
                 yaw_locked_joint(body_a, body_b, attach_a=attach_a, attach_b=attach_b, axis=axis)
+            )
+        elif isinstance(j, RigidJoint):  # pragma: no branch
+            built.append(
+                rigid_joint(body_a, body_b, attach_a=attach_a, attach_b=attach_b, axis=axis)
             )
     # M10 PR0.75: supply each body's world reference position so the joint
     # layer reads xi as displacement-from-reference (the coupled Cummins
