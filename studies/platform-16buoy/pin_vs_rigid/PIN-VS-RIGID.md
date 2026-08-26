@@ -94,6 +94,26 @@ operational T = 2.5 s the articulated deck tilts 88.6 mrad/m (≈5.1°/m of wave
   keep the sea's energy band away from it, but that does not rescue the tilt/load penalty away
   from resonance.
 
+## Robustness — the radiation-convolution defect (`pvr_conv_check.py`)
+FloatFEA reported a real defect in `RadiationConvolution.evaluate()`: a left-rectangle
+convolution over-weights the k=0 lag by `dt·K(0)/2`, inflating applied radiation damping
+(~7× in Frobenius norm; ~4× on a bare single-buoy *pitch* free-decay — confirmed
+independently). It does **not** change this study. Re-running both configs with a
+trapezoid-fixed convolution moves the platform pitch RAO **< 1 %** at every period,
+on- and off-resonance:
+
+| T | artic pitch rect → trap | rigid pitch rect → trap | rigid / artic ratio |
+|---|---|---|---|
+| 2.5 s | 88.6 → 88.6 (1.00×) | 310.4 → 311.1 (1.00×) | 3.50 → 3.51 |
+| 3.2 s | 356.7 → 355.5 (1.00×) | 845.4 → 857.3 (1.01×) | 2.37 → 2.41 |
+
+The deck pitch is **drag-controlled** (16 buoys' plate + spar Morison drag at the 1.5 m
+footprint lever arms ≫ radiation), so the radiation inflation is a rounding error here — and
+the FD map never used the convolution at all. If anything the fix nudges the rigid/artic
+ratio *up* (2.37 → 2.41), strengthening the verdict. The defect is real and should be fixed
+in FloatSim (it bites lightly-damped / low-drag / radiation-dominated cases), but it is
+independent of this conclusion.
+
 ## Bottom line
 For a still, level deck the **articulated (pin) design is strictly better**: identical heave,
 **4–5× less deck tilt** in the operational band, and **~zero connection moment** versus the
