@@ -107,10 +107,15 @@ on- and off-resonance:
 | 2.5 s | 88.6 → 88.6 (1.00×) | 310.4 → 311.1 (1.00×) | 3.50 → 3.51 |
 | 3.2 s | 356.7 → 355.5 (1.00×) | 845.4 → 857.3 (1.01×) | 2.37 → 2.41 |
 
-The deck pitch is **drag-controlled** (16 buoys' plate + spar Morison drag at the 1.5 m
-footprint lever arms ≫ radiation), so the radiation inflation is a rounding error here — and
-the FD map never used the convolution at all. If anything the fix nudges the rigid/artic
-ratio *up* (2.37 → 2.41), strengthening the verdict. The defect is real and should be fixed
+The operational response is **off-resonance / mass-stiffness-controlled — not
+damping-controlled at all** (correction per FloatFEA AG2; an earlier draft wrongly said
+"drag-controlled"). At T=2.5 s the drag-limited TD pitch (88.6 mrad/m) already sits at the
+radiation-only FD value (74): when TD ≈ FD the amplitude is set by `C − ω²(M+A)`, not by any
+damping term, so it is insensitive to radiation **and** drag alike — consistent with a ~5×
+`Cd` change moving the response only ~1%. That — not drag dominance — is why the ~4×
+radiation-damping change is a rounding error here; and the FD map never used the convolution
+at all. If anything the fix nudges the rigid/artic ratio *up* (2.37 → 2.41), strengthening
+the verdict. The defect is real and should be fixed
 in FloatSim (it bites lightly-damped / low-drag / radiation-dominated cases), but it is
 independent of this conclusion.
 
