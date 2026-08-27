@@ -356,6 +356,56 @@ for txt, opts in [
     r.font.name = FONT; r.font.size = Pt(14); r.font.bold = opts.get("b", False)
     r.font.color.rgb = opts.get("c", INK)
 
+# --------------------------------------------------------- 12. Pitch study (plate depth)
+s = slide("Where to put the heave plate? — pitch performance", "design study")
+s.shapes.add_picture(str(HERE / "plate_depth_pitch_study.png"),
+                     Inches(1.42), Inches(1.7), width=Inches(10.5))
+_rect(s, 0.85, 6.5, 11.6, 0.8, LIGHT)
+tb = s.shapes.add_textbox(Inches(1.05), Inches(6.54), Inches(11.2), Inches(0.72))
+tf = tb.text_frame; tf.word_wrap = True; tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+p = tf.paragraphs[0]; p.alignment = PP_ALIGN.CENTER
+for txt, opts in [
+    T("Plate depth barely moves pitch", b=True, c=TEAL_D),
+    T(" (2.10 → 2.14 s over a 4× lever-arm change) or heave — an axial plate meets pitch "
+      "EDGE-ON, so its broadside added mass & drag (which dominate heave) hardly engage it.  "),
+    T("Deck tilt is a ballast/CoG job, not a plate-depth job.", b=True, c=TEAL_D),
+]:
+    r = p.add_run(); r.text = txt
+    r.font.name = FONT; r.font.size = Pt(13); r.font.bold = opts.get("b", False)
+    r.font.color.rgb = opts.get("c", INK)
+
+# ------------------------------------------------ 13. Platform pin-vs-rigid (setup)
+_PVR = HERE.parent / "platform-16buoy" / "pin_vs_rigid"
+s = slide("Do the buoy gimbals help the platform? — pin vs rigid", "platform study")
+_bullets(s, [
+    (0, [T("Scaling up: 16 buoys on a shared platform — a "), T("still, level deck", b=True),
+         T(" for rockets / datacenters / hotels.")]),
+    (0, [T("Each buoy joins the platform through the "), T("gimbal at its top", b=True),
+         T(" (a pin: roll/pitch free). Does that beat welding the assembly rigid?")]),
+    (0, [T("Same 16-buoy deck, same hydro / drag / geometry — only the joint type changes:")]),
+    (1, [T("Articulated", b=True, c=TEAL_D), T(" — every joint a pin (the current design)")]),
+    (1, [T("Whole-chain rigid", b=True, c=RED), T(" — every joint welded → one rigid raft")]),
+    (0, [T("Metrics: deck tilt (pitch), heave, and the moment carried at each buoy→platform joint.")]),
+], t=2.1, gap=12)
+
+# ------------------------------------------------ 14. Platform pin-vs-rigid (verdict)
+s = slide("Pin vs rigid — the pin wins on every axis", "platform study")
+s.shapes.add_picture(str(_PVR / "pvr_verdict.png"), Inches(0.7), Inches(1.95), width=Inches(12.0))
+_rect(s, 0.85, 6.35, 11.6, 0.82, LIGHT)
+tb = s.shapes.add_textbox(Inches(1.05), Inches(6.4), Inches(11.2), Inches(0.72))
+tf = tb.text_frame; tf.word_wrap = True; tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+p = tf.paragraphs[0]; p.alignment = PP_ALIGN.CENTER
+for txt, opts in [
+    T("Same heave", b=True, c=TEAL_D), T("; the rigid raft tilts "),
+    T("1.3–3.5× more", b=True, c=RED), T("; and the pin carries "),
+    T("~zero connection moment", b=True, c=TEAL_D),
+    T(" vs the weld's hundreds of N·m/m. The gimbals absorb buoy tilt instead of "
+      "dumping it into the deck.", ),
+]:
+    r = p.add_run(); r.text = txt
+    r.font.name = FONT; r.font.size = Pt(13); r.font.bold = opts.get("b", False)
+    r.font.color.rgb = opts.get("c", INK)
+
 out = HERE / "Capytaine_analysis_OSU_buoy.pptx"
 prs.save(str(out))
 print(f"wrote {out}  ({len(prs.slides.__iter__.__self__._sldIdLst)} slides)")
