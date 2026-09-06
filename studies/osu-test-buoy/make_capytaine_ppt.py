@@ -483,6 +483,190 @@ for txt, opts in [
     r.font.bold = opts.get("b", False)
     r.font.color.rgb = opts.get("c", INK)
 
+# ----------------------------- 11a. Period build-up (1): WITHOUT added mass
+s = slide("Where does T = 2.5 s come from? — first, without added mass", "the physics ①")
+_bullets(s, [
+    (0, [T("Heave is a one-DOF oscillator", b=True), T(" — the buoy bobs vertically on the "),
+         T("waterplane buoyancy spring", b=True, c=TEAL_D), T(".")]),
+    (0, [T("Stiffness "), T("C₃₃ = ρ g A_wp", b=True, c=TEAL_D),
+         T(": the restoring buoyancy per metre of submergence (A_wp = 6″ spar waterplane area).")]),
+    (0, [T("The naive “dry” period uses the "), T("structural mass M alone", b=True),
+         T(" — no water entrained:")]),
+], t=1.95, gap=13)
+_rect(s, 3.75, 3.55, 5.85, 1.02, LIGHT)
+tb = s.shapes.add_textbox(Inches(3.75), Inches(3.66), Inches(5.85), Inches(0.8))
+tf = tb.text_frame
+tf.word_wrap = True
+tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+p = tf.paragraphs[0]
+p.alignment = PP_ALIGN.CENTER
+r = p.add_run()
+r.text = "T₀ = 2π √( M / C₃₃ )"
+r.font.name = "Cambria Math"
+r.font.size = Pt(26)
+r.font.bold = True
+r.font.color.rgb = INK
+tb = s.shapes.add_textbox(Inches(0.85), Inches(4.78), Inches(11.6), Inches(0.55))
+tf = tb.text_frame
+tf.word_wrap = True
+p = tf.paragraphs[0]
+p.alignment = PP_ALIGN.CENTER
+for txt, opts in [
+    T("M = 21.52 kg", b=True, size=17), T("        C₃₃ = 194.5 N/m", b=True, size=17),
+    T("        →        ", size=17), T("T₀ = 2.09 s", b=True, c=TEAL_D, size=20),
+]:
+    r = p.add_run()
+    r.text = txt
+    r.font.name = FONT
+    r.font.size = Pt(opts.get("size", 17))
+    r.font.bold = opts.get("b", False)
+    r.font.color.rgb = opts.get("c", INK)
+_rect(s, 0.85, 5.62, 11.6, 1.12, LIGHT)
+tb = s.shapes.add_textbox(Inches(1.1), Inches(5.72), Inches(11.1), Inches(0.94))
+tf = tb.text_frame
+tf.word_wrap = True
+tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+p = tf.paragraphs[0]
+p.alignment = PP_ALIGN.CENTER
+for txt, opts in [
+    T("But the field test measured 2.50 s. "),
+    T("The buoy behaves ~45% heavier than its structure", b=True, c=RED),
+    T(" — it drags a slug of water with it as it accelerates. That missing inertia is "),
+    T("added mass", b=True, c=RED), T("."),
+]:
+    r = p.add_run()
+    r.text = txt
+    r.font.name = FONT
+    r.font.size = Pt(15)
+    r.font.bold = opts.get("b", False)
+    r.font.color.rgb = opts.get("c", INK)
+
+# ------------------- 11a. Period build-up (2): added mass — how & how much
+s = slide("Added mass — how Capytaine computes it, and how it sets T", "the physics ②")
+_panel(s, 0.55, 1.9, 6.05, 4.28, "HOW CAPYTAINE COMPUTES A",
+       "radiation problem · one run · per frequency ω", [
+           T("Force the hull to oscillate in still water at ω (heave DOF, no incoming waves)."),
+           T("Integrate the flow pressure over the hull → the hydrodynamic reaction force."),
+           T("Split that force by phase:", b=True),
+           T("∝ acceleration  →  added mass A(ω)", c=TEAL_D, mark="    – "),
+           T("∝ velocity  →  radiation damping B(ω)", c=GREY, mark="    – "),
+           T("F_rad = −A(ω)·ẍ − B(ω)·ẋ", b=True, mark="⇒  "),
+           T("A∞ (ω→∞ limit) = 9.7 kg ≈ 45% of M — mostly the broad plate.",
+             b=True, c=TEAL_D, mark="⇒  "),
+       ], TEAL)
+_panel(s, 6.73, 1.9, 6.05, 4.28, "HOW A SETS THE PERIOD",
+       "extra inertia → longer period", [
+           T("Add A to the mass in the same oscillator:"),
+           T("T = 2π √( (M + A) / C₃₃ )", b=True, c=TEAL_D),
+           T("Period-stretch factor = √((M+A)/M)"),
+           T("= √(31.2 / 21.5) = 1.205", b=True),
+           T("2.09 s  ×  1.205  =  2.52 s", b=True, c=TEAL_D, mark="⇒  "),
+           T("Heave inertia is ~45% water — A moves the period; C₃₃ is known, "
+             "so the period is a clean prediction, the damping is the measurement.", i=True),
+       ], TEAL_D)
+_rect(s, 0.85, 6.4, 11.95, 0.78, LIGHT)
+tb = s.shapes.add_textbox(Inches(1.1), Inches(6.44), Inches(11.5), Inches(0.7))
+tf = tb.text_frame
+tf.word_wrap = True
+tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+p = tf.paragraphs[0]
+p.alignment = PP_ALIGN.CENTER
+for txt, opts in [
+    T("The field test (2.50 s) lands on the WET period 2.52 s", b=True, c=TEAL_D),
+    T(" — not the dry 2.09 s. Direct evidence the entrained-water added mass "
+      "(~9.7 kg) is real and correctly sized."),
+]:
+    r = p.add_run()
+    r.text = txt
+    r.font.name = FONT
+    r.font.size = Pt(13)
+    r.font.bold = opts.get("b", False)
+    r.font.color.rgb = opts.get("c", INK)
+
+# ------------------------------------------- 11b. Field decay test — the figure
+s = slide("Field heave-decay test — a first real-world check", "validation")
+s.shapes.add_picture(str(HERE / "OSU_field_heave_decay.png"),
+                     Inches(1.15), Inches(1.72), width=Inches(11.0))
+_rect(s, 0.85, 6.5, 11.6, 0.82, LIGHT)
+tb = s.shapes.add_textbox(Inches(1.05), Inches(6.54), Inches(11.2), Inches(0.72))
+tf = tb.text_frame
+tf.word_wrap = True
+tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+p = tf.paragraphs[0]
+p.alignment = PP_ALIGN.CENTER
+for txt, opts in [
+    T("Non-official handheld video", b=True, c=TEAL_D),
+    T(", motion-tracked frame-by-frame; the camera pan (~95 px ≫ the heave) is removed "
+      "by referencing the fixed horizon. Buoy released ≈9.3 s, then rings down — heavily "
+      "damped, so ~1½ cycles resolve.  "),
+    T("Period & damping are scale-free.", b=True, c=TEAL_D),
+]:
+    r = p.add_run()
+    r.text = txt
+    r.font.name = FONT
+    r.font.size = Pt(12.5)
+    r.font.bold = opts.get("b", False)
+    r.font.color.rgb = opts.get("c", INK)
+
+# ------------------------------------------- 11c. Field decay test — model vs measured
+s = slide("Model vs field test — period & damping match", "validation")
+_rows = [
+    ("Heave period  T",
+     [T("2.52 s", b=True)], [T("≈ 2.50 s", b=True, c=TEAL_D)],
+     [T("max→max 2.50; half-periods ×2 = 2.47 & 2.53 s")]),
+    ("Heave damping  ζ",
+     [T("8–15 %", b=True)], [T("≈ 12–13 %", b=True, c=TEAL_D)],
+     [T("log-dec: two maxima → 13 %; max→min half-cycle → 12 %")]),
+]
+tbl = s.shapes.add_table(len(_rows) + 1, 4, Inches(0.7), Inches(1.95),
+                         Inches(11.95), Inches(1.9)).table
+tbl.first_row = False
+tbl.horz_banding = False
+for c, wdt in enumerate([3.15, 3.0, 3.0, 2.8]):
+    tbl.columns[c].width = Inches(wdt)
+for c, head in enumerate(["Quantity", "Model (FloatSim / Capytaine)",
+                          "Field video", "How measured"]):
+    _cell(tbl, 0, c, [T(head, b=True, c=WHITE)], TEAL, size=13,
+          align=PP_ALIGN.CENTER if c in (1, 2) else PP_ALIGN.LEFT)
+tbl.rows[0].height = Inches(0.42)
+for i, (q, mdl, fld, how) in enumerate(_rows, start=1):
+    fill = RGBColor(0xF3, 0xF8, 0xF9) if i % 2 else WHITE
+    _cell(tbl, i, 0, [T(q, b=True)], fill, size=14)
+    _cell(tbl, i, 1, mdl, fill, size=15, align=PP_ALIGN.CENTER)
+    _cell(tbl, i, 2, fld, fill, size=15, align=PP_ALIGN.CENTER)
+    _cell(tbl, i, 3, how, fill, size=11)
+    tbl.rows[i].height = Inches(0.7)
+# takeaway strip
+_rect(s, 0.7, 4.15, 11.95, 0.72, LIGHT)
+tb = s.shapes.add_textbox(Inches(0.9), Inches(4.19), Inches(11.55), Inches(0.64))
+tf = tb.text_frame
+tf.word_wrap = True
+tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+p = tf.paragraphs[0]
+p.alignment = PP_ALIGN.CENTER
+for txt, opts in [
+    T("Both match", b=True, c=TEAL_D),
+    T(" — period within ~1 % of the simulation, damping inside the predicted band. "
+      "A first independent, real-world corroboration of the heave model.", ),
+]:
+    r = p.add_run()
+    r.text = txt
+    r.font.name = FONT
+    r.font.size = Pt(15)
+    r.font.bold = opts.get("b", False)
+    r.font.color.rgb = opts.get("c", INK)
+_bullets(s, [
+    (0, [T("Large release (~14 cm first swing)", b=True, c=RED),
+         T(" → first-cycle Morison quadratic drag is high, so ζ sits at the "),
+         T("upper end", b=True), T(" of the 8–15 % band; it should fall on smaller cycles.")]),
+    (0, [T("The analytic hand-estimate on the prior slide (2.3–2.4 s) low-bracketed the "
+           "plate added mass; the "), T("full decay sim gives 2.52 s", b=True, c=TEAL_D),
+         T(" — which the test confirms.")]),
+    (0, [T("Still non-official & handheld", b=True, c=RED),
+         T(" — the instrumented tank test remains the source of truth for the perforated "
+           "plate's added-mass / drag split.")]),
+], t=5.05, w=11.9, size=14, gap=9)
+
 # --------------------------------------------------------- 12. Pitch study (plate depth)
 s = slide("Where to put the heave plate? — pitch performance", "design study")
 s.shapes.add_picture(str(HERE / "plate_depth_pitch_study.png"),
