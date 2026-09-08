@@ -583,12 +583,20 @@ for txt, opts in [
     r.font.bold = opts.get("b", False)
     r.font.color.rgb = opts.get("c", INK)
 
-# ------------------------------------------- 11b. Field decay test — the figure
+# ------------------------------------------- 11b. Field decay test — the figure + damping→decay
 s = slide("Field heave-decay test — a first real-world check", "validation")
 s.shapes.add_picture(str(HERE / "OSU_field_heave_decay.png"),
-                     Inches(1.15), Inches(1.72), width=Inches(11.0))
-_rect(s, 0.85, 6.5, 11.6, 0.82, LIGHT)
-tb = s.shapes.add_textbox(Inches(1.05), Inches(6.54), Inches(11.2), Inches(0.72))
+                     Inches(0.35), Inches(2.0), width=Inches(8.3))
+_panel(s, 8.75, 2.0, 4.15, 3.74, "DAMPING → DECAY", "how ζ shrinks each swing", [
+    T("Envelope e^(−ζωₙt) — each swing shrinks by a fixed ratio."),
+    T("That ratio is the log-decrement δ:", b=True),
+    T("δ = 2πζ / √(1−ζ²) ≈ 2πζ", b=True, c=TEAL_D, mark="⇒  "),
+    T("Aₙ₊₁ / Aₙ = e^(−δ)", b=True, mark="⇒  "),
+    T("ζ = 13% → e^(−0.82) = 0.44  (~55% off/cycle)", b=True, c=TEAL_D, mark="⇒  "),
+    T("The 2π turns a “small” 13% into a near-halving each bob.", i=True, c=GREY),
+], TEAL_D)
+_rect(s, 0.85, 5.98, 11.95, 0.98, LIGHT)
+tb = s.shapes.add_textbox(Inches(1.05), Inches(6.04), Inches(11.55), Inches(0.88))
 tf = tb.text_frame
 tf.word_wrap = True
 tf.vertical_anchor = MSO_ANCHOR.MIDDLE

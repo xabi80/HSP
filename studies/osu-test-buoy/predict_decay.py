@@ -14,6 +14,8 @@ Splits the decay into the part we can predict and the part the test measures:
 Writes OSU_heave_decay_prediction.png next to this script. See
 OSU-TEST-BUOY-GEOMETRY.md ("Heave decay prediction (pre-test)").
 """
+# ruff: noqa: RUF001, RUF002  -- matplotlib display text intentionally uses en dashes,
+# arrows and subscripts; RUF001/RUF002 flag these as "ambiguous unicode".
 from __future__ import annotations
 
 import sys
@@ -22,9 +24,9 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
-from scipy.signal import find_peaks  # noqa: E402
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.signal import find_peaks
 
 # Knowns (measured geometry + spreadsheet mass + waterline):
 M = 21.52       # kg total floating mass
@@ -68,7 +70,7 @@ def main() -> None:
     # left: period band
     aa = np.linspace(1, 9, 50)
     ax1.plot(aa, [period(a) for a in aa], "-", color="#0c8b96", lw=2.5)
-    for k, a in scen.items():
+    for _k, a in scen.items():
         ax1.plot(a, period(a), "o", ms=9)
         ax1.annotate(f"{period(a):.2f}s", (a, period(a)),
                      textcoords="offset points", xytext=(6, 4), fontsize=8)
@@ -100,7 +102,15 @@ def main() -> None:
     fig.suptitle("OSU buoy — heave free-decay PREDICTION (release 100 mm)  |  "
                  "most likely: T ≈ 2.3–2.4 s, ζ₁ ≈ 8–15% (amplitude-dependent)",
                  fontsize=11, y=1.0)
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0.09, 1, 1))
+    fig.text(0.5, 0.055,
+             "Note: the drag is quadratic, so ζ is amplitude-dependent — each curve's single ζ₁ "
+             "is a representative value, not a per-cycle one.", ha="center", va="bottom",
+             fontsize=9, style="italic", color="#54636d")
+    fig.text(0.5, 0.010,
+             "e.g. the heavy curve's 16% is the average of its first two cycles "
+             "(~22% on the 1st swing, ~11% on the 2nd); it then eases to ~7–9% on later cycles.",
+             ha="center", va="bottom", fontsize=9, style="italic", color="#54636d")
     out = Path(__file__).resolve().parent / "OSU_heave_decay_prediction.png"
     fig.savefig(out, dpi=145, bbox_inches="tight")
     print(f"\nwrote {out}")
