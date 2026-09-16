@@ -738,6 +738,48 @@ for txt, opts in [
     r.font.bold = opts.get("b", False)
     r.font.color.rgb = opts.get("c", INK)
 
+# ------------------------------------------------ 15. Flume sidewall — the concern
+s = slide("Phase-3 platform in the HWRL flume — is it too big?", "flume test · rebuttal")
+s.shapes.add_picture(str(HERE / "OSU_flume_blockage.png"), Inches(0.45), Inches(1.9),
+                     height=Inches(4.9))
+_panel(s, 6.6, 1.95, 6.3, 4.75, "THE REVIEW COMMENT", "TEAMER Phase-3 review", [
+    T("“2.50 m platform inside HWRL's 3.67 m flume leaves 0.6 m side clearance, inducing "
+      "severe sidewall reflections that will corrupt dynamic data.”", i=True, mark="", gap=10),
+    T("Phase 3 = the platform (12 buoys); free-decay + wave sweeps.", b=True, c=TEAL_D),
+    T("2.5 m is to buoy CENTRES; with the plates the outer span is 2.79 m = 68% of the "
+      "width → ~44 cm/side (tighter than the 0.6 m assumed).", mark="•  "),
+    T("Assessed walls-in vs walls-out at the same 2.7 m depth — isolates the walls.",
+      b=True, c=TEAL_D, mark="⇒  "),
+], TEAL)
+
+# ------------------------------------------------ 16. Flume sidewall — the rebuttal
+s = slide("Sidewall reflections do not corrupt the data", "flume test · rebuttal")
+s.shapes.add_picture(str(HERE / "OSU_flume_rebuttal.png"), Inches(0.7), Inches(1.8),
+                     width=Inches(11.95))
+_rect(s, 0.85, 6.5, 11.95, 0.82, LIGHT)
+tb = s.shapes.add_textbox(Inches(1.05), Inches(6.54), Inches(11.55), Inches(0.72))
+tf = tb.text_frame
+tf.word_wrap = True
+tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+p = tf.paragraphs[0]
+p.alignment = PP_ALIGN.CENTER
+for txt, opts in [
+    T("The platform barely radiates", b=True, c=TEAL_D),
+    T(" (heave radiation = only 3.5% of the damping) → almost no wave to reflect. Walls-in vs "
+      "walls-out shifts every natural period "),
+    T("<0.7%", b=True, c=TEAL_D),
+    T(" and every wave load "),
+    T("≤9%", b=True, c=TEAL_D),
+    T(" — inside test uncertainty. Only caveat: avoid the transverse cut-ons (2.19 / 1.53 / "
+      "1.25 s).", ),
+]:
+    r = p.add_run()
+    r.text = txt
+    r.font.name = FONT
+    r.font.size = Pt(12.5)
+    r.font.bold = opts.get("b", False)
+    r.font.color.rgb = opts.get("c", INK)
+
 out = HERE / "Capytaine_analysis_OSU_buoy.pptx"
 prs.save(str(out))
 print(f"wrote {out}  ({len(prs.slides.__iter__.__self__._sldIdLst)} slides)")
