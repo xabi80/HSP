@@ -64,6 +64,23 @@ the measured damping by at most a few percent — and the explicit walls-in simu
 - No spurious resonances in the operating band; the only wall-sensitive periods are the
   transverse cut-ons above — and even there the effect is bounded (next section).
 
+**Confirmed in the time-domain simulator, including the full articulated model.** The findings
+above are frequency-domain. We reproduced them in FloatSim's validated time-domain solver (real
+quadratic Morison drag), twice — a single-buoy model and the **full 17-body articulated platform**
+(12 buoys + 4 hubs + 1 platform, gimbal joints, driven by a fresh method-of-images *coupled*
+BEM). All three approaches agree:
+
+| Method | heave-decay period shift | wave-RAO wall effect |
+|---|---|---|
+| Frequency-domain | −0.25 % | ≤ 9 % |
+| Single-buoy FloatSim (time domain) | −0.45 % | ≤ 7.4 % |
+| Full articulated 17-body FloatSim | −0.38 % | ≤ 2.9 % |
+
+In the articulated model every one of the platform's ~30 free DOFs — the six rigid-body modes and
+the 24 buoy gimbal tilts — moves by less than the platform heave, the damping is unchanged, and
+the accelerations at the deck centre and the four cluster centres are essentially identical with
+the walls in or out.
+
 ## What we concede, and how we handle it
 
 - **Transverse cut-ons (T ≈ 2.19 / 1.53 / 1.25 s):** refining the wall model to three image
