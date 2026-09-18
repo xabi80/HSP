@@ -81,6 +81,21 @@ the 24 buoy gimbal tilts — moves by less than the platform heave, the damping 
 the accelerations at the deck centre and the four cluster centres are essentially identical with
 the walls in or out.
 
+Extending that acceleration check to **every excited degree of freedom** (not just the vertical
+channel) confirms it. At the deck centre and all four cluster hubs, the walls-in vs walls-out
+change is:
+
+| Acceleration DOF (at each sensor point) | Largest wall effect |
+|---|---|
+| Surge (fore-aft, linear) | ≤ 1.4 % |
+| Heave (vertical, linear) | ≤ 3.0 % |
+| Pitch (angular) | ≤ 1.9 % |
+| Sway / roll / yaw | negligible — unexcited in head seas (< 2 % of the heave-acceleration scale) |
+
+Every acceleration a sensor will record moves by **≤ 3 %** with the walls in or out — inside
+model-test scatter — and the largest values occur at the first transverse cut-on (2.19 s, the
+"ring" period below), the one period where the walls do anything measurable at all.
+
 ## What we concede, and how we handle it
 
 - **Transverse cut-ons (T ≈ 2.19 / 1.53 / 1.25 s):** refining the wall model to three image

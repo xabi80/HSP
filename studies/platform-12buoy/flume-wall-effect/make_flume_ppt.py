@@ -211,7 +211,19 @@ caption(s, [T("The accelerations at the "),
               "or out.")],
         t=6.45, size=13)
 
-# 9 -- the one caveat
+# 9 -- result 4: accelerations in every direction
+s = slide("Result 4 — every direction, not just up-down", "results")
+s.shapes.add_picture(str(HERE / "accel_multidof.png"), Inches(1.15), Inches(2.05),
+                     width=Inches(11.0))
+caption(s, [T("We checked the accelerometers in "),
+            T("every direction they can move", b=True, c=TEAL_D),
+            T(" — fore-aft, up-down, and tilt (pitch). Walls in vs out changes each one by "),
+            T("at most 3%", b=True, c=TEAL_D),
+            T(", at the deck centre and all four cluster points. Side-to-side and twist stay "
+              "essentially zero (the waves come straight down the flume).")],
+        t=6.05, h=1.15, size=13)
+
+# 10 -- the one caveat
 s = slide("The one thing to watch", "the caveat")
 bullets(s, [
     (0, [T("A flume can “ring” sideways like a bathtub at a few special wave periods "),
@@ -221,7 +233,7 @@ bullets(s, [
     (0, [T("They're narrow, known in advance, and easy to step around in the test plan.")]),
 ], t=2.3, gap=16)
 
-# 10 -- bottom line
+# 11 -- bottom line
 s = slide("Bottom line", "conclusion")
 bullets(s, [
     (0, [T("The 2.5 m, 12-buoy platform is "),
