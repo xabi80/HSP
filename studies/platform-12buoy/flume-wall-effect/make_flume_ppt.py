@@ -15,6 +15,7 @@ from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Inches, Pt
 
 HERE = Path(__file__).resolve().parent
+ORI = "_rot45"   # test orientation: 45 deg corner-on ("" = 0 deg flat-on)
 TEAL, TEAL_D = RGBColor(0x0C, 0x8B, 0x96), RGBColor(0x0A, 0x55, 0x60)
 INK, GREY = RGBColor(0x25, 0x32, 0x3A), RGBColor(0x54, 0x63, 0x6D)
 LIGHT = RGBColor(0xEE, 0xF6, 0xF7)
@@ -123,12 +124,13 @@ r.font.name, r.font.size, r.font.color.rgb = FONT, Pt(14), LIGHT
 
 # 2 -- the concern
 s = slide("The concern a reviewer raised", "the question")
-s.shapes.add_picture(str(HERE / "flume_blockage.png"), Inches(7.15), Inches(1.85),
+s.shapes.add_picture(str(HERE / f"flume_blockage{ORI}.png"), Inches(7.15), Inches(1.85),
                      height=Inches(4.6))
 bullets(s, [
     (0, [T("We want to test a floating platform — 16 buoys on a 2.5 m frame — in OSU's "
            "wave flume (a long tank, "), T("3.66 m wide", b=True), T(").")]),
-    (0, [T("The platform nearly fills the width. A reviewer worried:")]),
+    (0, [T("It sits corner-on in the middle of the tank, about 0.8 m from each wall. A reviewer "
+           "worried:")]),
     (1, [T("“the platform makes waves, they bounce off the side walls, come back, and "
            "corrupt the measured data.”", i=True, c=TEAL_D)]),
     (0, [T("Fair question. So we tested it.", b=True)]),
@@ -193,7 +195,7 @@ caption(s, [T("Half a percent is far smaller than the "),
 
 # 7 -- result 2: wave response near the natural period
 s = slide("Result 2 — the response to waves", "results")
-s.shapes.add_picture(str(HERE / "articulated_summary.png"), Inches(1.05), Inches(1.85),
+s.shapes.add_picture(str(HERE / f"articulated_summary{ORI}.png"), Inches(1.05), Inches(1.85),
                      width=Inches(11.2))
 caption(s, [T("Across every wave period we'll test, the full articulated-platform simulation "
               "shows the walls change the response by "),
@@ -203,7 +205,7 @@ caption(s, [T("Across every wave period we'll test, the full articulated-platfor
 
 # 8 -- result 3: the water depth matters more than the walls
 s = slide("Result 3 — the shallow water matters more than the walls", "results")
-s.shapes.add_picture(str(HERE / "wall_vs_depth.png"), Inches(1.35), Inches(1.95),
+s.shapes.add_picture(str(HERE / f"wall_vs_depth{ORI}.png"), Inches(1.35), Inches(1.95),
                      width=Inches(10.6))
 caption(s, [T("The walls (teal) stay "), T("small at every wave period", b=True, c=TEAL_D),
             T("; it's the "), T("shallow 2.7 m water", b=True, c=RED),
@@ -214,7 +216,7 @@ caption(s, [T("The walls (teal) stay "), T("small at every wave period", b=True,
 
 # 9 -- result 4: accelerations in every direction
 s = slide("Result 4 — every direction, not just up-down", "results")
-s.shapes.add_picture(str(HERE / "accel_multidof.png"), Inches(1.15), Inches(2.05),
+s.shapes.add_picture(str(HERE / f"accel_multidof{ORI}.png"), Inches(1.15), Inches(2.05),
                      width=Inches(11.0))
 caption(s, [T("We checked the accelerometers in "),
             T("every direction they can move", b=True, c=TEAL_D),
@@ -224,6 +226,17 @@ caption(s, [T("We checked the accelerometers in "),
             T(", at the deck centre and all four cluster points. Side-to-side and twist stay "
               "essentially zero (the waves come straight down the flume).")],
         t=6.05, h=1.15, size=13)
+
+# 9b -- why the shallow water matters more for long waves
+s = slide("Why long waves feel the bottom", "the depth effect")
+s.shapes.add_picture(str(HERE / "depth_effect_explained.png"), Inches(1.35), Inches(1.75),
+                     width=Inches(10.6))
+caption(s, [T("Under a wave, the water moves in little loops. Short waves only stir the top "
+              "layer, so the flume feels like the open sea. Long waves reach all the way down, and "
+              "the 2.7 m floor "), T("squashes the loops flat", b=True, c=RED),
+            T(" — so there's less up-and-down push on the buoys' plates. That's the depth effect: "
+              "well understood, and "), T("corrected as standard", b=True, c=TEAL_D), T(".")],
+        t=5.85, h=1.15, size=13)
 
 # 10 -- the one caveat
 s = slide("The one thing to watch", "the caveat")
