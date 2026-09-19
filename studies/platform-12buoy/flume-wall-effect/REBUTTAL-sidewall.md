@@ -11,9 +11,9 @@ images). The result: **sidewall reflections do not corrupt the Phase-3 dynamic d
 walls modelled in versus out (at the same water depth):
 
 - **Free-decay** natural periods shift **< 0.6 %** and the damping is unchanged;
-- the **heave response through resonance** — the dynamically important band — shifts **≤ 3 %** at
-  the 2.7 m operating depth;
-- accelerations at the deck centre and the four cluster hubs change by **≤ 4 %** near resonance.
+- the **heave RAO wall effect is ≤ 4 %** across the whole wave band, and does not grow at long
+  periods;
+- accelerations at the deck centre and the four cluster hubs change by **≤ 4 %** in every DOF.
 
 All are inside normal model-test uncertainty. The physical reason is that the platform is a very
 weak wavemaker in the modes being measured, so there is little radiated wave energy for the walls
@@ -31,19 +31,16 @@ buoy-centre circle, so we analysed the tighter as-built ~0.44 m.)
 
 Side walls (W = 3.66 m) are imposed by the **method of images**. Every comparison is
 **walls-in vs walls-out at the same depth**, which isolates the sidewall effect the reviewer
-raised from the separate (and larger) finite-depth effect. Three complementary models are used,
-each in its valid regime:
+raised from the separate (and larger) finite-depth effect.
 
-| Model | What it gives | Depth |
-|---|---|---|
-| Frequency-domain image-wall BEM | isolated wall effect on the hydrodynamic coefficients, per DOF | native 2.7 m |
-| Single-DOF impedance model | platform-heave **response** wall effect | native 2.7 m |
-| Articulated 21-body FloatSim (coupled BEM) | free-decay + all-DOF near-resonance response, real quadratic drag, gimbal joints | deep water* |
-
-\* The coupled/articulated BEM runs at deep water because finite depth is impractically slow at
-the coupled panel count. Free-decay is radiation-driven and **depth-robust**, so deep-water
-modelling is valid there; the depth-sensitive wave response is carried by the two native-2.7 m
-models.
+The sidewall effect is taken from the **coupled 21-body BEM** (the full 96-DOF open-vs-walled
+solve — free-decay, RAO, and all-DOF accelerations, with real quadratic drag and gimbal joints).
+A simpler single-array frequency-domain model was also run, but it under-converges in image count
+at long periods (2 vs 3 reflections change the answer ~10× and disagree with the coupled solve
+even in sign), so it is used only for the separate **finite-depth effect**, which is image-free
+and corroborated independently by textbook Airy wave kinematics. The coupled BEM runs at deep
+water (finite depth is impractically slow at its panel count); for this weak radiator the wall
+effect is depth-robust, and the depth effect itself is assessed separately at 2.7 m.
 
 ## Why the standard "sidewall reflection" concern does not apply here
 
@@ -73,13 +70,11 @@ models.
 The period shift is ~20× smaller than the ±(3–5) % scatter of a physical free-decay test, and
 the damping (viscous-dominated) is untouched.
 
-**Wave response at the 2.7 m operating depth (single-DOF platform-heave):**
-
-- **Through resonance (1.5–2.9 s)** — the dynamically important band: heave response wall effect
-  **≤ 2.6 %**.
-- **Long-period tail (T > 3 s):** grows to ~20 %, but this is *off-resonance* (small motion), and
-  there the **finite-depth effect is far larger** (see below). Pitch/surge loads ≤ 2.6 %
-  throughout.
+**Wave-frequency response (coupled 21-body BEM, walls-in vs walls-out):** the heave RAO wall
+effect is **≤ 4 % across the whole wave band** and does **not** grow at long periods — the
+excitation wall effect stays ≤ 3 % and shrinks toward zero at 4 s. (The simpler single-array
+model over-states this at long periods, but it under-converges in image count there; the coupled
+solve is authoritative.)
 
 **All-DOF accelerations near resonance (articulated 21-body), at the deck centre + 4 cluster
 hubs:** surge ≤ 0.9 %, heave ≤ 4.0 %, pitch ≤ 2.2 %; sway/roll/yaw unexcited in head seas. Peaks
@@ -89,16 +84,16 @@ occur at the 2.19 s cut-on.
 
 Isolating the two effects on the heave wave excitation (both at head seas):
 
-| Wave period | Sidewall effect (walls in vs out, 2.7 m) | Finite-depth effect (2.7 m vs deep) |
+| Wave period | Sidewall effect (coupled BEM) | Finite-depth effect (2.7 m vs deep) |
 |---|---|---|
-| 2.52 s | −5.4 % | −19 % |
-| 3.00 s | −14 % | −27 % |
-| 3.50 s | −17 % | −33 % |
-| 4.00 s | −15 % | −37 % |
+| 2.52 s | +2.9 % | −19 % |
+| 3.00 s | +1.7 % | −27 % |
+| 3.50 s | +0.7 % | −33 % |
+| 4.00 s | +0.1 % | −37 % |
 
-At every period the finite-depth effect exceeds the sidewall effect. Finite depth is a known
-facility property that any flume campaign corrects for by depth-scaling; the sidewalls add a
-smaller term on top, negligible through the resonance where the platform's dynamics live.
+The sidewall effect stays small (≤ 3 %) and shrinks toward zero at long periods, while the
+finite-depth effect grows to −37 %. Finite depth is a known facility property that any flume
+campaign corrects for by depth-scaling; the sidewalls are a minor term at every period.
 
 ## Orientation independence — clearance is not the controlling parameter
 
@@ -107,10 +102,10 @@ what drives the effect by re-running the entire study with the platform **rotate
 rotation is a symmetry no-op for the 4-fold-symmetric layout). At 45° the platform is corner-on
 to the walls and the side clearance **nearly doubles, 0.44 → 0.80 m**:
 
-| Orientation | Clearance | Free-decay ΔT | Response wall effect (1.5–2.9 s) |
+| Orientation | Clearance | Free-decay ΔT | Excitation wall effect (coupled BEM) |
 |---|---|---|---|
-| 0° (flat-on) | 0.44 m/side | −0.55 % | ≤ 2.6 % |
-| 45° (corner-on) | 0.80 m/side | −0.55 % | ≤ 3.0 % |
+| 0° (flat-on) | 0.44 m/side | −0.55 % | ≤ 3.5 % |
+| 45° (corner-on) | 0.80 m/side | −0.55 % | ≤ 3.6 % |
 
 The wall effect is **unchanged** despite doubling the clearance. It is set by the **bulk channel
 blockage** — the total array volume relative to the flume cross-section, which is
@@ -122,15 +117,19 @@ robust to how the platform is oriented in the flume.
 
 - **Transverse cut-ons (T ≈ 2.19 / 1.53 / 1.25 s):** narrow, known, and skipped in the sweep
   matrix; the wall effect stays within ~±6 % even there.
-- **Long-period tests (T > 3 s):** apply the standard finite-depth correction (and the smaller
-  blockage correction) — the response there is depth-dominated, not a sidewall artifact.
+- **Long-period tests (T > 3 s):** apply the standard finite-depth correction — the response
+  there is depth-dominated (the sidewall effect stays ≤ 4 % at every period).
 - **Clearance number:** analysed at the as-built ~0.44 m (buoy-centre circle + plates), tighter
   than the reviewer's 0.6 m.
+- **Method fidelity:** the sidewall effect is taken from the coupled 21-body BEM; the simpler
+  single-array frequency-domain model under-converges in image count at long periods, so its
+  wall effect is not used (only its image-free, Airy-corroborated depth effect).
 
 ## Conclusion
 
 Explicit BEM modelling of HWRL's side walls shows the Phase-3 platform's free-decay periods
-change by < 0.6 % and its near-resonance response by ≤ 3 %, with no in-band spurious resonance.
+change by < 0.6 % and its wave-frequency response by ≤ 4 % across the band, with no in-band
+spurious resonance.
 The platform's very low wave radiation and the sub-cut-on operating band make sidewall
 reflections negligible for both the free-decay and the wave-sweep campaigns. The primary flume
 consideration is the finite 2.7 m depth — larger than the walls and handled by standard

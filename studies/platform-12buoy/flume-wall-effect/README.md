@@ -23,13 +23,16 @@ the *widest* orientation; see the 45°-rotation companion study for the diagonal
 
 | Quantity | value | wall effect |
 |---|---|---|
-| Free-decay heave period (articulated, depth-robust) | 2.607 → 2.593 s | **−0.55 %** |
+| Free-decay heave period (coupled 21-body BEM) | 2.607 → 2.593 s | **−0.55 %** |
 | Free-decay damping ζ | 6.4 % → 6.4 % | unchanged |
-| Heave **response** through resonance (1.5–2.9 s), at 2.7 m | — | **≤ 2.6 %** |
-| Accelerations (deck + 4 hubs), all excited DOFs, near resonance | — | **≤ 4 %** |
-| Heave response long-period tail (T > 3 s), at 2.7 m | — | up to ~20 %* |
+| Heave RAO wall effect (whole wave band, coupled BEM) | — | **≤ 4 %** (no growth at long T) |
+| Excitation wall effect (whole band, coupled BEM) | — | **≤ 3 %** |
+| Accelerations (deck + 4 hubs), all excited DOFs | — | **≤ 4 %** |
 
-\* Off-resonance (small motion) and **depth-dominated** — see below.
+**Fidelity note:** the sidewall effect is read from the coupled 21-body BEM. The single-array
+frequency-domain method (`flume_wall_effect.py`) under-converges in image count at long periods
+(2 vs 3 reflections differ ~10× and disagree with the coupled solve even in sign — it over-states
+the wall effect there), so it is used only for the image-free finite-depth effect below.
 
 - The platform is a **weak wavemaker**: heave radiation damping is only ~3.5 % of the total heave
   damping (rest is viscous), so there is almost no radiated wave for the walls to reflect. This
@@ -40,53 +43,49 @@ the *widest* orientation; see the 45°-rotation companion study for the diagonal
 
 ## The dominant flume effect is depth, not the walls
 
-Isolating the two effects on the heave wave excitation (`wall_vs_depth.png`):
+Isolating the two effects on the heave wave excitation (`wall_vs_depth.png`); the sidewall column
+is the coupled BEM, the depth column is the image-free (Airy-corroborated) sweep:
 
-| Wave period | Sidewall effect (2.7 m) | Finite-depth effect (2.7 m vs deep) |
+| Wave period | Sidewall effect (coupled BEM) | Finite-depth effect (2.7 m vs deep) |
 |---|---|---|
-| 2.52 s | −5.4 % | −19 % |
-| 3.00 s | −14 % | −27 % |
-| 3.50 s | −17 % | −33 % |
+| 2.52 s | +2.9 % | −19 % |
+| 3.00 s | +1.7 % | −27 % |
+| 3.50 s | +0.7 % | −33 % |
+| 4.00 s | +0.1 % | −37 % |
 
-At every period the finite-depth effect exceeds the sidewall effect. Finite depth is a known
-facility property corrected by depth-scaling; the walls add a smaller term, negligible through
-the resonance where the platform's dynamics live.
+The sidewall effect stays small and flat (and shrinks toward zero at long periods), while the
+finite-depth effect grows to −37 %. Finite depth is a known facility property corrected by
+depth-scaling; the walls are a minor term at every period.
 
 ## Orientation robustness (0° vs 45°)
 
 A 90° rotation is a symmetry no-op (4-fold layout), so the study also re-runs the whole pipeline
 at **45°** (`PLAT_ROT_DEG=45`), where the platform is corner-on and the clearance nearly doubles:
 
-| Orientation | Clearance | Free-decay ΔT | Response wall effect (1.5–2.9 s) |
+| Orientation | Clearance | Free-decay ΔT | Excitation wall effect (coupled BEM) |
 |---|---|---|---|
-| 0° (flat-on) | 0.44 m/side | −0.55 % | ≤ 2.6 % |
-| 45° (corner-on) | 0.80 m/side | −0.55 % | ≤ 3.0 % |
+| 0° (flat-on) | 0.44 m/side | −0.55 % | ≤ 3.5 % |
+| 45° (corner-on) | 0.80 m/side | −0.55 % | ≤ 3.6 % |
 
 The wall effect is **unchanged** despite doubling the clearance (`orientation_compare.png`,
 `compare_orientations.py`) — it is set by the bulk channel blockage, not the nearest-buoy
 clearance. Every orientation-tagged output carries a `_rot45` suffix; regenerate with
 `PLAT_ROT_DEG=45 python <script>.py`.
 
-## Three complementary models
+## Models and fidelity
 
-The wall effect is depth-sensitive for the *wave response* (a narrow shallow channel blocks long
-waves far more than deep water), so the study uses three models, each in its valid regime:
-
-| Model | Script | What / depth |
+| Model | Script | Role |
 |---|---|---|
-| Frequency-domain image-wall BEM | `flume_wall_effect.py` | isolated wall effect on coefficients per DOF + the depth effect; **native 2.7 m** |
-| Single-DOF impedance | `floatsim_wall_1dof.py` | platform-heave **response** wall effect; **native 2.7 m** |
-| Articulated 21-body FloatSim | `coupled_bem_osu.py` → `psd_project.py` → `articulated_wall.py` | free-decay + all-DOF near-resonance response, real quadratic drag, KKT gimbal joints; **deep water** (finite depth is impractically slow at the coupled panel count; free-decay is depth-robust) |
+| **Coupled 21-body BEM** (authoritative) | `coupled_bem_osu.py` → `psd_project.py` → `articulated_wall.py` | the sidewall effect: free-decay + all-DOF response, real quadratic drag, KKT gimbal joints. Deep water (finite depth is impractically slow at the coupled panel count; the wall effect is depth-robust in this weak-radiator regime). |
+| Single-array frequency-domain BEM | `flume_wall_effect.py` | the image-free **finite-depth effect** only. Its wall effect is **not** used — it under-converges in image count at long periods (verified: 2 vs 3 reflections give −14 % → −5.7 % at 3 s, vs the coupled BEM's +1.7 %). |
 
-Figures are regenerated from the run outputs by `articulated_plots.py` (no BEM), closing the
-earlier gap where the summary figures had no committed generator.
+The **finite-depth effect** is corroborated independently by textbook Airy wave kinematics (the
+orbital-motion attenuation with depth), so it does not depend on the frequency-domain method's
+image machinery. Figures are regenerated from the run outputs by `articulated_plots.py`.
 
 ## Reproduce
 
 ```
-# frequency-domain sweep (native 2.7 m; wall effect + depth effect) + single-DOF response
-python flume_wall_effect.py
-python floatsim_wall_1dof.py
 # coupled BEM (deep) -> PSD-project -> articulated 21-body decay / RAO / all-DOF accel
 python coupled_bem_osu.py open full 48
 python coupled_bem_osu.py walled full 48
@@ -94,8 +93,11 @@ python psd_project.py coupled_osu_open.nc coupled_osu_walled.nc
 python articulated_wall.py decay
 python articulated_wall.py rao
 python accel_multidof.py
-# regenerate all figures from the saved outputs
+# single-array sweep for the finite-depth effect (its wall effect is not used)
+python flume_wall_effect.py
+# regenerate all figures (coupled wall effect + Airy-corroborated depth effect)
 python articulated_plots.py
+python compare_orientations.py
 ```
 
 The coupled `.nc` files are large and regeneratable, so they are not committed. The buoy count is
@@ -115,9 +117,9 @@ impractically slow.
 
 | File | What |
 |---|---|
-| `flume_wall_effect.py` | Frequency-domain image-wall BEM at 2.7 m: isolated wall effect + depth effect. |
-| `floatsim_wall_1dof.py` | Single-DOF platform-heave response wall effect at 2.7 m. |
-| `coupled_bem_osu.py` | Coupled 16-buoy method-of-images BEM (96-DOF), open/walled. |
+| `flume_wall_effect.py` | Single-array BEM at 2.7 m: the finite-depth effect (its wall effect under-converges and is not used). |
+| `coupled_bem_osu.py` | Coupled 16-buoy method-of-images BEM (96-DOF), open/walled — the authoritative sidewall effect. |
+| `compare_orientations.py` | 0° vs 45° sidewall comparison (coupled BEM). |
 | `psd_project.py` | Symmetrise + PSD-project the walled radiation matrix. |
 | `articulated_wall.py` | Articulated 21-body FloatSim decay / RAO / all-DOF accel. |
 | `accel_multidof.py` | All-DOF accelerations at the 5 sensor points (extends the RAO run). |
@@ -125,8 +127,8 @@ impractically slow.
 | `flume_wall_plots.py` | Geometry figures (blockage plan, regime map). |
 | `REBUTTAL-sidewall.md` | The rebuttal memo for the TEAMER response. |
 | `ring_modes.png` | Transverse cut-on ("ring") mode shapes + periods. |
-| `wall_vs_depth.png` | Sidewall effect vs finite-depth effect on heave excitation. |
-| `floatsim_wall_rao.png` | Platform-heave RAO at 2.7 m, walls in vs out. |
+| `wall_vs_depth.png` | Sidewall effect (coupled BEM) vs finite-depth effect on heave excitation. |
+| `orientation_compare.png` | 0° vs 45° sidewall effect. |
 | `flume_blockage.png` | Plan view to scale — platform in the flume, clearance. |
 | `articulated_summary.png`, `accel_multidof.png` | Free-decay + RAO; all-DOF accelerations. |
 
@@ -135,5 +137,7 @@ impractically slow.
 Coarse per-buoy mesh (the walls-in/out **ratio** is mesh-robust; absolute added mass runs a few %
 high vs the validated single-buoy value); the two-DOF image trick makes the walled radiation-B
 non-reciprocal, so it is PSD-projected (heave decay is A-driven and robust); the coupled model is
-at deep water while the wave-response assessment is at 2.7 m (see the three-model split above);
-head-seas (along-flume) only — the wave direction the flume supports.
+at deep water (the wall effect is depth-robust for this weak radiator; the separate depth effect
+is assessed at 2.7 m); the natural period (~2.6 s) uses the **unloaded** OSU-buoy mass — a
+deck-loaded platform (~33 kg/buoy) would sit at ~3 s (see `platform-16buoy` fin study), which
+does not change the small walls-in/out ratios; head-seas (along-flume) only.

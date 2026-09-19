@@ -21,6 +21,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import xarray as xr
 
 HERE = Path(__file__).resolve().parent
 ROT = float(__import__("os").environ.get("PLAT_ROT_DEG", "0"))
@@ -143,24 +144,45 @@ def fig_accel_multidof() -> None:
     plt.close(fig)
 
 
+def coupled_wall_exc_pct(Ts):
+    """Sidewall effect (%) on the platform-heave excitation at periods Ts, from the AUTHORITATIVE
+    coupled BEM (full 96-DOF open vs walled). The single-array frequency-domain sweep is badly
+    under-converged in image count at long periods (2 vs 3 reflections differ ~10x and disagree
+    with the coupled solve even in sign), so the wall effect is read from the coupled solve."""
+    o = xr.load_dataset(HERE / f"coupled_osu_open{SUF}.nc")
+    w = xr.load_dataset(HERE / f"coupled_osu_walled{SUF}.nc")
+    dofs = [str(x) for x in o.influenced_dof.values]
+    he = [i for i, d in enumerate(dofs) if d.endswith("__Heave")]
+    om = o.omega.values
+
+    def exc(ds):
+        f = ds.excitation_force.values
+        return np.abs((f[0] + 1j * f[1])[:, 0, he].sum(axis=1))
+    m = np.isfinite(om) & (om > 0)
+    Tc = 2 * np.pi / om[m]
+    pct = 100 * (exc(w)[m] / exc(o)[m] - 1)
+    idx = np.argsort(Tc)
+    return np.interp(Ts, Tc[idx], pct[idx])
+
+
 def fig_wall_vs_depth() -> None:
-    """Isolated sidewall effect vs the finite-depth effect on heave excitation (both at head
-    seas), from the 2.7 m frequency-domain sweep. Makes the point that DEPTH, not the walls,
-    is the dominant flume artifact -- and it is largest at long periods."""
+    """Sidewall effect (coupled BEM, authoritative) vs the finite-depth effect (Airy-corroborated
+    sweep) on heave excitation. The sidewall effect stays small and flat; the depth effect grows
+    with period -- DEPTH, not the walls, is the dominant flume artifact."""
     rows = np.load(HERE / f"sweep_results{SUF}.npy", allow_pickle=True)
     Ts = np.array([r[0] for r in rows])
-    wall = np.array([100 * (r[2][("F", "He")] / r[1][("F", "He")] - 1) for r in rows])  # wl/o
+    wall = coupled_wall_exc_pct(Ts)                                        # coupled BEM (deep)
     depth = np.array([100 * (r[1][("F", "He")] / r[3][("F", "He")] - 1) for r in rows])  # o/od
     x = np.arange(len(Ts))
     fig, ax = plt.subplots(figsize=(9.2, 4.4))
-    ax.bar(x - 0.2, wall, 0.4, label="sidewall effect (walls in vs out, 2.7 m)", color=TEAL)
+    ax.bar(x - 0.2, wall, 0.4, label="sidewall effect (coupled BEM, walls in vs out)", color=TEAL)
     ax.bar(x + 0.2, depth, 0.4, label="finite-depth effect (2.7 m vs deep)", color=RED)
     ax.axhline(0, color="0.4", lw=0.8)
     ax.set_xticks(x); ax.set_xticklabels([f"{t:.2f}" for t in Ts])
     ax.set_xlabel("wave period T (s)")
     ax.set_ylabel("effect on heave wave excitation (%)")
     ax.set_title("Sidewall effect vs finite-depth effect on heave excitation\n"
-                 "(the reviewer's concern is the walls; the dominant artifact is the depth)",
+                 "the sidewall effect stays small (≤ 3 %); the depth effect grows with period",
                  fontsize=11, fontweight="bold")
     ax.legend(fontsize=9, loc="lower left"); ax.grid(axis="y", alpha=0.3)
     fig.tight_layout(); fig.savefig(HERE / f"wall_vs_depth{SUF}.png", dpi=130, bbox_inches="tight")

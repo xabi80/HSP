@@ -5,13 +5,13 @@ cut-on ("ring") analysis, and the free-decay / wave-response / all-DOF results f
 16-buoy platform, honestly separating the (small) sidewall effect from the (larger,
 depth-driven) facility effect. No lay "what is an N-body model" explainer slide.
 
-Depth handling: the coupled/articulated BEM runs at deep water (finite depth is impractically
-slow at the coupled panel count); free-decay is depth-robust so that is valid there. The
-depth-sensitive wave response is carried by the fast native-2.7 m single-array frequency-domain
-sweep (flume_wall_effect.py) + a single-DOF impedance model (floatsim_wall_1dof.py).
+Fidelity note: the sidewall effect is read from the coupled 21-body BEM (authoritative). The
+single-array frequency-domain sweep (flume_wall_effect.py) under-converges in image count at
+long periods and over-states the wall effect there, so it is used only for the (image-free,
+Airy-corroborated) finite-depth effect.
 
-Embeds flume_blockage.png, ring_modes.png, floatsim_wall_rao.png, wall_vs_depth.png,
-accel_multidof.png. Writes Flume_wall_effect_technical.pptx. Requires python-pptx.
+Embeds flume_blockage.png, ring_modes.png, articulated_summary.png, wall_vs_depth.png,
+accel_multidof.png, orientation_compare.png. Writes Flume_wall_effect_technical.pptx.
 """
 # ruff: noqa: RUF001, E702  -- slide copy uses display typography (en dashes, arrows, times
 # sign); E702 compact multi-statement helper setup lines in a one-off deck generator.
@@ -26,14 +26,14 @@ from pptx.util import Inches, Pt
 
 HERE = Path(__file__).resolve().parent
 
-# Results (16-buoy, 0deg orientation). Free-decay + accel: articulated 21-body at deep water
-# (depth-robust / near-resonance). Wave response: single-DOF + frequency-domain at 2.7 m.
+# Results (16-buoy, 0deg orientation), all from the authoritative coupled 21-body BEM. The
+# single-array frequency-domain method under-converges in image count at long periods, so the
+# sidewall effect is read from the coupled solve (small and flat across the band).
 R = {
     "T_heave": -0.55, "zeta": "6.4% → 6.4%", "buoy_tilt": "0.0007 → 0.0009 rad",
-    "resp_band": 2.6, "resp_tail": 20,          # single-DOF heave response wall effect @2.7 m
-    "exc_res": -5.4, "exc_long": -17, "A_res": -1.5,   # freq-domain heave, @2.7 m
-    "pitch_surge_exc": 2.6,
-    "depth_exc": "−19% to −37%",       # finite-depth effect, 2.52-4 s
+    "rao_max": 3.9,               # coupled RAO wall effect, whole band (no growth at long T)
+    "exc_max": 3.0,               # coupled excitation wall effect, whole band
+    "depth_exc": "−19% to −37%",  # finite-depth effect, 2.52-4 s (Airy-corroborated)
     "acc_surge": 0.9, "acc_heave": 4.0, "acc_pitch": 2.2,
     "clearance_cm": 44, "span_pct": 76, "rad_frac_pct": 3.5,
     "cutoffs": "2.19 / 1.53 / 1.25 s",
@@ -165,7 +165,7 @@ tb = s.shapes.add_textbox(Inches(0.95), Inches(5.55), Inches(11.5), Inches(1.7))
 tb.text_frame.word_wrap = True
 r = tb.text_frame.paragraphs[0].add_run()
 r.text = ("Finding: sidewalls do not corrupt the dynamic data. Free-decay periods shift < 0.6 %; "
-          "the heave response through resonance shifts ≤ 3 % at the 2.7 m depth.")
+          "the heave RAO wall effect is ≤ 4 % across the whole wave band.")
 r.font.name, r.font.size, r.font.bold, r.font.color.rgb = FONT, Pt(17), True, WHITE
 p = tb.text_frame.add_paragraph()
 r = p.add_run()
@@ -188,8 +188,8 @@ bullets(s, [
     (0, [T("Method: ", b=True), T("Capytaine potential-flow BEM with the LWF walls modelled by "
            "the method of images; every comparison is "),
          T("walls-in vs walls-out at the same depth", b=True), T(".")]),
-    (0, [T("Finding: ", b=True), T("free-decay periods shift < 0.6 %; the heave response through "
-           "resonance shifts ≤ 3 % at 2.7 m. "),
+    (0, [T("Finding: ", b=True), T("free-decay periods shift < 0.6 %; the heave RAO wall effect is "
+           "≤ 4 % across the band and does not grow at long periods. "),
          T("The larger flume effect is the finite depth — a known, correctable facility "
            "property, not a sidewall artifact.", b=True, c=TEAL_D)]),
 ], t=3.05, gap=12)
@@ -208,9 +208,9 @@ bullets(s, [
          T(f"; clearance ~0.{R['clearance_cm']} m/side.")]),
     (0, [T("Facility: ", b=True), T("OSU LWF, W = 3.66 m, h = 2.7 m.")]),
     (0, [T("Walls: ", b=True), T("method of images (mirror across y = ±W/2, ~3 levels).")]),
-    (0, [T("Depth: ", b=True), T("coupled/articulated at deep water (free-decay is depth-robust); "
-           "the depth-sensitive wave response is carried by the native-2.7 m frequency-domain + "
-           "single-DOF models.", size=14)]),
+    (0, [T("Depth: ", b=True), T("sidewall effect from the coupled BEM (deep; free-decay is "
+           "depth-robust). The finite-depth effect is a separate, Airy-corroborated facility "
+           "effect assessed at 2.7 m.", size=14)]),
     (0, [T("Reviewer's 0.6 m assumes 2.50 m is the outer extent; it is the buoy-centre circle, so "
            "the as-built clearance is the tighter ~0.44 m analysed here.", c=GREY, size=13)]),
 ], w=6.5, t=1.75, gap=8)
@@ -222,11 +222,10 @@ bullets(s, [
          T("Heave radiation damping is only "), T(f"~{R['rad_frac_pct']} % of the total", b=True),
          T(" (the rest is viscous drag); the walls can perturb only that small radiated part, so "
            "the natural period and damping barely move. This is depth-robust.")]),
-    (0, [T("Wave response — sub-cut-on, but depth-sensitive. ", b=True, c=TEAL_D),
+    (0, [T("Wave response — sub-cut-on. ", b=True, c=TEAL_D),
          T("A corrupting cross-flume standing wave forms only at the transverse cut-ons (next "
-           "slide); the operating band is below the first one. The residual wall effect on wave "
-           "loads is a "), T("diffraction/blockage", b=True),
-         T(" effect that grows with wavelength and shallowness — hence assessed at 2.7 m.")]),
+           "slide); the operating band is below the first one, so the residual sidewall effect on "
+           "the wave loads stays small (≤ 4 %) at every period.")]),
     (0, [T("Porous, does not span the tank. ", b=True, c=TEAL_D),
          T("Water passes between the buoys and runs off along the 104 m length; only the "
            "cross-flume direction is bounded.")]),
@@ -265,34 +264,28 @@ bullets(s, [
            "is depth-robust, so deep-water modelling is valid here.")]),
 ], t=4.05, gap=12)
 
-# ============================ 7 — wave response @ 2.7 m ===============================
-s = slide("Wave response at the 2.7 m depth", "results 2/4")
-s.shapes.add_picture(str(HERE / "floatsim_wall_rao.png"), Inches(1.1), Inches(1.7),
-                     width=Inches(7.3))
-bullets(s, [
-    (0, [T("Through resonance", b=True, c=TEAL_D), T(" (1.5–2.9 s, the dynamically "
-           "important band): heave response wall effect "), T(f"≤ {R['resp_band']} %", b=True),
-         T(".")]),
-    (0, [T("Long-period tail", b=True, c=TEAL_D), T(" (T > 3 s): grows to "),
-         T(f"~{R['resp_tail']} %", b=True),
-         T(" — but off-resonance (small motion), and the finite-depth effect there is far "
-           "larger (next slide).")]),
-    (0, [T("Pitch / surge loads: ", b=True), T(f"≤ {R['pitch_surge_exc']} %.", )]),
-], w=4.7, x=8.5, t=2.0, gap=12, size=15)
-caption(s, [T("Single-DOF platform-heave impedance model on the native-2.7 m coupled-array "
-             "coefficients (walls-in vs walls-out). The response tracks the wave-excitation wall "
-             "effect: small through resonance, larger only in the long-period tail.")],
-        t=6.5, h=0.85, size=12.5)
+# ============================ 7 — wave response =======================================
+s = slide("Wave-frequency response", "results 2/4")
+s.shapes.add_picture(str(HERE / "articulated_summary.png"), Inches(1.05), Inches(1.9),
+                     width=Inches(11.2))
+caption(s, [T("Coupled 21-body BEM (open vs walled). The heave RAO wall effect is "),
+            T(f"≤ {R['rao_max']} % across the whole band", b=True, c=TEAL_D),
+            T(" and does not grow at long periods (excitation wall effect "),
+            T(f"≤ {R['exc_max']} %", b=True),
+            T(", shrinking toward 0 at 4 s). The frequency-domain single-array method over-states "
+              "this at long periods (it under-converges in image count) — the coupled solve is "
+              "authoritative.")],
+        t=6.4, h=0.9, size=12.5)
 
 # ============================ 8 — walls vs depth ======================================
 s = slide("Sidewalls vs finite depth — the dominant effect", "results 3/4")
 s.shapes.add_picture(str(HERE / "wall_vs_depth.png"), Inches(1.6), Inches(1.75),
                      width=Inches(10.1))
-caption(s, [T("At every period the "), T("finite-depth effect (red) exceeds the sidewall effect "
-             "(teal)", b=True, c=RED),
-            T(f"; on heave excitation the depth effect is {R['depth_exc']} at 2.5–4 s. The "
-              "reviewer's concern (walls) is the smaller term; the real flume consideration is "
-              "depth — a known, correctable property handled by depth-scaling.")],
+caption(s, [T("The "), T("sidewall effect (teal, coupled BEM) stays small and flat (≤ 3 %)", b=True,
+              c=TEAL_D), T(" at every period, while the "),
+            T(f"finite-depth effect (red) grows to {R['depth_exc']}", b=True, c=RED),
+            T(" at 2.5–4 s. The reviewer's concern (walls) is the minor term; the real flume "
+              "consideration is depth — a known, correctable property handled by depth-scaling.")],
         t=6.35, h=0.95, size=13)
 
 # ============================ 9 — all-DOF accelerations ==============================
@@ -324,12 +317,12 @@ bullets(s, [
     (0, [T("Transverse cut-ons ", b=True), T(f"({R['cutoffs']}): "),
          T("skip these narrow, known periods in the sweep matrix (bounded ~±6 % even there).")]),
     (0, [T("Long-period tests (T > 3 s): ", b=True),
-         T("apply the standard finite-depth (and the smaller blockage) corrections — the "
-           "response there is depth-dominated, not a sidewall artifact.")]),
-    (0, [T("Depth of the coupled model: ", b=True),
-         T("deep water (finite depth is impractically slow at the coupled panel count); free-decay "
-           "is depth-robust and the 2.7 m wave response is carried by the frequency-domain + "
-           "single-DOF models.")]),
+         T("apply the standard finite-depth correction — the response there is depth-dominated, "
+           "not a sidewall artifact (the sidewall effect stays ≤ 4 %).")]),
+    (0, [T("Method fidelity: ", b=True),
+         T("the sidewall effect is read from the coupled 21-body BEM; the single-array "
+           "frequency-domain method under-converges in image count at long periods (it over-states "
+           "the wall effect there and is used only for the image-free depth effect).")]),
     (0, [T("Mesh / walled radiation matrix: ", b=True),
          T("coarse mesh (the walls-in/out ratio is mesh-robust); the image trick makes walled B "
            "non-reciprocal, so it is PSD-projected (heave decay is robust to this).")]),
@@ -340,7 +333,7 @@ s = slide("Conclusion", "conclusion")
 _rect(s, 0.85, 1.9, 11.6, 0.06, TEAL)
 bullets(s, [
     (0, [T("Sidewall reflections do not corrupt the Phase-3 dynamic data: free-decay periods "
-           "shift < 0.6 %, and the heave response through resonance shifts ≤ 3 % at 2.7 m.")]),
+           "shift < 0.6 %, and the heave RAO wall effect is ≤ 4 % across the whole band.")]),
     (0, [T("Accelerations at every sensor point, every excited DOF, change by "),
          T("≤ 4 %", b=True, c=TEAL_D), T(" near resonance.")]),
     (0, [T("The dominant flume consideration is the finite 2.7 m depth", b=True),

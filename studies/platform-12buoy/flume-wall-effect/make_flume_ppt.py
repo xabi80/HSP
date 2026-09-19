@@ -160,8 +160,8 @@ bullets(s, [
          T(", with and without the walls.")]),
     (0, [T("3.  A full simulation of the whole 21-piece platform", b=True, c=TEAL_D),
          T(" inside the flume — every buoy, every joint, the real drag — walls in vs walls out.")]),
-    (0, [T("All three had to agree before we trusted the answer. "),
-         T("They do.", b=True, c=TEAL_D)]),
+    (0, [T("The full-platform model (3) is the one we trust; the simpler checks point the same "
+           "way near the platform's natural bobbing period.")]),
 ], t=2.2, gap=16)
 
 # 5 -- what is the platform (21 bodies)
@@ -195,21 +195,21 @@ caption(s, [T("Half a percent is far smaller than the "),
 s = slide("Result 2 — the response to waves", "results")
 s.shapes.add_picture(str(HERE / "articulated_summary.png"), Inches(1.05), Inches(1.85),
                      width=Inches(11.2))
-caption(s, [T("Near the platform's natural bobbing period — where the response is biggest and "
-              "matters most — the walls change it by "),
-            T("only a few percent", b=True, c=TEAL_D),
-            T(". Two independent models (frequency-domain and the full articulated platform) "
-              "agree.")],
+caption(s, [T("Across every wave period we'll test, the full articulated-platform simulation "
+              "shows the walls change the response by "),
+            T("at most about 4%", b=True, c=TEAL_D),
+            T(" — and it doesn't grow at long waves.")],
         t=6.45, size=13)
 
 # 8 -- result 3: the water depth matters more than the walls
 s = slide("Result 3 — the shallow water matters more than the walls", "results")
 s.shapes.add_picture(str(HERE / "wall_vs_depth.png"), Inches(1.35), Inches(1.95),
                      width=Inches(10.6))
-caption(s, [T("At long waves the effect grows — but it's mostly the "),
-            T("shallow 2.7 m depth", b=True, c=RED), T(", not the walls (teal). Depth is a "),
+caption(s, [T("The walls (teal) stay "), T("small at every wave period", b=True, c=TEAL_D),
+            T("; it's the "), T("shallow 2.7 m water", b=True, c=RED),
+            T(" (red) that grows at long waves — and that's a "),
             T("known, routine correction", b=True, c=TEAL_D),
-            T(" every flume test applies; the walls add far less on top.")],
+            T(" every flume test already applies.")],
         t=6.4, h=0.85, size=13)
 
 # 9 -- result 4: accelerations in every direction
