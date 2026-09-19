@@ -6,113 +6,114 @@ clearance, inducing severe sidewall reflections that will corrupt dynamic data."
 ## Summary
 
 We assessed the concern quantitatively with potential-flow boundary-element simulations
-(Capytaine) in which HWRL's Large Wave Flume side walls are modelled **explicitly**. The
-result: **sidewall reflections do not corrupt the Phase-3 dynamic data.** Modelling the walls
-in versus out (at the same 2.7 m operating depth) shifts every measured **natural period by
-< 0.7 %** and every **wave-frequency load by ≤ 9 %** (≤ 2 % for pitch and surge) — inside normal
-model-test uncertainty — with no spurious resonances in the operating band. The physical reason
-is that the platform is a very weak wavemaker in the modes being measured, so there is little
-radiated wave energy for the walls to reflect.
+(Capytaine) in which HWRL's Large Wave Flume side walls are modelled **explicitly** (method of
+images). The result: **sidewall reflections do not corrupt the Phase-3 dynamic data.** With the
+walls modelled in versus out (at the same water depth):
+
+- **Free-decay** natural periods shift **< 0.6 %** and the damping is unchanged;
+- the **heave response through resonance** — the dynamically important band — shifts **≤ 3 %** at
+  the 2.7 m operating depth;
+- accelerations at the deck centre and the four cluster hubs change by **≤ 4 %** near resonance.
+
+All are inside normal model-test uncertainty. The physical reason is that the platform is a very
+weak wavemaker in the modes being measured, so there is little radiated wave energy for the walls
+to reflect. **The larger flume effect is the finite 2.7 m depth — a known, routinely corrected
+facility property, not a sidewall artifact.**
+
+## Test article and method
+
+Platform = **16 spar-plate buoys** (4 clusters × 4, square layout) at the Phase-3 layout (buoy
+centres on a 2.5 m circle), each the Phase-1 decay-correlated hull (0.159 m spar, equal-area
+heave plate r = 0.144 m; the geometry that reproduced the Phase-1 free-decay at T ≈ 2.6 s,
+ζ ≈ 13 %). With the plates the outer span is 2.79 m (76 % of the 3.66 m width), giving ~0.44 m
+side clearance. (The reviewer's 0.6 m assumes 2.50 m is the outer extent; our 2.50 m is the
+buoy-centre circle, so we analysed the tighter as-built ~0.44 m.)
+
+Side walls (W = 3.66 m) are imposed by the **method of images**. Every comparison is
+**walls-in vs walls-out at the same depth**, which isolates the sidewall effect the reviewer
+raised from the separate (and larger) finite-depth effect. Three complementary models are used,
+each in its valid regime:
+
+| Model | What it gives | Depth |
+|---|---|---|
+| Frequency-domain image-wall BEM | isolated wall effect on the hydrodynamic coefficients, per DOF | native 2.7 m |
+| Single-DOF impedance model | platform-heave **response** wall effect | native 2.7 m |
+| Articulated 21-body FloatSim (coupled BEM) | free-decay + all-DOF near-resonance response, real quadratic drag, gimbal joints | deep water* |
+
+\* The coupled/articulated BEM runs at deep water because finite depth is impractically slow at
+the coupled panel count. Free-decay is radiation-driven and **depth-robust**, so deep-water
+modelling is valid there; the depth-sensitive wave response is carried by the two native-2.7 m
+models.
 
 ## Why the standard "sidewall reflection" concern does not apply here
 
-"Severe reflections corrupt data" is the correct concern for bodies that are **strong
-wavemakers** or that **span the flume**. The Phase-3 platform is neither:
-
-1. **It barely radiates.** The platform is a sparse array of 0.16 m spars on perforated heave
-   plates. Its **heave radiation damping is only 3.5 % of the total heave damping** (the rest is
-   viscous); pitch and roll radiate far less still, because the buoys move out of phase and their
-   radiated waves largely cancel. With so little wave energy leaving the platform, there is
-   almost nothing to reflect.
-2. **The operating band is sub-cutoff.** Reflections only build a coherent, corrupting
-   cross-flume standing wave at the flume's transverse cut-on periods, **T ≈ 2.19 / 1.53 / 1.25 s**
-   (k = nπ/W). The platform's dynamics of interest (heave resonance ≈ 2.5 s) lie **below** the first
-   cut-on, where the transverse field is *evanescent* — it decays away from the platform and cannot
-   organise into a standing wave.
-3. **It is porous and does not span the flume.** Water passes between the 12 buoys and escapes
-   freely along the 104 m flume length; only the cross-flume direction is bounded, at several
-   plate-radii from each outer buoy.
-
-## Method
-
-Capytaine 2.3.1 potential-flow BEM. Platform = 12 spar-plate buoys (Phase-1 decay-correlated
-geometry: 0.159 m spar, equal-area heave plate r = 0.144 m; the geometry that reproduced the
-Phase-1 free-decay at T ≈ 2.5 s, ζ ≈ 13 %) at the Phase-3 layout (buoy centres on a 2.5 m
-circle). Flume side walls (W = 3.66 m) imposed by the **method of images** (converged over
-reflection levels); finite depth h = 2.7 m native. All comparisons are **walls-in vs walls-out
-at the same 2.7 m depth**, isolating the sidewall effect the reviewer raised.
+1. **The platform barely radiates.** Its heave radiation damping is only **~3.5 % of the total
+   heave damping** (the rest is viscous drag); pitch and roll radiate less still because the
+   buoys move out of phase and their radiated waves largely cancel. With so little wave energy
+   leaving the platform, there is almost nothing to reflect — this is what makes the free-decay
+   and near-resonance response so insensitive to the walls.
+2. **The operating band is sub-cut-on.** A corrupting cross-flume standing wave can build only at
+   the flume's transverse cut-on periods, **T ≈ 2.19 / 1.53 / 1.25 s** (kₙ = nπ/W). The dynamics
+   of interest (heave resonance ≈ 2.6 s) lie **below** the first cut-on, where the transverse
+   field is evanescent — it decays away from the platform and cannot organise into a standing
+   wave. Even *at* the cut-ons the weak scattering keeps the effect bounded (~±6 %).
+3. **It is porous and does not span the flume.** Water passes between the 16 buoys and escapes
+   freely along the 104 m length; only the cross-flume direction is bounded.
 
 ## Findings
 
-**Free-decay tests (natural periods and damping):**
+**Free-decay (natural period and damping), articulated 21-body, walls-in vs walls-out:**
 
-| Mode | Wall shift in natural period | Wall shift in added mass |
+| Quantity | walls out → walls in | wall effect |
 |---|---|---|
-| Heave | −0.25 % | −1.5 % |
-| Pitch (= roll) | < 0.2 % | < 0.3 % |
-| Surge (= sway) | < 0.7 % | ≤ 2 % |
+| Heave natural period | 2.607 → 2.593 s | **−0.55 %** |
+| Heave damping ζ | 6.4 % → 6.4 % | unchanged |
+| Buoy gimbal tilt | 0.0007 → 0.0009 rad | ~0 (negligible) |
 
-All shifts are **well inside the ±(3–5) % uncertainty of a physical decay test**. Because heave
-radiation is only 3.5 % of the damping, even a hypothetical perfect wall reflection could perturb
-the measured damping by at most a few percent — and the explicit walls-in simulation shows less.
+The period shift is ~20× smaller than the ±(3–5) % scatter of a physical free-decay test, and
+the damping (viscous-dominated) is untouched.
 
-**Wave-sweep tests (RAOs):**
+**Wave response at the 2.7 m operating depth (single-DOF platform-heave):**
 
-- Sidewall effect on wave-frequency loads: **≤ 9 % (heave, at resonance), ≤ 2 % (pitch, surge)**.
-- Heave RAO peak: 0.394 (walls out) → 0.359 (walls in), **−9 %** — a smooth, predictable offset,
-  not "corruption."
-- No spurious resonances in the operating band; the only wall-sensitive periods are the
-  transverse cut-ons above — and even there the effect is bounded (next section).
+- **Through resonance (1.5–2.9 s)** — the dynamically important band: heave response wall effect
+  **≤ 2.6 %**.
+- **Long-period tail (T > 3 s):** grows to ~20 %, but this is *off-resonance* (small motion), and
+  there the **finite-depth effect is far larger** (see below). Pitch/surge loads ≤ 2.6 %
+  throughout.
 
-**Confirmed in the time-domain simulator, including the full articulated model.** The findings
-above are frequency-domain. We reproduced them in FloatSim's validated time-domain solver (real
-quadratic Morison drag), twice — a single-buoy model and the **full 17-body articulated platform**
-(12 buoys + 4 hubs + 1 platform, gimbal joints, driven by a fresh method-of-images *coupled*
-BEM). All three approaches agree:
+**All-DOF accelerations near resonance (articulated 21-body), at the deck centre + 4 cluster
+hubs:** surge ≤ 0.9 %, heave ≤ 4.0 %, pitch ≤ 2.2 %; sway/roll/yaw unexcited in head seas. Peaks
+occur at the 2.19 s cut-on.
 
-| Method | heave-decay period shift | wave-RAO wall effect |
+## The dominant flume effect is depth, not the walls
+
+Isolating the two effects on the heave wave excitation (both at head seas):
+
+| Wave period | Sidewall effect (walls in vs out, 2.7 m) | Finite-depth effect (2.7 m vs deep) |
 |---|---|---|
-| Frequency-domain | −0.25 % | ≤ 9 % |
-| Single-buoy FloatSim (time domain) | −0.45 % | ≤ 7.4 % |
-| Full articulated 17-body FloatSim | −0.38 % | ≤ 2.9 % |
+| 2.52 s | −5.4 % | −19 % |
+| 3.00 s | −14 % | −27 % |
+| 3.50 s | −17 % | −33 % |
+| 4.00 s | −15 % | −37 % |
 
-In the articulated model every one of the platform's ~30 free DOFs — the six rigid-body modes and
-the 24 buoy gimbal tilts — moves by less than the platform heave, the damping is unchanged, and
-the accelerations at the deck centre and the four cluster centres are essentially identical with
-the walls in or out.
-
-Extending that acceleration check to **every excited degree of freedom** (not just the vertical
-channel) confirms it. At the deck centre and all four cluster hubs, the walls-in vs walls-out
-change is:
-
-| Acceleration DOF (at each sensor point) | Largest wall effect |
-|---|---|
-| Surge (fore-aft, linear) | ≤ 1.4 % |
-| Heave (vertical, linear) | ≤ 3.0 % |
-| Pitch (angular) | ≤ 1.9 % |
-| Sway / roll / yaw | negligible — unexcited in head seas (< 2 % of the heave-acceleration scale) |
-
-Every acceleration a sensor will record moves by **≤ 3 %** with the walls in or out — inside
-model-test scatter — and the largest values occur at the first transverse cut-on (2.19 s, the
-"ring" period below), the one period where the walls do anything measurable at all.
+At every period the finite-depth effect exceeds the sidewall effect. Finite depth is a known
+facility property that any flume campaign corrects for by depth-scaling; the sidewalls add a
+smaller term on top, negligible through the resonance where the platform's dynamics live.
 
 ## What we concede, and how we handle it
 
-- **Transverse cut-ons (T ≈ 2.19 / 1.53 / 1.25 s):** refining the wall model to three image
-  reflections shows the wall effect on the loads **stays within ~±6 % even at these periods** —
-  the platform's weak scattering prevents the sharp cross-flume resonance one would see with a
-  strong wavemaker. As good practice we still avoid parking sweep periods exactly on them; they
-  are narrow, known, and easily skipped in the test matrix.
-- **Clearance number:** the reviewer's 0.6 m assumes 2.50 m is the outer extent. Our 2.50 m is the
-  **buoy-centre** circle; with the heave plates the outer clearance is ~0.44 m. We analysed the
-  as-built ~0.44 m clearance; the conclusions above already reflect it.
-- The separate, larger effect at long waves is the **finite 2.7 m depth** (not the walls) — a known
-  property of the facility that we account for when relating flume RAOs to the target environment.
+- **Transverse cut-ons (T ≈ 2.19 / 1.53 / 1.25 s):** narrow, known, and skipped in the sweep
+  matrix; the wall effect stays within ~±6 % even there.
+- **Long-period tests (T > 3 s):** apply the standard finite-depth correction (and the smaller
+  blockage correction) — the response there is depth-dominated, not a sidewall artifact.
+- **Clearance number:** analysed at the as-built ~0.44 m (buoy-centre circle + plates), tighter
+  than the reviewer's 0.6 m.
 
 ## Conclusion
 
-Explicit BEM modelling of HWRL's side walls shows the Phase-3 platform's measured natural periods
-change by < 0.7 % and its wave-frequency loads by ≤ 9 %, with no in-band spurious resonances. The
-platform's very low wave radiation and the sub-cutoff operating band mean sidewall reflections are
-negligible for both the free-decay and wave-sweep campaigns. The 2.50 m platform is compatible
-with the HWRL Large Wave Flume.
+Explicit BEM modelling of HWRL's side walls shows the Phase-3 platform's free-decay periods
+change by < 0.6 % and its near-resonance response by ≤ 3 %, with no in-band spurious resonance.
+The platform's very low wave radiation and the sub-cut-on operating band make sidewall
+reflections negligible for both the free-decay and the wave-sweep campaigns. The primary flume
+consideration is the finite 2.7 m depth — larger than the walls and handled by standard
+depth-scaling. The 2.50 m platform is compatible with the HWRL Large Wave Flume.

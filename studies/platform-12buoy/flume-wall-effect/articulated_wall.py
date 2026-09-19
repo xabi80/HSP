@@ -1,6 +1,7 @@
-"""Full articulated 17-body FloatSim run for the flume wall effect: OSU-plate 12-buoy
-platform (gimbal-tilt buoys + platform + KKT joints + Morison drag), OPEN vs WALLED
-coupled BEM. Free-decay (platform heave release) + regular-wave sweep, all free DOFs.
+"""Full articulated 21-body FloatSim run for the flume wall effect: OSU-plate 16-buoy
+platform (4 clusters x 4 buoys, gimbal-tilt buoys + 4 hubs + platform + KKT joints +
+Morison drag), OPEN vs WALLED coupled BEM. Free-decay (platform heave release) +
+regular-wave sweep, all free DOFs.
 
 Usage: python articulated_wall.py <decay|rao>
 Reads coupled_osu_open.nc / coupled_osu_walled.nc (from coupled_bem_osu.py).
@@ -53,7 +54,7 @@ _SPAR_BOT_B = -0.967 - ZB                  # -0.060
 _PLATE_B = -1.383 - ZB                     # -0.476
 SPAR_D, SPAR_CD = 0.1593, 1.2
 PLATE_R, PLATE_T, PLATE_CDN, PLATE_CDT = 0.1437, 0.0039, 5.0, 1.5
-N_DOF = 17 * 6
+N_DOF = 21 * 6
 OVR = "flume wall-effect: coarse coupled OSU BEM, small-body kernel"
 
 
@@ -62,7 +63,7 @@ def centers():
     out = []
     for pc in np.deg2rad([0, 90, 180, 270]):
         cx, cy = s * np.cos(pc), s * np.sin(pc)
-        for tb in np.deg2rad([0, 120, 240]):
+        for tb in np.deg2rad([0, 90, 180, 270]):   # 4 buoys/cluster (square)
             out.append((cx + 0.5 * s * np.cos(tb), cy + 0.5 * s * np.sin(tb)))
     return out
 
@@ -78,8 +79,8 @@ def deck() -> Deck:
     joints: list = []
     for c, pc in enumerate(np.deg2rad([0, 90, 180, 270])):
         cx, cy = 1.0 * s * np.cos(pc), 1.0 * s * np.sin(pc)
-        for b, tb in enumerate(np.deg2rad([0, 120, 240])):
-            k = 3 * c + b
+        for b, tb in enumerate(np.deg2rad([0, 90, 180, 270])):
+            k = 4 * c + b
             bx, by = cen[k]
             bodies.append(Body(
                 name=f"buoy{k + 1}", reference_point=[bx, by, ZB], mass=M_BUOY,
@@ -106,10 +107,10 @@ def deck() -> Deck:
 
 
 def buoy_body_index(k0):
-    return 4 * (k0 // 3) + (k0 % 3)
+    return 5 * (k0 // 4) + (k0 % 4)   # 4 buoys + 1 hub per cluster
 
 
-PLAT = 16  # platform body index
+PLAT = 20  # platform body index (16 buoys + 4 hubs)
 
 
 def hydro_dof(dk):
@@ -155,7 +156,7 @@ def run_decay(nc):
 
 
 # accelerometer points: platform centre (platform body) + 4 cluster centres (the hubs)
-ACC_PTS = {"platform centre": 16, "cluster 1": 3, "cluster 2": 7, "cluster 3": 11, "cluster 4": 15}
+ACC_PTS = {"platform centre": 20, "cluster 1": 4, "cluster 2": 9, "cluster 3": 14, "cluster 4": 19}
 
 
 def run_rao(nc, periods, A=0.05):
@@ -196,6 +197,8 @@ def main():
               f"walled {w['heave_zeta'] * 100:.1f}%")
         print(f"       buoy1 pitch (articulation): open {o['buoy1_pitch_max']:.4f} -> "
               f"walled {w['buoy1_pitch_max']:.4f} rad")
+        import json
+        (SCR / "articulated_decay.json").write_text(json.dumps(res))
     else:
         P = np.array([2.19, 2.52, 3.0, 3.5])
         Ro, Ao = run_rao(ncs["open"], P); Rw, Aw = run_rao(ncs["walled"], P)

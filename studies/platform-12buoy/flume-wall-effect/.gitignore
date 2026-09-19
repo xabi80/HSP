@@ -1,0 +1,5 @@
+# large, regeneratable BEM databases (see README reproduce steps)
+*.nc
+
+# scratch run logs
+*.log

@@ -114,7 +114,7 @@ r.font.name, r.font.size, r.font.bold, r.font.color.rgb = FONT, Pt(42), True, IN
 tb = s.shapes.add_textbox(Inches(0.95), Inches(5.8), Inches(11.5), Inches(1.4))
 tb.text_frame.word_wrap = True
 r = tb.text_frame.paragraphs[0].add_run()
-r.text = "Short answer: no. The 2.5 m, 12-buoy platform is fine in the OSU wave flume."
+r.text = "Short answer: no. The 2.5 m, 16-buoy platform is fine in the OSU wave flume."
 r.font.name, r.font.size, r.font.bold, r.font.color.rgb = FONT, Pt(20), True, WHITE
 p = tb.text_frame.add_paragraph()
 r = p.add_run()
@@ -126,7 +126,7 @@ s = slide("The concern a reviewer raised", "the question")
 s.shapes.add_picture(str(HERE / "flume_blockage.png"), Inches(7.15), Inches(1.85),
                      height=Inches(4.6))
 bullets(s, [
-    (0, [T("We want to test a floating platform — 12 buoys on a 2.5 m frame — in OSU's "
+    (0, [T("We want to test a floating platform — 16 buoys on a 2.5 m frame — in OSU's "
            "wave flume (a long tank, "), T("3.66 m wide", b=True), T(").")]),
     (0, [T("The platform nearly fills the width. A reviewer worried:")]),
     (1, [T("“the platform makes waves, they bounce off the side walls, come back, and "
@@ -158,23 +158,23 @@ bullets(s, [
          T(" — where reflections could build up, and by how much.")]),
     (0, [T("2.  A computer flow-simulation of one buoy", b=True, c=TEAL_D),
          T(", with and without the walls.")]),
-    (0, [T("3.  A full simulation of the whole 17-piece platform", b=True, c=TEAL_D),
+    (0, [T("3.  A full simulation of the whole 21-piece platform", b=True, c=TEAL_D),
          T(" inside the flume — every buoy, every joint, the real drag — walls in vs walls out.")]),
     (0, [T("All three had to agree before we trusted the answer. "),
          T("They do.", b=True, c=TEAL_D)]),
 ], t=2.2, gap=16)
 
-# 5 -- what is the platform (17 bodies)
-s = slide("What is the “17-piece” platform?", "the model")
+# 5 -- what is the platform (21 bodies)
+s = slide("What is the “21-piece” platform?", "the model")
 bullets(s, [
     (0, [T("The platform is not one solid raft — it's an "),
          T("articulated (jointed) structure", b=True), T(":")]),
-    (1, [T("12 buoys", b=True, c=TEAL_D), T(" — the floats (spar + drag plate)")]),
-    (1, [T("4 cluster hubs", b=True, c=TEAL_D), T(" — each holds 3 buoys on gimbal pins")]),
+    (1, [T("16 buoys", b=True, c=TEAL_D), T(" — the floats (spar + drag plate)")]),
+    (1, [T("4 cluster hubs", b=True, c=TEAL_D), T(" — each holds 4 buoys on gimbal pins")]),
     (1, [T("1 central deck", b=True, c=TEAL_D), T(" — the 4 arms connect to it")]),
-    (0, [T("12 + 4 + 1 = "), T("17 pieces", b=True), T(". The "),
+    (0, [T("16 + 4 + 1 = "), T("21 pieces", b=True), T(". The "),
          T("gimbal pins", b=True, c=TEAL_D),
-         T(" let each buoy tilt on its own — that's why we model all 17, not one rigid block.")]),
+         T(" let each buoy tilt on its own — that's why we model all 21, not one rigid block.")]),
 ], t=2.1, gap=13)
 
 # 6 -- result 1: the bobbing (decay)
@@ -182,34 +182,35 @@ s = slide("Result 1 — the up-and-down bobbing", "results")
 bullets(s, [
     (0, [T("We push the platform down and let it bob back (a “free-decay” test).")]),
     (0, [T("With the walls in vs out, the bobbing "),
-         T("speed changes by less than 0.5%", b=True, c=TEAL_D), T(" …")]),
+         T("speed changes by about half a percent", b=True, c=TEAL_D), T(" …")]),
     (0, [T("… and "), T("how fast it settles doesn't change at all", b=True, c=TEAL_D),
          T(" (the friction is unchanged by the walls).")]),
     (0, [T("The buoys' tilting on their gimbals is "), T("barely affected", b=True), T(" too.")]),
 ], t=2.2, gap=15)
-caption(s, [T("Less than half a percent is far smaller than the "),
+caption(s, [T("Half a percent is far smaller than the "),
             T("±3–5% you'd expect just from run-to-run scatter", b=True, c=TEAL_D),
             T(" in a physical test.")], size=14)
 
-# 7 -- result 2: wave response, methods agree
-s = slide("Result 2 — the response to waves (all methods agree)", "results")
+# 7 -- result 2: wave response near the natural period
+s = slide("Result 2 — the response to waves", "results")
 s.shapes.add_picture(str(HERE / "articulated_summary.png"), Inches(1.05), Inches(1.85),
                      width=Inches(11.2))
-caption(s, [T("Across the wave periods we'll test, the walls change the response by "),
+caption(s, [T("Near the platform's natural bobbing period — where the response is biggest and "
+              "matters most — the walls change it by "),
             T("only a few percent", b=True, c=TEAL_D),
-            T(" — and the pen-and-paper, one-buoy, and full-platform methods all land in the "
-              "same place. The bobbing-speed change is under 0.5% in every method.")],
+            T(". Two independent models (frequency-domain and the full articulated platform) "
+              "agree.")],
         t=6.45, size=13)
 
-# 8 -- result 3: accelerations
-s = slide("Result 3 — the accelerometers barely move", "results")
-s.shapes.add_picture(str(HERE / "articulated_accel.png"), Inches(1.05), Inches(1.85),
-                     width=Inches(11.2))
-caption(s, [T("The accelerations at the "),
-            T("deck centre and the four cluster points", b=True, c=TEAL_D),
-            T(" — the real sensor locations — are essentially the same with the walls in "
-              "or out.")],
-        t=6.45, size=13)
+# 8 -- result 3: the water depth matters more than the walls
+s = slide("Result 3 — the shallow water matters more than the walls", "results")
+s.shapes.add_picture(str(HERE / "wall_vs_depth.png"), Inches(1.35), Inches(1.95),
+                     width=Inches(10.6))
+caption(s, [T("At long waves the effect grows — but it's mostly the "),
+            T("shallow 2.7 m depth", b=True, c=RED), T(", not the walls (teal). Depth is a "),
+            T("known, routine correction", b=True, c=TEAL_D),
+            T(" every flume test applies; the walls add far less on top.")],
+        t=6.4, h=0.85, size=13)
 
 # 9 -- result 4: accelerations in every direction
 s = slide("Result 4 — every direction, not just up-down", "results")
@@ -217,8 +218,9 @@ s.shapes.add_picture(str(HERE / "accel_multidof.png"), Inches(1.15), Inches(2.05
                      width=Inches(11.0))
 caption(s, [T("We checked the accelerometers in "),
             T("every direction they can move", b=True, c=TEAL_D),
-            T(" — fore-aft, up-down, and tilt (pitch). Walls in vs out changes each one by "),
-            T("at most 3%", b=True, c=TEAL_D),
+            T(" — fore-aft, up-down, and tilt (pitch). Near the natural period, walls in vs out "
+              "changes each one by "),
+            T("about 4% or less", b=True, c=TEAL_D),
             T(", at the deck centre and all four cluster points. Side-to-side and twist stay "
               "essentially zero (the waves come straight down the flume).")],
         t=6.05, h=1.15, size=13)
@@ -231,19 +233,25 @@ bullets(s, [
     (0, [T("Near those, the walls "), T("do", i=True), T(" matter — so we simply "),
          T("avoid parking a test exactly there", b=True, c=TEAL_D), T(".")]),
     (0, [T("They're narrow, known in advance, and easy to step around in the test plan.")]),
-], t=2.3, gap=16)
+    (0, [T("And for "), T("very long waves", b=True), T(" (slower than ~3 s), the "),
+         T("shallow water depth", b=True, c=RED),
+         T(" is the bigger effect — corrected as standard, just like any flume test.")]),
+], t=2.2, gap=14)
 
 # 11 -- bottom line
 s = slide("Bottom line", "conclusion")
 bullets(s, [
-    (0, [T("The 2.5 m, 12-buoy platform is "),
+    (0, [T("The 2.5 m, 16-buoy platform is "),
          T("compatible with the OSU wave flume", b=True, c=TEAL_D), T(".")]),
-    (0, [T("The side walls change the measured bobbing speed by "), T("< 0.5%", b=True),
-         T(", the damping "), T("not at all", b=True), T(", and the wave response by "),
-         T("only a few percent", b=True), T(" — confirmed in the full multi-body model.")]),
+    (0, [T("The side walls change the measured bobbing speed by "), T("about ½%", b=True),
+         T(", the damping "), T("not at all", b=True), T(", and the near-resonance wave response "
+           "by "), T("only a few percent", b=True), T(".")]),
+    (0, [T("The bigger flume factor is the "), T("shallow water depth", b=True, c=RED),
+         T(" (not the walls) — a routine, corrected effect.")]),
     (0, [T("Reason, in one line:", b=True)]),
     (1, [T("the platform barely makes waves, so there's almost nothing for the walls to "
-           "reflect — the flume test measures the real, open-water behaviour.", i=True, c=TEAL_D)]),
+           "reflect — the flume test measures the real behaviour once depth is accounted for.",
+           i=True, c=TEAL_D)]),
 ], t=2.2, gap=15)
 
 out = HERE / "Flume_wall_effect_explained.pptx"

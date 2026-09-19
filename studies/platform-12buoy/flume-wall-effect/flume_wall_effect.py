@@ -1,4 +1,4 @@
-"""Sidewall (blockage) + finite-depth effect on the Phase-3 12-buoy platform in the
+"""Sidewall (blockage) + finite-depth effect on the Phase-3 16-buoy platform in the
 OSU Hinsdale Large Wave Flume (LWF) — the analysis behind REBUTTAL-sidewall.md.
 
 Context. A TEAMER reviewer flagged: "Phase 3 platform (2.50 m) inside HWRL's 3.67 m
@@ -12,8 +12,8 @@ walls-in vs walls-out **at the same 2.7 m operating depth** — this isolates th
 effect (the separate, larger finite-depth effect on long waves is common to both and
 is not what the comment is about).
 
-Geometry. 12 buoys (4 clusters x 3), buoy centres on a 2.5 m circle (the Phase-3
-"2.5 m diameter to centres"; the sim layout in ``platform_common.py`` has centre radius
+Geometry. 16 buoys (4 clusters x 4, square), buoy centres on a 2.5 m circle (the Phase-3
+"2.5 m diameter to centres"; the sim layout in ``platform16_common.py`` has centre radius
 1.5 m, so scaled x 0.833). Each buoy uses the Phase-1 decay-correlated hull
 (``osu-test-buoy/osu_buoy_common.py``: 0.159 m spar, equal-area heave plate r = 0.1437 m)
 — the geometry that reproduced the Phase-1 free-decay (T ~ 2.5 s, zeta ~ 13 %).
@@ -52,19 +52,21 @@ C33_BUOY = 194.5        # N/m, single-buoy heave waterplane stiffness
 T_HEAVE = 2.52          # s, Phase-1 correlated heave period
 ZETA = 0.13             # -, Phase-1 correlated heave damping (viscous)
 
-# --- platform layout (12-buoy, 2.5 m to centres) ---
-N_BUOY = 12
+# --- platform layout (16-buoy, 2.5 m to centres) ---
+N_BUOY = 16
 _SCALE = 1.25 / 1.5     # centre radius 1.5 m (sim) -> 1.25 m (2.5 m diameter to centres)
 ARM, INTRA = 1.0 * _SCALE, 0.5 * _SCALE
+CLUSTER_DEG = [0.0, 90.0, 180.0, 270.0]
+BUOY_DEG = [0.0, 90.0, 180.0, 270.0]    # 4 buoys/cluster (square); 12-buoy used 0/120/240
 RHO, G = 998.0, 9.806
 
 
 def buoy_centers() -> NDArray[np.float64]:
-    """(12, 2) buoy centres: 4 clusters (0/90/180/270 deg) x 3 buoys (0/120/240 deg)."""
+    """(16, 2) buoy centres: 4 clusters (0/90/180/270 deg) x 4 buoys (0/90/180/270 deg)."""
     out = []
-    for pc in np.deg2rad([0.0, 90.0, 180.0, 270.0]):
+    for pc in np.deg2rad(CLUSTER_DEG):
         cx, cy = ARM * np.cos(pc), ARM * np.sin(pc)
-        for tb in np.deg2rad([0.0, 120.0, 240.0]):
+        for tb in np.deg2rad(BUOY_DEG):
             out.append([cx + INTRA * np.cos(tb), cy + INTRA * np.sin(tb)])
     return np.asarray(out, dtype=np.float64)
 
@@ -167,7 +169,13 @@ def coefficients(centres, n_real, omega, depth, solver):  # type: ignore[no-unty
 
 
 def run_sweep(periods: NDArray[np.float64], wall_level: int = 2):  # type: ignore[no-untyped-def]
-    """Walls-out (unbounded, h) vs walls-in (h + side walls) at every period; cached to .npz."""
+    """Isolated sidewall effect (walls-in vs walls-out at the SAME 2.7 m depth) plus the
+    separate finite-depth effect (walls-out 2.7 m vs deep). Head seas (+x). Cached to .npy.
+
+    Each row is (T, o, wl, od): o = walls-out at 2.7 m (the baseline for the wall effect),
+    wl = walls-in at 2.7 m, od = walls-out deep (the baseline for the depth effect). Isolating
+    the wall effect requires o and wl at the SAME depth; comparing wl to a DEEP baseline would
+    fold the (larger, separate) finite-depth effect into the reported "wall" number."""
     import capytaine as cpt
 
     solver = cpt.BEMSolver()
@@ -177,13 +185,14 @@ def run_sweep(periods: NDArray[np.float64], wall_level: int = 2):  # type: ignor
     rows = []
     for t in periods:
         w = 2 * np.pi / t
-        o = coefficients(cen, n_real, w, np.inf, solver)
-        wl = coefficients(img, n_real, w, FLUME_H, solver)
-        rows.append((float(t), o, wl))
-        print(f"T={t:.2f}s  heave dA={_pct(o, wl, 'A', 'He'):+.1f}% "
-              f"dFexc={_pct(o, wl, 'F', 'He'):+.1f}%  "
-              f"pitch dFexc={_pct(o, wl, 'F', 'Pi'):+.1f}%  "
-              f"surge dFexc={_pct(o, wl, 'F', 'Su'):+.1f}%")
+        o = coefficients(cen, n_real, w, FLUME_H, solver)     # walls-out, 2.7 m  (wall baseline)
+        wl = coefficients(img, n_real, w, FLUME_H, solver)    # walls-in,  2.7 m  (isolated wall)
+        od = coefficients(cen, n_real, w, np.inf, solver)     # walls-out, deep   (depth baseline)
+        rows.append((float(t), o, wl, od))
+        print(f"T={t:.2f}s  [wall @2.7m] heave dA={_pct(o, wl, 'A', 'He'):+.1f}% "
+              f"dFexc={_pct(o, wl, 'F', 'He'):+.1f}%  pitch dFexc={_pct(o, wl, 'F', 'Pi'):+.1f}%  "
+              f"surge dFexc={_pct(o, wl, 'F', 'Su'):+.1f}%  |  [depth 2.7m vs deep] "
+              f"heave dFexc={_pct(od, o, 'F', 'He'):+.1f}%")
     np.save(HERE / "sweep_results.npy", np.array(rows, dtype=object), allow_pickle=True)
     return rows
 
@@ -202,7 +211,7 @@ def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     outer = 2 * (np.abs(buoy_centers()[:, 0]).max() + PLATE_R)
     cutoffs = [round(t, 2) for t in transverse_cutoff_periods()]
-    print(f"12-buoy platform (2.5 m to centres) in the OSU LWF ({FLUME_W} m x {FLUME_H} m)")
+    print(f"16-buoy platform (2.5 m to centres) in the OSU LWF ({FLUME_W} m x {FLUME_H} m)")
     print(f"  outer fin extent {outer:.2f} m -> side clearance {clearance() * 100:.0f} cm/side "
           f"({100 * outer / FLUME_W:.0f}% of width)")
     print(f"  transverse cut-on periods T_n = {cutoffs} s")
