@@ -39,7 +39,7 @@ def fig_blockage(path: str = "flume_blockage.png") -> None:
     ax.grid(alpha=0.25)
     ax.set_xlabel(f"across-flume (m)  —  LWF width {fw.FLUME_W} m")
     ax.set_ylabel("along-flume (m)")
-    ax.set_title(f"16-buoy platform (2.5 m to centres) in the OSU LWF\n"
+    ax.set_title(f"16-buoy platform (2.5 m to centres, {fw.ROT:.0f}°) in the OSU LWF\n"
                  f"outer span {2 * maxx:.2f} m ({200 * maxx / fw.FLUME_W:.0f}% of width) "
                  f"-> {clr * 100:.0f} cm/side", fontsize=11)
     fig.tight_layout()
@@ -75,6 +75,6 @@ def fig_regime(path: str = "flume_regime_map.png") -> None:
 
 
 if __name__ == "__main__":
-    fig_blockage()
-    fig_regime()
-    print("wrote flume_blockage.png, flume_regime_map.png")
+    fig_blockage(f"flume_blockage{fw.SUF}.png")
+    fig_regime(f"flume_regime_map{fw.SUF}.png")
+    print(f"wrote flume_blockage{fw.SUF}.png, flume_regime_map{fw.SUF}.png")

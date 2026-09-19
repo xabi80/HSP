@@ -306,6 +306,18 @@ caption(s, [T("Articulated 21-body accelerations at the deck centre and four clu
             T(". Sway/roll/yaw unexcited in head seas; peaks at the 2.19 s cut-on.")],
         t=6.35, h=0.95, size=13)
 
+# ============================ 9b — orientation robustness ============================
+s = slide("Orientation robustness — 0° vs 45°", "orientation")
+s.shapes.add_picture(str(HERE / "orientation_compare.png"), Inches(1.55), Inches(1.75),
+                     width=Inches(10.2))
+caption(s, [T("A 90° rotation is a symmetry no-op (4-fold layout); 45° turns the platform "
+             "corner-on and "), T("nearly doubles the clearance (0.44 → 0.80 m)", b=True, c=TEAL_D),
+            T(" — yet the wall effect is unchanged (free-decay −0.55 % both). It is set "
+              "by the "), T("bulk channel blockage", b=True, c=RED),
+            T(" (total array volume vs cross-section), not the nearest-buoy clearance — so the "
+              "reviewer's 0.6 m clearance is not the controlling parameter.")],
+        t=6.35, h=0.95, size=12.5)
+
 # ============================ 10 — concessions & recs ================================
 s = slide("Scope, concessions and recommendations", "caveats")
 bullets(s, [

@@ -56,8 +56,10 @@ ZETA = 0.13             # -, Phase-1 correlated heave damping (viscous)
 N_BUOY = 16
 _SCALE = 1.25 / 1.5     # centre radius 1.5 m (sim) -> 1.25 m (2.5 m diameter to centres)
 ARM, INTRA = 1.0 * _SCALE, 0.5 * _SCALE
-CLUSTER_DEG = [0.0, 90.0, 180.0, 270.0]
-BUOY_DEG = [0.0, 90.0, 180.0, 270.0]    # 4 buoys/cluster (square); 12-buoy used 0/120/240
+ROT = float(__import__("os").environ.get("PLAT_ROT_DEG", "0"))   # platform yaw about +z (deg)
+SUF = "" if ROT == 0 else f"_rot{int(ROT)}"
+CLUSTER_DEG = (np.array([0.0, 90.0, 180.0, 270.0]) + ROT).tolist()
+BUOY_DEG = (np.array([0.0, 90.0, 180.0, 270.0]) + ROT).tolist()  # 4 per cluster (square)
 RHO, G = 998.0, 9.806
 
 
@@ -193,7 +195,7 @@ def run_sweep(periods: NDArray[np.float64], wall_level: int = 2):  # type: ignor
               f"dFexc={_pct(o, wl, 'F', 'He'):+.1f}%  pitch dFexc={_pct(o, wl, 'F', 'Pi'):+.1f}%  "
               f"surge dFexc={_pct(o, wl, 'F', 'Su'):+.1f}%  |  [depth 2.7m vs deep] "
               f"heave dFexc={_pct(od, o, 'F', 'He'):+.1f}%")
-    np.save(HERE / "sweep_results.npy", np.array(rows, dtype=object), allow_pickle=True)
+    np.save(HERE / f"sweep_results{SUF}.npy", np.array(rows, dtype=object), allow_pickle=True)
     return rows
 
 
@@ -211,7 +213,8 @@ def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     outer = 2 * (np.abs(buoy_centers()[:, 0]).max() + PLATE_R)
     cutoffs = [round(t, 2) for t in transverse_cutoff_periods()]
-    print(f"16-buoy platform (2.5 m to centres) in the OSU LWF ({FLUME_W} m x {FLUME_H} m)")
+    print(f"16-buoy platform (2.5 m to centres, rot {ROT:.0f} deg) in the OSU LWF "
+          f"({FLUME_W} m x {FLUME_H} m)")
     print(f"  outer fin extent {outer:.2f} m -> side clearance {clearance() * 100:.0f} cm/side "
           f"({100 * outer / FLUME_W:.0f}% of width)")
     print(f"  transverse cut-on periods T_n = {cutoffs} s")

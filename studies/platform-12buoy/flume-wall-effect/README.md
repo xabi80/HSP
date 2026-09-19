@@ -52,6 +52,21 @@ At every period the finite-depth effect exceeds the sidewall effect. Finite dept
 facility property corrected by depth-scaling; the walls add a smaller term, negligible through
 the resonance where the platform's dynamics live.
 
+## Orientation robustness (0° vs 45°)
+
+A 90° rotation is a symmetry no-op (4-fold layout), so the study also re-runs the whole pipeline
+at **45°** (`PLAT_ROT_DEG=45`), where the platform is corner-on and the clearance nearly doubles:
+
+| Orientation | Clearance | Free-decay ΔT | Response wall effect (1.5–2.9 s) |
+|---|---|---|---|
+| 0° (flat-on) | 0.44 m/side | −0.55 % | ≤ 2.6 % |
+| 45° (corner-on) | 0.80 m/side | −0.55 % | ≤ 3.0 % |
+
+The wall effect is **unchanged** despite doubling the clearance (`orientation_compare.png`,
+`compare_orientations.py`) — it is set by the bulk channel blockage, not the nearest-buoy
+clearance. Every orientation-tagged output carries a `_rot45` suffix; regenerate with
+`PLAT_ROT_DEG=45 python <script>.py`.
+
 ## Three complementary models
 
 The wall effect is depth-sensitive for the *wave response* (a narrow shallow channel blocks long

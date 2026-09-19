@@ -56,14 +56,18 @@ SPAR_D, SPAR_CD = 0.1593, 1.2
 PLATE_R, PLATE_T, PLATE_CDN, PLATE_CDT = 0.1437, 0.0039, 5.0, 1.5
 N_DOF = 21 * 6
 OVR = "flume wall-effect: coarse coupled OSU BEM, small-body kernel"
+ROT = float(__import__("os").environ.get("PLAT_ROT_DEG", "0"))   # platform yaw about +z (deg)
+SUF = "" if ROT == 0 else f"_rot{int(ROT)}"
+CLUSTER_DEG = (np.array([0.0, 90.0, 180.0, 270.0]) + ROT).tolist()
+BUOY_DEG = (np.array([0.0, 90.0, 180.0, 270.0]) + ROT).tolist()   # 4 buoys/cluster (square)
 
 
 def centers():
     s = 1.25 / 1.5
     out = []
-    for pc in np.deg2rad([0, 90, 180, 270]):
+    for pc in np.deg2rad(CLUSTER_DEG):
         cx, cy = s * np.cos(pc), s * np.sin(pc)
-        for tb in np.deg2rad([0, 90, 180, 270]):   # 4 buoys/cluster (square)
+        for tb in np.deg2rad(BUOY_DEG):
             out.append((cx + 0.5 * s * np.cos(tb), cy + 0.5 * s * np.sin(tb)))
     return out
 
@@ -77,9 +81,9 @@ def deck() -> Deck:
     s = 1.25 / 1.5
     bodies: list = []
     joints: list = []
-    for c, pc in enumerate(np.deg2rad([0, 90, 180, 270])):
+    for c, pc in enumerate(np.deg2rad(CLUSTER_DEG)):
         cx, cy = 1.0 * s * np.cos(pc), 1.0 * s * np.sin(pc)
-        for b, tb in enumerate(np.deg2rad([0, 90, 180, 270])):
+        for b, tb in enumerate(np.deg2rad(BUOY_DEG)):
             k = 4 * c + b
             bx, by = cen[k]
             bodies.append(Body(
@@ -187,7 +191,8 @@ def run_rao(nc, periods, A=0.05):
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     what = sys.argv[1] if len(sys.argv) > 1 else "decay"
-    ncs = {"open": SCR / "coupled_osu_open_psd.nc", "walled": SCR / "coupled_osu_walled_psd.nc"}
+    ncs = {"open": SCR / f"coupled_osu_open{SUF}_psd.nc",
+           "walled": SCR / f"coupled_osu_walled{SUF}_psd.nc"}
     if what == "decay":
         res = {k: run_decay(v) for k, v in ncs.items()}
         o, w = res["open"], res["walled"]
@@ -198,7 +203,7 @@ def main():
         print(f"       buoy1 pitch (articulation): open {o['buoy1_pitch_max']:.4f} -> "
               f"walled {w['buoy1_pitch_max']:.4f} rad")
         import json
-        (SCR / "articulated_decay.json").write_text(json.dumps(res))
+        (SCR / f"articulated_decay{SUF}.json").write_text(json.dumps(res))
     else:
         P = np.array([2.19, 2.52, 3.0, 3.5])
         Ro, Ao = run_rao(ncs["open"], P); Rw, Aw = run_rao(ncs["walled"], P)
@@ -210,7 +215,7 @@ def main():
         for i, T in enumerate(P):
             print(f"{T:5.2f} "
                   + "".join(f"{100 * (Aw[k][i] / Ao[k][i] - 1):+9.1f}" for k in ACC_PTS))
-        np.savez(SCR / "articulated_rao.npz", P=P, Ro=Ro, Rw=Rw,
+        np.savez(SCR / f"articulated_rao{SUF}.npz", P=P, Ro=Ro, Rw=Rw,
                  **{f"Ao_{k.replace(' ', '_')}": Ao[k] for k in ACC_PTS},
                  **{f"Aw_{k.replace(' ', '_')}": Aw[k] for k in ACC_PTS})
 

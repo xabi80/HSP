@@ -23,6 +23,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
+ROT = float(__import__("os").environ.get("PLAT_ROT_DEG", "0"))
+SUF = "" if ROT == 0 else f"_rot{int(ROT)}"
 TEAL, TEALD, RED, GREY = "#0c8b96", "#0a5560", "#b2432c", "#51606a"
 PTS = ["platform_centre", "cluster_1", "cluster_2", "cluster_3", "cluster_4"]
 LBL = ["platform", "cl.1", "cl.2", "cl.3", "cl.4"]
@@ -35,7 +37,7 @@ C33_BUOY, T_HEAVE = 194.5, 2.52
 def freq_domain_heave_period_pct() -> float | None:
     """Implied heave natural-period shift from the frequency-domain added-mass shift:
     dT/T = 0.5 * dA/(M+A) = 0.5 * (dA/A) * (A/(M+A)), with A/(M+A) = A33*wn^2/C33."""
-    f = HERE / "sweep_results.npy"
+    f = HERE / f"sweep_results{SUF}.npy"
     if not f.exists():
         return None
     rows = np.load(f, allow_pickle=True)
@@ -51,11 +53,11 @@ def freq_domain_heave_period_pct() -> float | None:
 
 
 def fig_summary() -> None:
-    dec = json.loads((HERE / "articulated_decay.json").read_text())
+    dec = json.loads((HERE / f"articulated_decay{SUF}.json").read_text())
     o, w = dec["open"], dec["walled"]
     art_T_pct = 100 * (w["heave_T"] / o["heave_T"] - 1)
     fd_T_pct = freq_domain_heave_period_pct()
-    npz = np.load(HERE / "articulated_rao.npz")
+    npz = np.load(HERE / f"articulated_rao{SUF}.npz")
     P, Ro, Rw = npz["P"], npz["Ro"], npz["Rw"]
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11.6, 4.3))
@@ -90,13 +92,13 @@ def fig_summary() -> None:
     fig.suptitle("Flume wall effect — articulated 21-body FloatSim (16-buoy platform)",
                  fontsize=12.5, fontweight="bold")
     fig.tight_layout()
-    fig.savefig(HERE / "articulated_summary.png", dpi=130, bbox_inches="tight")
+    fig.savefig(HERE / f"articulated_summary{SUF}.png", dpi=130, bbox_inches="tight")
     plt.close(fig)
 
 
 def fig_accel_vertical() -> None:
     """Vertical (heave) acceleration wall effect at the 5 sensor points."""
-    npz = np.load(HERE / "articulated_rao.npz")
+    npz = np.load(HERE / f"articulated_rao{SUF}.npz")
     P = npz["P"]
     fig, ax = plt.subplots(figsize=(8.2, 4.4))
     wdt = 0.16
@@ -112,12 +114,12 @@ def fig_accel_vertical() -> None:
                  fontweight="bold")
     ax.legend(fontsize=8, ncol=5, loc="lower center"); ax.grid(axis="y", alpha=0.3)
     fig.tight_layout()
-    fig.savefig(HERE / "articulated_accel.png", dpi=130, bbox_inches="tight")
+    fig.savefig(HERE / f"articulated_accel{SUF}.png", dpi=130, bbox_inches="tight")
     plt.close(fig)
 
 
 def fig_accel_multidof() -> None:
-    d = np.load(HERE / "accel_multidof.npz")
+    d = np.load(HERE / f"accel_multidof{SUF}.npz")
     P = d["P"]
     dofs = [("surge", "fore-aft accel"), ("heave", "vertical accel"), ("pitch", "pitch ang. accel")]
     fig, axs = plt.subplots(1, 3, figsize=(14, 4.2), sharey=True)
@@ -137,7 +139,7 @@ def fig_accel_multidof() -> None:
                  "FloatSim\n(grey band = typical ±5% model-test scatter)",
                  fontsize=12, fontweight="bold")
     fig.tight_layout()
-    fig.savefig(HERE / "accel_multidof.png", dpi=130, bbox_inches="tight")
+    fig.savefig(HERE / f"accel_multidof{SUF}.png", dpi=130, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -145,7 +147,7 @@ def fig_wall_vs_depth() -> None:
     """Isolated sidewall effect vs the finite-depth effect on heave excitation (both at head
     seas), from the 2.7 m frequency-domain sweep. Makes the point that DEPTH, not the walls,
     is the dominant flume artifact -- and it is largest at long periods."""
-    rows = np.load(HERE / "sweep_results.npy", allow_pickle=True)
+    rows = np.load(HERE / f"sweep_results{SUF}.npy", allow_pickle=True)
     Ts = np.array([r[0] for r in rows])
     wall = np.array([100 * (r[2][("F", "He")] / r[1][("F", "He")] - 1) for r in rows])  # wl/o
     depth = np.array([100 * (r[1][("F", "He")] / r[3][("F", "He")] - 1) for r in rows])  # o/od
@@ -161,7 +163,7 @@ def fig_wall_vs_depth() -> None:
                  "(the reviewer's concern is the walls; the dominant artifact is the depth)",
                  fontsize=11, fontweight="bold")
     ax.legend(fontsize=9, loc="lower left"); ax.grid(axis="y", alpha=0.3)
-    fig.tight_layout(); fig.savefig(HERE / "wall_vs_depth.png", dpi=130, bbox_inches="tight")
+    fig.tight_layout(); fig.savefig(HERE / f"wall_vs_depth{SUF}.png", dpi=130, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -172,7 +174,7 @@ def main() -> None:
                      ("accel_multidof.png", fig_accel_multidof),
                      ("wall_vs_depth.png", fig_wall_vs_depth)]:
         try:
-            fn(); made.append(name)
+            fn(); made.append(name.replace(".png", f"{SUF}.png"))
         except FileNotFoundError as e:
             print(f"skip {name}: missing {e.filename}")
     print("wrote:", ", ".join(made))

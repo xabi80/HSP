@@ -45,6 +45,8 @@ CLUSTER_ANGLES_DEG = [0, 90, 180, 270]     # 4 clusters
 BUOY_ANGLES_DEG = [0, 90, 180, 270]        # 4 buoys/cluster (square); 12-buoy used [0,120,240]
 NB = len(CLUSTER_ANGLES_DEG) * len(BUOY_ANGLES_DEG)   # 16 buoys
 NDOF = 6 * NB                              # 96 coupled rigid DOFs
+ROT = float(__import__("os").environ.get("PLAT_ROT_DEG", "0"))  # platform yaw about +z (deg)
+SUF = "" if ROT == 0 else f"_rot{int(ROT)}"                      # output-file suffix
 DOF6 = ["Surge", "Sway", "Heave", "Roll", "Pitch", "Yaw"]
 # rigid-DOF reflection across a y=const plane: translations flip y; rotations (pseudovec)
 # flip x,z. So surge/heave/pitch keep sign under the image; sway/roll/yaw flip.
@@ -55,9 +57,9 @@ HERE = Path(__file__).resolve().parent
 def centers() -> list[tuple[float, float]]:
     s = 1.25 / 1.5
     out = []
-    for pc in np.deg2rad(CLUSTER_ANGLES_DEG):
+    for pc in np.deg2rad(np.array(CLUSTER_ANGLES_DEG) + ROT):
         cx, cy = s * np.cos(pc), s * np.sin(pc)
-        for tb in np.deg2rad(BUOY_ANGLES_DEG):
+        for tb in np.deg2rad(np.array(BUOY_ANGLES_DEG) + ROT):
             out.append((cx + 0.5 * s * np.cos(tb), cy + 0.5 * s * np.sin(tb)))
     return out
 
@@ -214,7 +216,7 @@ def main() -> None:
                     complex=("complex", ["re", "im"])),
         attrs=dict(rho=RHO, g=G, water_depth=DEPTH, body_name=f"osu{NB}_{mode}"),
     )
-    out = HERE / (f"coupled_osu_{mode}{'_test' if test else ''}.nc")
+    out = HERE / (f"coupled_osu_{mode}{'_test' if test else ''}{SUF}.nc")
     ds.to_netcdf(out)
     print(f"wrote {out}  ({(time.perf_counter() - t0) / 60:.1f} min)", flush=True)
     sys.path.insert(0, str(Path("C:/Users/xlama/OneDrive/Documents/buoy/HSP_code")))

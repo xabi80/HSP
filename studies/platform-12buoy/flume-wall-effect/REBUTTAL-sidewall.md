@@ -100,6 +100,24 @@ At every period the finite-depth effect exceeds the sidewall effect. Finite dept
 facility property that any flume campaign corrects for by depth-scaling; the sidewalls add a
 smaller term on top, negligible through the resonance where the platform's dynamics live.
 
+## Orientation independence — clearance is not the controlling parameter
+
+The reviewer's argument rests on the 0.6 m clearance. We tested whether clearance is actually
+what drives the effect by re-running the entire study with the platform **rotated 45°** (a 90°
+rotation is a symmetry no-op for the 4-fold-symmetric layout). At 45° the platform is corner-on
+to the walls and the side clearance **nearly doubles, 0.44 → 0.80 m**:
+
+| Orientation | Clearance | Free-decay ΔT | Response wall effect (1.5–2.9 s) |
+|---|---|---|---|
+| 0° (flat-on) | 0.44 m/side | −0.55 % | ≤ 2.6 % |
+| 45° (corner-on) | 0.80 m/side | −0.55 % | ≤ 3.0 % |
+
+The wall effect is **unchanged** despite doubling the clearance. It is set by the **bulk channel
+blockage** — the total array volume relative to the flume cross-section, which is
+orientation-independent — not by the nearest-buoy clearance. So the 0.6 m clearance the comment
+is built on is not the parameter that controls sidewall reflections here; the (small) effect is
+robust to how the platform is oriented in the flume.
+
 ## What we concede, and how we handle it
 
 - **Transverse cut-ons (T ≈ 2.19 / 1.53 / 1.25 s):** narrow, known, and skipped in the sweep

@@ -65,7 +65,8 @@ def run(nc, periods, A=0.05):
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
-    ncs = {"open": SCR / "coupled_osu_open_psd.nc", "walled": SCR / "coupled_osu_walled_psd.nc"}
+    ncs = {"open": SCR / f"coupled_osu_open{aw.SUF}_psd.nc",
+           "walled": SCR / f"coupled_osu_walled{aw.SUF}_psd.nc"}
     P = np.array([2.19, 2.52, 3.0, 3.5])
     Ao = run(ncs["open"], P)
     Aw = run(ncs["walled"], P)
@@ -76,7 +77,7 @@ def main():
         for d in DOFS:
             save[f"o_{key}_{d}"] = Ao[pt][d]
             save[f"w_{key}_{d}"] = Aw[pt][d]
-    np.savez(SCR / "accel_multidof.npz", **save)
+    np.savez(SCR / f"accel_multidof{aw.SUF}.npz", **save)
 
     units = {"surge": "m/s^2", "heave": "m/s^2", "pitch": "rad/s^2"}
     for d in EXCITED:

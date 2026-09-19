@@ -32,6 +32,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
+ROT = float(__import__("os").environ.get("PLAT_ROT_DEG", "0"))
+SUF = "" if ROT == 0 else f"_rot{int(ROT)}"
 C33_BUOY, N_BUOY, T_HEAVE, ZETA = 194.5, 16, 2.6, 0.10
 TEAL, RED = "#0c8b96", "#b2432c"
 
@@ -48,7 +50,7 @@ def main() -> None:
     import sys
 
     sys.stdout.reconfigure(encoding="utf-8")
-    rows = np.load(HERE / "sweep_results.npy", allow_pickle=True)
+    rows = np.load(HERE / f"sweep_results{SUF}.npy", allow_pickle=True)
     T, A_o = _series(rows, "o", "A")
     _, B_o = _series(rows, "o", "B")
     _, F_o = _series(rows, "o", "F")
@@ -89,8 +91,9 @@ def main() -> None:
                  "(response wall effect; the depth-sensitive piece the deep coupled run misses)",
                  fontsize=11, fontweight="bold")
     ax.legend(fontsize=9); ax.grid(alpha=0.3)
-    fig.tight_layout(); fig.savefig(HERE / "floatsim_wall_rao.png", dpi=130, bbox_inches="tight")
-    print("\nwrote floatsim_wall_rao.png")
+    fig.tight_layout()
+    fig.savefig(HERE / f"floatsim_wall_rao{SUF}.png", dpi=130, bbox_inches="tight")
+    print(f"\nwrote floatsim_wall_rao{SUF}.png")
 
 
 if __name__ == "__main__":
