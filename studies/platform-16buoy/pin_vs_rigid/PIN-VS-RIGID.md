@@ -72,7 +72,8 @@ Full nonlinear KKT model with Morison drag, H = 0.10 m, heading 0° (all cases s
 | 3.5 | 1.117 / 1.085 | 378.2 | 719.7 | **1.9×** |
 | 4.0 | 1.122 / 1.114 | 282.7 | 376.4 | **1.3×** |
 
-This confirms the FD map with *real* amplitudes: **heave is identical** (within a few %),
+This confirms the FD map with *real* amplitudes: **heave is identical** (within a few %; the
+3–8 % near-resonance gap is drag-mediated, see the drag-sensitivity addendum below),
 and the rigid raft tilts **1.3–3.5× more**, again largest in the short operational waves.
 Drag suppresses the FD resonance spike ~11× (articulated pitch at 3.2 s: FD 3946 → drag-limited
 357 mrad/m), exactly as the radiation-only caveat predicted — but the **pin/rigid ordering
@@ -118,6 +119,69 @@ at all. If anything the fix nudges the rigid/artic ratio *up* (2.37 → 2.41), s
 the verdict. The defect is real and should be fixed
 in FloatSim (it bites lightly-damped / low-drag / radiation-dominated cases), but it is
 independent of this conclusion.
+
+## Addendum — drag sensitivity of the heave gap (`pvr_dragscan.py`)
+
+**Question.** The radiation-only FD gives identical pin/rigid heave (< 1 %). The drag-limited TD
+(Result 4) gives a rigid heave 3–8 % lower near resonance. Does the TD converge to the FD as
+drag is removed?
+
+**Method.**
+- Every Morison Cd (spar, plate normal, plate tangential) is scaled by ×0.4 and ×0.1, then the
+  Result 4 runs are repeated (H = 0.10 m; T = 3.0, 3.2, 3.5 s).
+- Quadratic drag relative to the linear forces scales with Cd·H. The near-linear limit at the
+  3.2 s resonance therefore uses **Cd ×0.01 with H = 0.01 m**. That is the same drag strength as
+  Cd ×0.001 at H = 0.1 m, but the motions stay inside the small-angle joint range.
+- The x-axis in the figure is the effective drag scale `Cd_scale · H / 0.1 m`.
+- The lightly damped resonance settles slowly, so those runs use a 400 s cap and a 0.2 %
+  window-to-window settle tolerance (instead of 150 s and 2 %).
+
+![drag sensitivity](pvr_dragscan.png)
+
+Heave RAO, pin / rigid, and the rigid-vs-pin gap (`pvr_dragscan_summary.csv`):
+
+| Effective drag | T = 3.0 s | T = 3.2 s (resonance) | T = 3.5 s |
+|---|---|---|---|
+| ×1 (Result 4) | 0.81 / 0.75 (−8.0 %) | 0.99 / 0.94 (−5.6 %) | 1.12 / 1.08 (−2.9 %) |
+| ×0.4 | 1.23 / 1.14 (−7.3 %) | 1.56 / 1.47 (−5.7 %) | 1.54 / 1.50 (−2.2 %) |
+| ×0.1 | 1.94 / 1.89 (−2.6 %) | 3.09 / 2.92 (−5.4 %) | 1.91 / 1.91 (+0.1 %) |
+| ×0.001 (Cd ×0.01, H = 0.01 m) | — | 9.81 / 9.91 (+1.1 ± 1.5 %) | — |
+| 0 (radiation-only FD) | 2.37 / 2.36 (−0.6 %) | 10.91 / 10.85 (−0.6 %) | 1.99 / 1.99 (0.0 %) |
+
+1. **The gap comes from drag.** In the linear model, uniform heave is decoupled from pitch (the
+   platform is symmetric, and all buoys heaving together bends no joint). Drag is the only path
+   by which the rigid raft's larger pitch reaches heave: the outer buoys' drag sees `ẇ + x·θ̇`,
+   so extra pitch means extra heave damping.
+2. **The gap holds steady while drag limits the motion.** Cutting Cd lets both heave and pitch
+   grow by about the same factor (×1.6 each from ×1 to ×0.4 at 3.2 s). The pitch-driven share of
+   the heave damping therefore stays the same, and the gap barely moves (−5.6 / −5.7 / −5.4 %).
+3. **It converges once drag is a small part of the damping.** At the ×0.001 effective scale,
+   heave is 90 % of the FD value and the gap is gone: +1.1 %, within ±1.5 % because the amplitude
+   was still drifting ~0.5 % per window at the 400 s cap. Off resonance, the response is set by
+   mass and stiffness, so the gap already closes at ×0.1.
+4. **A one-DOF model explains the slow convergence.** Radiation plus equivalent-linearised drag
+   gives `X = X_lin / (1 + c·s·X)`, where c is fitted on the Cd ×1 run only.
+   - Model vs TD (pin / rigid): 1.53 / 1.44 vs 1.56 / 1.47 at ×0.4; 2.83 / 2.69 vs 3.09 / 2.92
+     at ×0.1; 9.9 / 9.8 vs 9.8 / 9.9 at ×0.001.
+   - Drag's share of the resonant heave damping: 91 % at ×1, 74 % at ×0.1, 9 % at ×0.001.
+   - The convergence is slow because drag damping ∝ Cd × velocity, and the velocity grows as Cd
+     drops. A 10× cut in Cd removes only about √10 of the effective drag damping.
+5. **The tilt verdict does not depend on drag.** The rigid raft pitches 1.4–2.5× more than the
+   pinned one at every drag level. As drag → 0 the ratio tends to the FD values (1.38 / 1.65 /
+   1.58).
+6. **Large amplitude.**
+   - At Cd ×0.001 with H = 0.1 m, the rigid heave is 9.66, 2.5 % below its small-wave twin. That
+     is large-motion nonlinearity: ~0.5 m heave and 13° of pitch.
+   - The articulated run at that setting **diverged** (deck pitch 224 rad/m, heave acceleration
+     1200 m/s²). Its motions are far beyond the ~0.1 rad validity of the first-order joint rows
+     (see Caveats). It was not diagnosed further, and no time history was saved. With realistic
+     drag, the motions stay well inside the valid range.
+
+**Implication.** With realistic drag, the rigid raft's resonant heave is ~5–6 % lower than the
+pinned one's, and its peak heave acceleration ~17 % lower at 3.2 s. That is a real but small
+coupling that only exists through drag. The FD's "identical heave" (Result 1) is its no-drag
+limit, and the deck-tilt verdict is unchanged. Reproduce with `pvr_dragscan.py <cd_scale>
+[periods] [--height H --cap S --tol X]` (rows in `pvr_drag_rows/`), then `pvr_dragscan_plot.py`.
 
 ## Bottom line
 For a still, level deck the **articulated (pin) design is strictly better**: identical heave,

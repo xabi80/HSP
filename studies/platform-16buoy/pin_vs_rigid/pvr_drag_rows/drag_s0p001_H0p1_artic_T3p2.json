@@ -1,0 +1,1 @@
+{"config": "artic", "T": 3.2, "scale": 0.001, "height": 0.1, "heave": 4.879651971080978, "pitch": 224.13006410769458, "acc_heave": 1214.9283528782553, "duration_s": 458.40000000000003, "settle_ratio": 0.1335183196106357, "settled": false, "wall_min": 122.60645276166676, "settle_tol": 0.002, "diverged": true}
