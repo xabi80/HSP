@@ -1,0 +1,151 @@
+# Flume station-keeping mooring — 1 buoy, 1 cluster, 4×4 platform (OSU LWF)
+
+TEAMER reviewer question: *which mooring do we need, and how could the flume size influence it?*
+
+Scope agreed for the answer: the flume mooring is **station-keeping only** (hold the article in
+the test section without disturbing the measured wave-frequency response); the field site is
+**deep water**; test waves are moderate, **H = 0.2–0.5 m**, T = 1.4–4.0 s. Flume: OSU Large Wave
+Flume, 3.66 m wide, 2.7 m deep, 104 m long.
+
+The reviewer response text is in [`RESPONSE-mooring.md`](RESPONSE-mooring.md).
+
+## Answer
+
+An **X-spread of four soft, horizontal lines at the still-water line (SWL)** to wall anchors 5 m
+up- and downstream, sized for a **surge natural period of ~15 s** (≥ 3.75× the longest wave
+period). Where the lines attach matters more than how stiff they are:
+
+| | 1 buoy | 1 cluster (4 buoys) | 4×4 platform (45°) |
+|---|---|---|---|
+| Lines attach at | one collar on the spar at the SWL | upstream + downstream spars, at the SWL | upstream + downstream rows (8 spars, 2-leg bridles), at the SWL |
+| Horizontal inertia M + A₁₁ | 40.4 kg | 165.7 kg | 668.9 kg |
+| Surge stiffness Kx | 7.1 N/m | 29.1 N/m | 117.4 N/m |
+| Per line: stiffness / pretension / max tension | 2.0 N/m / 2.2 N / 4.1 N | 8.2 N/m / 9.0 N / 16.5 N | 33.3 N/m / 36 N / 66 N |
+| Spring pre-stretch / max stretch | 1.1 m / 2.0 m | 1.1 m / 2.0 m | 1.1 m / 2.0 m |
+| Moored surge period (coupled model) | 15.0 s | 15.9 s | 15.8 s |
+| Heave natural period shift | −0.43 % | −0.45 % | −0.45 % |
+| Pitch period shift (buoy / hub / deck) | −0.10 % | −0.90 % | −0.36 % |
+| Buoy-tilt (pendulum) mode shift | n/a | −2.4 % | −2.3 % |
+| Mean drift, H = 0.5 m (upper bound) | 5.2 N | 20.9 N | 83.6 N |
+| Mean offset, H = 0.5 m / 0.3 m | 0.74 / 0.27 m | 0.76 / 0.28 m | 0.75 / 0.28 m |
+| Mean trim / largest buoy tilt, H = 0.5 m | 0° / — | 0° / 3.0° | 0° / 3.0° |
+
+The 3.0° buoy tilt (1.1° at H = 0.3 m) is **not caused by the mooring**. The drift acts at each
+spar's SWL, 0.72 m below its pin, so every pinned buoy leans by that amount whatever holds the
+deck. The article-to-article numbers are nearly identical because the inertia and the drift both
+scale with the number of buoys. The same design scales by buoy count: per-line stiffness and
+pretension ×4 for the cluster and ×16.6 for the platform.
+
+![layout](mooring_layout.png)
+
+## Where to attach: at the SWL, not at the pins/deck, and not only at the corners
+
+`mooring_verify.py` adds the mooring to the real FloatSim models: the 6-DOF buoy, the 30-DOF
+cluster (4 buoys + hub, pinned KKT joints) and the 126-DOF platform (16 buoys + 4 hubs + deck).
+For each attachment option it computes how the natural periods shift and the static equilibrium
+under the drift.
+
+![verify](mooring_verify.png)
+
+- **The drift acts at the SWL**, because it is splash-zone drag. Lines at the SWL therefore
+  react it with no lever arm, and the trim is zero for all three articles.
+- **Single buoy.** Attaching at the spar top (+0.72 m) gives −1.3 % pitch period and 0.8° mean
+  trim. Attaching at CoG depth (−0.91 m) gives −0.5 % and 1.0°. The SWL collar gives −0.1 % and 0°.
+- **Pinned articles, pin plane (hub / deck, +0.72 m).** Zero trim and no extra buoy tilt, since
+  the pins transmit no moment. But it holds the light deck/hubs (14 kg against 669 kg of
+  platform) nearly still. That stiffens the **buoy-tilt mode** (the buoys swinging in phase
+  about their pins, 2.86 s cluster / 2.92 s platform, inside the wave band) by **−8.8 to
+  −8.9 %** at T_surge = 15 s.
+- **Pinned articles, bow + stern spars at the SWL (recommended).** Each attached spar takes its
+  share of the drift. The upstream and downstream buoys lean the other way by the same 3.0°, so
+  the largest buoy tilt is unchanged. The tilt-mode shift falls to −2.4 %, and deck pitch is
+  −0.4 % (hub pitch −0.9 % for the cluster).
+- **Not recommended:**
+  - only the 4 corner spars of the platform: the whole array's drift passes through four pins,
+    giving a **9.1° corner-buoy tilt**;
+  - attaching below the SWL (CoG depth): **10.7° buoy tilt**.
+
+## How soft
+
+Panel (d) of the figure sweeps the design surge period for the two finalists:
+
+| T_surge | 10 s | 15 s | 20 s | 25 s | 30 s |
+|---|---|---|---|---|---|
+| Tilt-mode shift, bow/stern spars at SWL | −5.3 % | −2.3 % | −1.3 % | −0.8 % | −0.6 % |
+| Tilt-mode shift, pin plane | −17.6 % | −8.8 % | −5.2 % | −3.4 % | −2.4 % |
+| Mean offset, H = 0.5 m (upper bound) | 0.33 m | 0.75 m | 1.30 m | 2.0 m | 2.9 m |
+| Spring max stretch | — | 2.0 m | 3.1–3.2 m | — | — |
+
+**15 s** is the recommended compromise: every shift is ≤ 2.4 %, the offset is < 0.8 m, and the
+springs need 2 m of linear stroke. 20 s halves the tilt-mode shift, at the cost of a 1.3 m
+offset and 3.2 m of stroke. A single-point bridle at the pin plane would need **≥ 25 s** to reach
+the same (−3.4 %), with a 2 m offset.
+
+## How the flume size influences the mooring
+
+**Depth (2.7 m).**
+- A deep-water field mooring cannot be reproduced at scale. The flume mooring is an *equivalent*
+  soft station-keeping system. It is characterised by a static pull test and included in the
+  numerical model of the test.
+- The lines must be horizontal, to anchors at the SWL. With 5 m of scope, a line from the SWL to
+  a floor anchor would be inclined 27°. That adds vertical stiffness ≈ 0.29 Kx and pulls the
+  article down (platform: ≈ 65 N, ≈ 2 cm of draft). With 10 m of scope the figures are 15° and
+  0.07 Kx: workable, but inferior.
+- Depth raises the orbital velocity at long periods. Compared with deep water, the drift is ×1.29
+  at 3 s and ×1.87 at 4 s. The design drift, however, peaks at the steepness limit near 2.2 s,
+  where the factor is only 1.05. **Depth does not drive the mooring design.**
+
+**Width (3.66 m).**
+- The width sets the X-spread angle: 20° with ±5 m anchors. Sway stiffness is therefore about ⅓
+  of surge, giving a sway period of ≈ 26 s.
+- A lateral disturbance of 10 % of the drift moves the article 0.21 m. The clearance to the walls
+  is 1.69 m (buoy), 1.27 m (cluster) and **0.80 m (platform)**.
+- Longer anchors (±10 m) halve the heave coupling (−0.22 % instead of −0.43 %), but they raise
+  the lateral excursion to 0.49 m, which is too close to the platform's 0.80 m. **The width is
+  what fixes the platform's anchors at ~±5 m.** The buoy and cluster can use either distance.
+
+**Length (104 m).** Mean offsets ≤ 0.76 m (upper bound) and a ±5.3 m line footprint fit easily.
+Wave gauges are referenced to the mean moored position.
+
+## Method
+
+- **`mooring_sizing.py`**: horizontal inertia (structural mass + BEM low-frequency surge added
+  mass: 18.87 kg per single buoy, 310.6 kg for the 16-buoy array) and the mean-drift upper bound.
+  - The drift is splash-zone Morison drag on every fixed spar,
+    `F = (2/3π) ρ Cd D A U²` with `U = Aω coth(kh)`, plus the Havelock potential bound. It
+    assumes no shielding and caps the waves at H/L ≤ 1/15.
+  - The same script designs the X-spread: per-line axial stiffness, a pretension that keeps the
+    slack side taut (+20 %), sway stiffness, and the heave geometric stiffness 4T₀/ℓ.
+- **`bem_cluster.py`**: coupled Capytaine BEM of the 4-buoy cluster (1248 panels, 24 DOF, deep
+  water, PSD-projected damping), matching the platform's hull, mesh and schema.
+- **`mooring_verify.py`**: the mooring enters as an anisotropic point stiffness
+  `BᵀKB`, `B = [I, −skew(r)]`, `K = diag(Kx, Ky, Kz_geo)`. (The deck `LinearSpring` is isotropic
+  and would wrongly add Kx to heave.)
+  - Natural periods come from the constrained generalized eigenproblem on the null space of the
+    joint Jacobian, iterated on A(ω). Each mode is identified unmoored and tracked into the moored
+    model by mass-weighted MAC (≥ 0.9). Heave uses the rigid-heave Rayleigh quotient, which is
+    robust to the platform's near-degenerate heave-like modes.
+  - The static drift response is a KKT solve `[K Gᵀ; G 0]`.
+- **`mooring_layout.py`**: the line design table (`mooring_design_table.csv`) and the schematic.
+
+## Limits
+
+- **The drift is an upper bound.** It assumes fixed bodies, no shielding and Cd = 1.2. The moving
+  buoys' relative-velocity drift is lower, so the offsets and tensions above are conservative.
+  Load cells on the anchors would measure the true mean drift.
+- **The coupled check is linear:** eigen-analysis plus static equilibrium, not a moored
+  time-domain run. Regular waves produce only a mean drift. Irregular waves would add slow drift
+  near T_surge, a fraction of the mean offset.
+- **The coupled BEM is deep water**, as at the field site. The flume-depth effect on the
+  hydrodynamics is quantified in `../platform-12buoy/flume-wall-effect/`.
+- **The springs must stay linear over ~2 m of stretch**, and the bridle legs must be equal so
+  that the 8 platform spars share the load. Verify both with a static pull test before testing.
+
+## Reproduce
+
+```bash
+python mooring_sizing.py    # drift + stiffness window + X-spread line design
+python bem_cluster.py       # cluster BEM (~1-2 min); writes cluster_osu_open(_psd).nc
+python mooring_verify.py    # coupled check on the 3 articles + T_surge sweep (~2 min)
+python mooring_layout.py    # design table + layout schematic
+```
