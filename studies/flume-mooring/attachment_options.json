@@ -326,5 +326,59 @@
   "theta0_deg": 2.0,
   "decay_s": 40.0,
   "drag": false
+ },
+ "lines:cluster:pin_level": {
+  "article": "cluster",
+  "option": "pin_level",
+  "w_line": 0.02,
+  "total_vertical_line_force_N": -0.15307661216477664,
+  "Kx_lines_N_per_m": 30.709943225270564,
+  "Kx_design_N_per_m": 29.282458284405383,
+  "max_buoy_tilt_deg": 2.2291539394729632e-07
+ },
+ "lines:cluster:pin_level_w0.1": {
+  "article": "cluster",
+  "option": "pin_level_w0.1",
+  "w_line": 0.1,
+  "total_vertical_line_force_N": -0.7653527798870813,
+  "Kx_lines_N_per_m": 30.694443794557102,
+  "Kx_design_N_per_m": 29.282458284405383,
+  "max_buoy_tilt_deg": 4.492699100233164e-07
+ },
+ "lines:cluster:pin_level_w0.3": {
+  "article": "cluster",
+  "option": "pin_level_w0.3",
+  "w_line": 0.3,
+  "total_vertical_line_force_N": -2.295923938434901,
+  "Kx_lines_N_per_m": 30.56731702864184,
+  "Kx_design_N_per_m": 29.282458284405383,
+  "max_buoy_tilt_deg": 3.881488973282448e-07
+ },
+ "lines:cluster:pin_level_w1": {
+  "article": "cluster",
+  "option": "pin_level_w1",
+  "w_line": 1.0,
+  "total_vertical_line_force_N": -7.650474424770285,
+  "Kx_lines_N_per_m": 29.335843773727355,
+  "Kx_design_N_per_m": 29.282458284405383,
+  "max_buoy_tilt_deg": 1.0830942235563693e-05
+ },
+ "lines:platform:pin_level": {
+  "article": "platform",
+  "option": "pin_level",
+  "w_line": 0.02,
+  "total_vertical_line_force_N": -0.25264416153991887,
+  "Kx_lines_N_per_m": 124.48523326165528,
+  "Kx_design_N_per_m": 117.36845823958566,
+  "max_buoy_tilt_deg": 1.500994201873183e-07
+ },
+ "lines:platform:pin_level_w1": {
+  "article": "platform",
+  "option": "pin_level_w1",
+  "w_line": 1.0,
+  "total_vertical_line_force_N": -12.631225445797682,
+  "Kx_lines_N_per_m": 123.5595682623039,
+  "Kx_design_N_per_m": 117.36845823958566,
+  "max_buoy_tilt_deg": 1.3862551354296797e-05
  }
 }

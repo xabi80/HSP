@@ -109,6 +109,22 @@ The options:
 - **Reduced T₀** scales the static tilt almost linearly: exactly for the cluster, within 3 %
   for the platform. It trades station-keeping range, because the lines go slack above the
   design H.
+- **Pin-level lines run through AIR** (anchors at +0.72 m).
+  - FloatSim's catenary takes one uniform weight per unit length, documented as the submerged
+    weight, and has no air/water split. A line wholly in air needs its DRY weight; a line crossing
+    the surface cannot be represented. The 0.02 N/m used here is an in-water, near-neutral
+    assumption.
+  - Because the line acts through the pin, its weight cannot tilt the buoys. Swept in FloatSim
+    (`attachment_options.py lines`):
+
+    | dry weight (N/m) | 0.02 | 0.1 | 0.3 | 1.0 |
+    |---|---|---|---|---|
+    | cluster: vertical line load / surge Kx | −0.15 N / 30.7 N/m | −0.77 / 30.7 | −2.30 / 30.6 | −7.65 N / 29.3 N/m |
+    | platform: vertical line load / surge Kx | −0.25 N / 124.5 N/m | | | −12.6 N / 123.6 N/m |
+
+    Buoy tilt stays 0.000° in every case. At 1 N/m the load sinks the cluster ≈ 1.2 cm
+    (7.65 / 663 N/m) and the platform ≈ 4 mm, and sag softens Kx by up to 4.5 %.
+  - Not moot, but small. The real dry weight of the spring + rope is still needed.
 - **The choice (Decision 1) is open.** The trade is zero static tilt against a 9 % stiffer
   tilt mode, or a static tilt against the station-keeping range.
 

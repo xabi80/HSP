@@ -53,6 +53,11 @@ Z_PIN = -0.907 + 1.624                        # absolute pin height (+0.717 m)
 OPTIONS = {"swl_spar": {}, "pin_level": {"fairlead": PIN_B, "anchor_z": Z_PIN},
            "balanced": {"balanced": True}, "t0_H0.3": {"H_design": 0.3},
            "t0_H0.2": {"H_design": 0.2}}
+# pin-level lines hang wholly in AIR: FloatSim's catenary needs their DRY weight (one uniform
+# value, no air/water split). The dry weight of the real spring + rope is not known yet, so
+# span a plausible range (the decks' 0.02 N/m is an in-water, near-neutral assumption).
+for _w in (0.1, 0.3, 1.0):
+    OPTIONS[f"pin_level_w{_w:g}"] = {"fairlead": PIN_B, "anchor_z": Z_PIN, "w_line": _w}
 THETA0 = np.radians(2.0)
 DECAY_S = 40.0
 
@@ -106,6 +111,38 @@ def static(article: str, option: str) -> None:
     print(f"{article:8s} {option:9s}: moored-buoy tilt {rec['max_tilt_moored_deg']:.2f} deg "
           f"(pitch {rec['max_pitch_moored_deg']:.2f}, roll {rec['max_roll_moored_deg']:.2f}); "
           f"residual {rec['joint_residual_N']:.3f} N", flush=True)
+
+
+def lines(article: str, option: str) -> None:
+    """Per-line FloatSim catenary forces at the settled equilibrium, the total vertical load
+    the lines put on the article, and the surge stiffness Kx from a +-5 mm rigid surge of
+    every body (FloatSim's own catenary force, central difference)."""
+    opts = OPTIONS[option]
+    xi = fd.moored_equilibrium(article, tag=_tag(article, option), **opts)
+    dk0 = fd.deck(article, drag=False)
+    dkm, lns = fd.moored(dk0, article, **opts)
+    s = build_system(fd.with_positions(dkm, xi), dt=fd.DT, t_max_kernel=fd.T_KERNEL,
+                     solve_equilibrium=False, **fd.hdbs(article))
+    n = s.lhs.n_dof
+    z = np.zeros(n)
+    f0 = s.state_force(0.0, xi, z)
+    fz = sum(float(f0[6 * k + 2]) for k in range(n // 6))
+    d = 0.005
+    sh = np.zeros(n)
+    sh[0::6] = d
+    fx = [sum(float(s.state_force(0.0, xi + sg * sh, z)[6 * k]) for k in range(n // 6))
+          for sg in (1.0, -1.0)]
+    kx = -(fx[0] - fx[1]) / (2 * d)
+    b = _buoys(dk0)
+    tiltmax = max(float(np.degrees(np.hypot(xi[6 * k + 3], xi[6 * k + 4]))) for k in b)
+    rec = {"article": article, "option": option, "w_line": lns[0]["w"],
+           "total_vertical_line_force_N": fz, "Kx_lines_N_per_m": kx,
+           "Kx_design_N_per_m": fd.line_design(article, len(b))["Kx"],
+           "max_buoy_tilt_deg": tiltmax}
+    _save(f"lines:{article}:{option}", rec)
+    print(f"{article:8s} {option:14s}: w {rec['w_line']:.2f} N/m  vertical line load "
+          f"{fz:+.3f} N  Kx {kx:.2f} N/m (design {rec['Kx_design_N_per_m']:.2f})  "
+          f"max buoy tilt {tiltmax:.3f} deg", flush=True)
 
 
 def tilt(article: str, option: str) -> None:
@@ -175,5 +212,7 @@ if __name__ == "__main__":
         static(sys.argv[2], sys.argv[3])
     elif step == "tilt":
         tilt(sys.argv[2], sys.argv[3])
+    elif step == "lines":
+        lines(sys.argv[2], sys.argv[3])
     else:
         summary()

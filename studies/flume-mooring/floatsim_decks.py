@@ -179,7 +179,11 @@ def mooring_lines(dk: Deck, article: str, *, fairlead: np.ndarray = WL_B, anchor
     return out
 
 
-def moored(dk: Deck, article: str, **opts) -> tuple[Deck, list[dict]]:  # type: ignore[no-untyped-def]
+def moored(dk: Deck, article: str, w_line: float = W_LINE,  # type: ignore[no-untyped-def]
+           **opts) -> tuple[Deck, list[dict]]:
+    """``w_line``: the line weight per unit length the FloatSim catenary uses (it has one
+    uniform value and no air/water split: pass the submerged weight for a line in water, the
+    DRY weight for a line wholly in air)."""
     lines = mooring_lines(dk, article, **opts)
     conns = []
     for ln in lines:
@@ -189,9 +193,9 @@ def moored(dk: Deck, article: str, **opts) -> tuple[Deck, list[dict]]:  # type: 
         conns.append(Catenary(type="catenary", body_a=ln["name"], body_b="earth",
                               attach_a_body=ln["fairlead"].tolist(),
                               attach_b_body=(ln["anchor"] - ref).tolist(),
-                              line=CatenaryLine(length=L0, weight_per_length=W_LINE,
+                              line=CatenaryLine(length=L0, weight_per_length=w_line,
                                                 EA=ln["k"] * L0)))
-        ln.update(chord=chord, L0=L0)
+        ln.update(chord=chord, L0=L0, w=w_line)
     return dk.model_copy(update={"connections": conns}), lines
 
 
@@ -264,6 +268,8 @@ def moored_equilibrium(article: str, tag: str | None = None, **opts) -> np.ndarr
     dk0 = deck(article)
     dkm, lines = moored(dk0, article, **opts)
     key = [[round(ln["T0"], 6), round(ln["k"], 6), round(ln["L0"], 6)] for ln in lines]
+    if opts.get("w_line", W_LINE) != W_LINE:
+        key.append([round(opts["w_line"], 6)])
     if tag in cache and cache[tag]["lines"] == key:
         return np.asarray(cache[tag]["xi"])
     hd = hdbs(article)
