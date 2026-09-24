@@ -125,7 +125,9 @@ def build(article: str) -> dict:
 
 
 # ------------------------------------------------------------------ one regular-wave case
-def run_case(m: dict, T: float, H: float) -> dict:
+def simulate(m: dict, T: float, H: float, n_win: int = N_WIN):  # type: ignore[no-untyped-def]
+    """Drag-limited, moored time-domain run in a regular wave. Returns the integration result
+    and the wave (H_used, A, omega, k); the last n_win periods are the settled window."""
     Hu = float(ms.drift_per_spar(H, T)[2]); A = 0.5 * Hu
     w = 2 * np.pi / T; k = w * w / G
     ramp = HalfCosineRamp(duration=RAMP_S)
@@ -157,10 +159,16 @@ def run_case(m: dict, T: float, H: float) -> dict:
     def ext(t):
         f = np.zeros(m["n"]); f[hd] = f_wave(t); return f
 
-    dur = RAMP_S + 30.0 + N_WIN * T
+    dur = RAMP_S + 30.0 + n_win * T
     r = integrate_cummins(lhs=m["lhs"], kernel=m["kernel"], xi0=xi0, xi_dot0=np.zeros(m["n"]),
                           duration=dur, dt=DT, rho_inf=0.8, constraints=m["constraints"],
                           external_force=ext, state_force=state, projection_interval=1)
+    return r, dict(H_used=Hu, A=A, omega=w, k=k)
+
+
+def run_case(m: dict, T: float, H: float) -> dict:
+    r, wv = simulate(m, T, H)
+    Hu, A, w, k, xi0 = wv["H_used"], wv["A"], wv["omega"], wv["k"], m["xi0"]
     msk = r.t >= r.t[-1] - N_WIN * T + 0.5 * DT
     t = r.t[msk]; X = r.xi[msk] - xi0; V = r.xi_dot[msk]
     c = 0.5 * RHO * ms.CD_SPAR * ms.SPAR_D

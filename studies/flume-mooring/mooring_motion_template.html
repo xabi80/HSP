@@ -1,0 +1,577 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flume Mooring Motion</title>
+<style>
+  :root{
+    --bg:#eaf1f3; --panel:#ffffff; --panel-2:#f2f7f9; --line:#d3e0e5;
+    --ink:#12242e; --ink-2:#3a4f5a; --muted:#5d7079;
+    --accent:#0c8b96; --accent-2:#0a6d76; --warm:#c9772b;
+    --up:#d1543a; --down:#2f74c0; --grid:#c2d3d9; --wall:#8aa3ad;
+    --shadow:0 1px 3px rgba(18,36,46,.10),0 8px 30px rgba(18,36,46,.08);
+    --mono:ui-monospace,"SF Mono","Cascadia Mono","Segoe UI Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#0b141d; --panel:#0f1c27; --panel-2:#132534; --line:#20323f;
+      --ink:#e7f0f4; --ink-2:#aec3cd; --muted:#7c94a2;
+      --accent:#39cdd6; --accent-2:#7fe0e6; --warm:#f2a25c;
+      --up:#ff7a56; --down:#57a6ef; --grid:#1b2c39; --wall:#4d6674;
+      --shadow:0 1px 0 rgba(255,255,255,.03),0 18px 44px rgba(0,0,0,.45);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0b141d; --panel:#0f1c27; --panel-2:#132534; --line:#20323f;
+    --ink:#e7f0f4; --ink-2:#aec3cd; --muted:#7c94a2;
+    --accent:#39cdd6; --accent-2:#7fe0e6; --warm:#f2a25c;
+    --up:#ff7a56; --down:#57a6ef; --grid:#1b2c39; --wall:#4d6674;
+    --shadow:0 1px 0 rgba(255,255,255,.03),0 18px 44px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);
+    line-height:1.5;-webkit-font-smoothing:antialiased;padding:clamp(16px,2.4vw,26px)}
+  .app{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--accent);font-weight:600}
+  h1{font-size:clamp(19px,2.5vw,26px);margin:2px 0 0;font-weight:640;letter-spacing:-.01em;text-wrap:balance}
+  .sub{color:var(--muted);font-size:13.5px;margin-top:3px;max-width:78ch}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+
+  .hdr{display:flex;flex-wrap:wrap;gap:16px 22px;align-items:flex-end;justify-content:space-between;
+    padding:16px 18px}
+  .pick{display:flex;flex-direction:column;gap:9px}
+  .cases{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-family:var(--mono);font-size:11.5px;letter-spacing:.02em;padding:7px 11px;border-radius:8px;
+    border:1px solid var(--line);background:var(--panel-2);color:var(--ink-2);cursor:pointer;
+    transition:border-color .15s,color .15s,background .15s}
+  .chip:hover{color:var(--ink);border-color:var(--accent)}
+  .chip[aria-pressed="true"]{background:var(--accent);color:#04212a;border-color:var(--accent);font-weight:600}
+  .readouts{display:flex;gap:20px;flex-wrap:wrap}
+  .ro{display:flex;flex-direction:column;gap:1px}
+  .ro .k{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .ro .v{font-family:var(--mono);font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink)}
+  .ro .v small{font-size:11px;color:var(--muted);font-weight:400}
+
+  .stage{position:relative;overflow:hidden;padding:0}
+  #view{display:block;width:100%;height:min(60vh,580px);touch-action:none;cursor:grab}
+  #view:active{cursor:grabbing}
+  .badge{position:absolute;font-family:var(--mono);font-size:11px;color:var(--muted);
+    background:color-mix(in srgb,var(--panel) 78%,transparent);padding:4px 8px;border-radius:7px;
+    border:1px solid var(--line);backdrop-filter:blur(4px)}
+  .caselabel{left:12px;top:12px;color:var(--ink-2);max-width:62%}
+  .caselabel b{color:var(--ink);font-weight:600}
+  .caselabel .warn{color:var(--warm)}
+  .hud{position:absolute;left:12px;bottom:12px;display:flex;gap:14px;flex-wrap:wrap;
+    font-family:var(--mono);font-size:11.5px;background:color-mix(in srgb,var(--panel) 80%,transparent);
+    padding:8px 11px;border-radius:9px;border:1px solid var(--line);backdrop-filter:blur(5px);max-width:70%}
+  .hud .h{display:flex;flex-direction:column;gap:1px}
+  .hud .h .lab{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .hud .h .num{font-size:14px;font-variant-numeric:tabular-nums;font-weight:600}
+  .legend{position:absolute;right:12px;bottom:12px;display:flex;flex-direction:column;gap:5px;
+    font-family:var(--mono);font-size:10.5px;color:var(--ink-2);
+    background:color-mix(in srgb,var(--panel) 80%,transparent);padding:8px 10px;border-radius:9px;
+    border:1px solid var(--line);backdrop-filter:blur(5px)}
+  .legend .row{display:flex;align-items:center;gap:7px}
+  .sw{width:22px;height:9px;border-radius:3px;flex:none}
+  .cbar{width:74px;height:9px;border-radius:3px;
+    background:linear-gradient(90deg,var(--down),color-mix(in srgb,var(--muted) 55%,transparent),var(--up))}
+
+  .scopewrap{padding:12px 6px 8px 12px;position:relative}
+  .scopewrap .ttl{display:flex;justify-content:space-between;align-items:center;gap:10px 14px;
+    flex-wrap:wrap;padding:0 8px 4px 2px}
+  .scopewrap .ttl h2{font-size:12px;margin:0;font-weight:600;letter-spacing:.01em;color:var(--ink-2)}
+  .scopewrap .ttl .u{font-family:var(--mono);font-size:10px;color:var(--muted)}
+  .scopectl{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .scopelegend{display:flex;gap:16px;flex-wrap:wrap;padding:0 10px 6px 4px;font-family:var(--mono);
+    font-size:10.5px;color:var(--muted)}
+  .scopelegend i{display:inline-block;width:15px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+  #scope{display:block;width:100%;height:172px}
+
+  .transport{display:flex;flex-wrap:wrap;align-items:center;gap:14px 18px;padding:12px 16px}
+  .btn{font-family:var(--mono);font-size:12.5px;border:1px solid var(--line);background:var(--panel-2);
+    color:var(--ink);border-radius:9px;padding:8px 14px;cursor:pointer;display:inline-flex;align-items:center;
+    gap:8px;font-weight:600;transition:border-color .15s,background .15s}
+  .btn:hover{border-color:var(--accent)}
+  .btn[aria-pressed="true"]{background:var(--accent);color:#04212a;border-color:var(--accent)}
+  .btn .ico{width:11px;height:11px;fill:currentColor}
+  .grow{flex:1 1 240px;display:flex;align-items:center;gap:11px;min-width:200px}
+  .tcode{font-family:var(--mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;
+    white-space:nowrap}
+  .ctl{display:flex;align-items:center;gap:9px}
+  .ctl label{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .ctl .val{font-family:var(--mono);font-size:12px;color:var(--ink);font-variant-numeric:tabular-nums;min-width:52px}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:4px;border-radius:3px;
+    background:var(--line);outline:none;cursor:pointer}
+  #seek{flex:1}
+  #exag{width:104px}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:15px;height:15px;
+    border-radius:50%;background:var(--accent);border:2px solid var(--panel);box-shadow:0 0 0 1px var(--accent)}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--accent);
+    border:2px solid var(--panel);box-shadow:0 0 0 1px var(--accent)}
+  input:focus-visible,.chip:focus-visible,.btn:focus-visible,.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex-wrap:wrap}
+  .seg button{font-family:var(--mono);font-size:11.5px;background:var(--panel-2);color:var(--ink-2);
+    border:none;padding:7px 10px;cursor:pointer;border-right:1px solid var(--line)}
+  .seg button:last-child{border-right:none}
+  .seg button[aria-pressed="true"]{background:var(--accent);color:#04212a;font-weight:600}
+  .seg button:disabled{opacity:.4;cursor:default}
+  .meshwrap{padding:0}
+  .meshwrap>summary{list-style:none;cursor:pointer;padding:13px 16px;font-family:var(--mono);font-size:12px;
+    letter-spacing:.02em;color:var(--ink-2);display:flex;align-items:center;gap:9px;font-weight:600}
+  .meshwrap>summary::-webkit-details-marker{display:none}
+  .meshwrap>summary::before{content:"▸";color:var(--accent);display:inline-block;transition:transform .15s}
+  .meshwrap[open]>summary::before{transform:rotate(90deg)}
+  .meshwrap>summary:hover{color:var(--ink)}
+  .meshwrap>summary .tag{font-weight:400;color:var(--muted);letter-spacing:0}
+  .meshbody{padding:0 16px 16px}
+  .meshbody .plate{background:#fbfdfe;border:1px solid var(--line);border-radius:9px;padding:8px}
+  .meshbody img{display:block;width:100%;height:auto;border-radius:4px}
+  .meshcap{color:var(--muted);font-size:12px;margin:10px 2px 0;max-width:82ch;line-height:1.55}
+  .meshcap b{color:var(--ink-2);font-weight:600}
+  footer{color:var(--muted);font-size:11.5px;font-family:var(--mono);line-height:1.6;padding:2px 4px 6px}
+  footer b{color:var(--ink-2);font-weight:600}
+  @media (max-width:640px){
+    .readouts{gap:14px}.ro .v{font-size:16px}#view{height:52vh}.hud{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important} }
+</style>
+
+<div class="app">
+  <div>
+    <div class="eyebrow">FloatSim · time-domain playback · OSU Large Wave Flume</div>
+    <h1>Moored motion — 1 buoy, 1 cluster and the 4×4 platform</h1>
+    <p class="sub">Steady-state response to a regular wave (heading 0°, +x) with the station-keeping mooring:
+      four soft lines, horizontal at the still-water line, to wall anchors ±5 m (T_surge ≈ 15 s). Lines are
+      coloured by their live tension. Motion is shown at true scale by default. Drag to orbit, scroll or pinch
+      to zoom, double-click to reset the view.</p>
+  </div>
+
+  <header class="card hdr">
+    <div class="pick">
+      <div class="eyebrow">Article</div>
+      <div class="seg" id="arts" role="group" aria-label="Article"></div>
+      <div class="eyebrow" style="margin-top:4px">Wave</div>
+      <div class="cases" id="cases"></div>
+    </div>
+    <div class="readouts" id="readouts">
+      <div class="ro"><span class="k">Period</span><span class="v" id="ro-T">—<small> s</small></span></div>
+      <div class="ro"><span class="k">Wave H</span><span class="v" id="ro-H">—<small> m</small></span></div>
+      <div class="ro"><span class="k">Heave RAO</span><span class="v" id="ro-rao">—</span></div>
+      <div class="ro"><span class="k">Peak buoy tilt</span><span class="v" id="ro-tilt">—<small> °</small></span></div>
+      <div class="ro"><span class="k">Line tension</span><span class="v" id="ro-ten">—<small> N</small></span></div>
+      <div class="ro"><span class="k">Mean offset</span><span class="v" id="ro-off">—<small> m</small></span></div>
+    </div>
+  </header>
+
+  <section class="card stage">
+    <canvas id="view" aria-label="3D view of the moored article in the flume"></canvas>
+    <div class="badge caselabel" id="caselabel"></div>
+    <div class="hud" id="hud"></div>
+    <div class="legend">
+      <div class="row"><span class="cbar"></span><span>heave ↓ / ↑</span></div>
+      <div class="row"><span class="cbar"></span><span>line tension − / +</span></div>
+      <div class="row"><span class="sw" style="background:var(--down)"></span><span>upwave spar</span></div>
+      <div class="row"><span class="sw" style="background:var(--up)"></span><span>downwave spar</span></div>
+    </div>
+  </section>
+
+  <section class="card scopewrap">
+    <div class="ttl">
+      <h2 id="scope-h2">Displacement over the wave cycle</h2>
+      <div class="scopectl">
+        <div class="seg" id="sigq" role="group" aria-label="Quantity">
+          <button data-q="disp" aria-pressed="true">Disp</button>
+          <button data-q="vel" aria-pressed="false">Vel</button>
+          <button data-q="acc" aria-pressed="false">Accel</button>
+          <button data-q="ten" aria-pressed="false">Line T</button>
+        </div>
+        <div class="seg" id="sigc" role="group" aria-label="Component">
+          <button data-c="2" aria-pressed="true">z</button>
+          <button data-c="0" aria-pressed="false">x</button>
+          <button data-c="1" aria-pressed="false">y</button>
+        </div>
+        <span class="u" id="scope-u">mm · true amplitude</span>
+      </div>
+    </div>
+    <div class="scopelegend" id="scopelegend"></div>
+    <canvas id="scope" aria-label="Signals over one wave period"></canvas>
+  </section>
+
+  <section class="card transport">
+    <button class="btn" id="play" aria-label="Play or pause">
+      <svg class="ico" id="playico" viewBox="0 0 12 12"><path d="M2 1l8 5-8 5z"/></svg><span id="playlbl">Pause</span>
+    </button>
+    <div class="grow">
+      <input type="range" id="seek" min="0" max="89" value="0" step="1" aria-label="Timeline">
+      <span class="tcode" id="tcode">0.00 / 0.00 s</span>
+    </div>
+    <div class="ctl"><label>Speed</label>
+      <div class="seg" id="speed">
+        <button data-s="0.5" aria-pressed="false">0.5×</button>
+        <button data-s="1" aria-pressed="true">1×</button>
+        <button data-s="2" aria-pressed="false">2×</button>
+      </div>
+    </div>
+    <div class="ctl"><label for="exag">Exaggerate</label>
+      <input type="range" id="exag" min="1" max="8" value="1" step="1">
+      <span class="val" id="exagval">1× true</span>
+    </div>
+    <button class="btn" id="orbit" type="button" aria-pressed="false" title="Auto-rotate the view">↻&nbsp;Orbit</button>
+  </section>
+
+  <details class="card meshwrap">
+    <summary>Mooring layout <span class="tag">— plan and side view, to scale</span></summary>
+    <div class="meshbody">
+      <div class="plate"><img src="__LAYOUT_PNG__" alt="Plan views of the X-spread mooring for the buoy, cluster and platform in the 3.66 m flume, and a side view of the platform with its lines at the still-water line"></div>
+      <p class="meshcap"><b>X-spread of four soft lines</b> (linear spring + low-stretch rope) from wall anchors 5 m up- and
+        downstream, attached at the still-water line: the buoy's spar collar, the cluster's four spars (one line each),
+        and the platform's upstream and downstream rows of four spars through two-leg bridles.</p>
+    </div>
+  </details>
+
+  <footer id="foot">
+    Data: FloatSim time domain — Cummins radiation + velocity-level KKT joints + Morison drag on spar and heave
+    plate <b>relative to the wave velocity</b>, with the design mooring as linear springs at the attachments. Each
+    case is the settled response fitted with harmonics 1–3 of the wave frequency, so it loops over one period.
+    Line tension = pretension + line stiffness × stretch. <b>Not shown:</b> the mean drift offset (the time-domain
+    model has no splash-zone drift; the readout quotes its upper bound). Rigid skeleton per the joint topology:
+    each buoy's spar hangs from its pin and tilts with the buoy. Tilts above ~10° are beyond the model's
+    small-angle range and are indicative.
+  </footer>
+</div>
+
+<script>
+const DATA=__DATA__;
+(function(){
+  "use strict";
+  const ARTS=(DATA&&DATA.articles)||[], G=DATA.geom||{};
+  if(!ARTS.length){document.getElementById("foot").textContent="No motion data embedded.";return;}
+  const reduce=matchMedia("(prefers-reduced-motion:reduce)").matches;
+  const view=document.getElementById("view"), scope=document.getElementById("scope");
+  const vctx=view.getContext("2d"), sctx=scope.getContext("2d");
+  function C(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+  const MONO='ui-monospace,Consolas,"SF Mono",Menlo,monospace';
+
+  // ---- state ----
+  let ai=ARTS.length-1, ci=0, frame=0, playing=!reduce, speed=1, exag=1;
+  const AZ0=-1.18, EL0=0.34;   // three-quarter side view, waves running left to right
+  let az=AZ0, el=EL0, zoom=1, autorot=false, drag=null;
+  let acc=0, last=performance.now(), HMAX=1, TDEV=1;
+  const ART=()=>ARTS[ai], CASE=()=>ARTS[ai].cases[ci], BOD=()=>ARTS[ai].bodies;
+
+  // ---- camera / projection ----
+  function project(x,y,z,v){
+    const ca=Math.cos(v.az),sa=Math.sin(v.az),ce=Math.cos(v.el),se=Math.sin(v.el);
+    const sx=(-sa)*x+(ca)*y, sy=(-se*ca)*x+(-se*sa)*y+(ce)*z, depth=(ce*ca)*x+(ce*sa)*y+(se)*z;
+    return {X:v.cx+sx*v.s, Y:v.cy-sy*v.s, d:depth};
+  }
+  function fitView(w,h){
+    // frame the whole mooring (anchors at +-5 m) and the flume depth; same scale for all articles
+    const gx=0, gy=0, gz=-0.75;
+    const s=Math.min(w/11.6, h/4.3)*zoom;
+    const ca=Math.cos(az),sa=Math.sin(az),ce=Math.cos(el),se=Math.sin(el);
+    const gsx=(-sa)*gx+(ca)*gy, gsy=(-se*ca)*gx+(-se*sa)*gy+(ce)*gz;
+    return {az,el,s,cx:w*0.5-gsx*s,cy:h*0.5+gsy*s};
+  }
+
+  // ---- colour ----
+  function hx(c){c=c.replace('#','');return [parseInt(c.slice(0,2),16),parseInt(c.slice(2,4),16),parseInt(c.slice(4,6),16)];}
+  function mix(a,b,t){return `rgb(${Math.round(a[0]+(b[0]-a[0])*t)},${Math.round(a[1]+(b[1]-a[1])*t)},${Math.round(a[2]+(b[2]-a[2])*t)})`;}
+  function diverge(norm){const up=hx(C('--up')),dn=hx(C('--down')),mid=hx(C('--muted'));
+    const t=Math.max(-1,Math.min(1,norm)); return t>=0?mix(mid,up,t):mix(mid,dn,-t);}
+
+  // ---- kinematics (rigid skeleton, one exaggeration factor for every displacement) ----
+  function rot(ph,th,ps){const a=Math.cos(ph),b=Math.sin(ph),c=Math.cos(th),d=Math.sin(th),e=Math.cos(ps),f=Math.sin(ps);
+    return [[e*c, e*d*b-f*a, e*d*a+f*b],[f*c, f*d*b+e*a, f*d*a-e*b],[-d, c*b, c*a]];}
+  function mv(R,v){return [R[0][0]*v[0]+R[0][1]*v[1]+R[0][2]*v[2],R[1][0]*v[0]+R[1][1]*v[1]+R[1][2]*v[2],R[2][0]*v[0]+R[2][1]*v[1]+R[2][2]*v[2]];}
+  function world(fr,EX){
+    const B=BOD(), F=CASE().frames[fr], n=B.length, P=[], R=[], top=[], ax=[];
+    for(let i=0;i<n;i++){const d=F[i]; P.push([B[i].x0+EX*d[0],B[i].y0+EX*d[1],B[i].z0+EX*d[2]]); R.push(rot(EX*d[3],EX*d[4],EX*d[5]));}
+    for(let i=0;i<n;i++){ if(B[i].type!=="buoy") continue;
+      const a=mv(R[i],[0,0,1]); ax[i]=a;
+      if(B[i].parent>=0){ const h=B[i].parent, o=mv(R[h],[B[i].x0-B[h].x0,B[i].y0-B[h].y0,G.z_top-B[h].z0]);
+        top[i]=[P[h][0]+o[0],P[h][1]+o[1],P[h][2]+o[2]]; }
+      else { const up=G.z_top-B[i].z0; top[i]=[P[i][0]+a[0]*up,P[i][1]+a[1]*up,P[i][2]+a[2]*up]; } }
+    return {P,R,top,ax};
+  }
+  function along(W,i,z){const t=W.top[i],a=W.ax[i],s=z-G.z_top; return [t[0]+a[0]*s,t[1]+a[1]*s,t[2]+a[2]*s];}
+
+  // ---- draw ----
+  function draw(){
+    const dpr=Math.min(2,window.devicePixelRatio||1), w=view.clientWidth, h=view.clientHeight;
+    if(!w||!h) return;
+    if(view.width!==w*dpr||view.height!==h*dpr){view.width=w*dpr;view.height=h*dpr;}
+    vctx.setTransform(dpr,0,0,dpr,0,0); vctx.clearRect(0,0,w,h);
+    const v=fitView(w,h), cc=CASE(), fr=frame, EX=exag, tsim=fr*cc.dt_frame_s;
+    const B=BOD(), W=world(fr,EX), W0=world(fr,0);
+    const FX=G.flume_x, W2=G.flume_w/2, D=G.flume_h;
+    const wall=C('--wall'), accent=C('--accent'), line=C('--line'), panel=C('--panel'), warm=C('--warm'), ink2=C('--ink-2');
+
+    // flume: floor + far wall behind everything
+    const walls=[W2,-W2].map(y=>({y,d:project(0,y,-D/2,v).d}));
+    walls.sort((a,b)=>b.d-a.d);
+    quad([[-FX,-W2,-D],[FX,-W2,-D],[FX,W2,-D],[-FX,W2,-D]],v,wall,0.10,0.55);
+    quad([[-FX,walls[0].y,-D],[FX,walls[0].y,-D],[FX,walls[0].y,0.45],[-FX,walls[0].y,0.45]],v,wall,0.10,0.6);
+
+    // sea surface inside the flume: z = A cos(kx - wt)
+    const lam=9.81*cc.T*cc.T/(2*Math.PI), k=2*Math.PI/lam, A=cc.amp_m*EX;
+    const Nx=34, Ny=10, sx=2*FX/Nx, sy=2*W2/Ny, trough=hx(C('--down')), crest=hx(C('--accent')), edge=C('--grid');
+    const sea=[];
+    for(let iy=0;iy<Ny;iy++) for(let ix=0;ix<Nx;ix++){
+      const xa=-FX+ix*sx, ya=-W2+iy*sy, cn=[[xa,ya],[xa+sx,ya],[xa+sx,ya+sy],[xa,ya+sy]]; let zs=0;
+      const pp=cn.map(([x,y])=>{const z=A*Math.cos(k*x-cc.omega*tsim); zs+=z; return project(x,y,z,v);});
+      const t=Math.abs(A)>1e-9?Math.max(0,Math.min(1,zs/4/A*0.5+0.5)):0.5;
+      sea.push({pp,d:(pp[0].d+pp[1].d+pp[2].d+pp[3].d)/4,col:mix(trough,crest,t)});
+    }
+    sea.sort((a,b)=>b.d-a.d); vctx.lineWidth=0.5; vctx.strokeStyle=edge;
+    for(const q of sea){vctx.beginPath(); q.pp.forEach((p,i)=>i?vctx.lineTo(p.X,p.Y):vctx.moveTo(p.X,p.Y)); vctx.closePath();
+      vctx.globalAlpha=0.36; vctx.fillStyle=q.col; vctx.fill(); vctx.globalAlpha=0.18; vctx.stroke();}
+    vctx.globalAlpha=1;
+
+    // primitives with depth (painter's sort)
+    const prims=[], ten=cc.tension[fr], L=ART().lines;
+    // mooring lines: anchor -> (bridle ring ->) SWL attachment on the spar(s)
+    L.forEach((ln,j)=>{
+      const col=diverge((ten[j]-ART().T0)/TDEV);
+      const att=ln.legs.map(i=>along(W,i,0)), att0=ln.legs.map(i=>along(W0,i,0));
+      const pa=project(ln.anchor[0],ln.anchor[1],ln.anchor[2],v);
+      let end;
+      if(ln.ring){ const dm=[0,1,2].map(c=>att.reduce((s,p,m)=>s+p[c]-att0[m][c],0)/att.length);
+        end=[ln.ring[0]+dm[0],ln.ring[1]+dm[1],ln.ring[2]+dm[2]];
+        att.forEach(p=>{const a=project(end[0],end[1],end[2],v), b=project(p[0],p[1],p[2],v);
+          prims.push({t:"rope",d:(a.d+b.d)/2,pa:a,pb:b,col,lw:1.4});});
+        const r=project(end[0],end[1],end[2],v); prims.push({t:"ring",d:r.d,p:r,col});
+      } else end=att[0];
+      const pe=project(end[0],end[1],end[2],v);
+      prims.push({t:"line",d:(pa.d+pe.d)/2,pa,pb:pe,col,lw:2.2});
+      prims.push({t:"anchor",d:pa.d,p:pa});
+    });
+    // articulated skeleton
+    const hubs=[]; let plat=-1;
+    B.forEach((b,i)=>{ if(b.type==="hub")hubs.push(i); if(b.type==="platform")plat=i; });
+    for(let i=0;i<B.length;i++){ const b=B[i];
+      if(b.type==="buoy"){
+        const T=W.top[i], Pw=along(W,i,G.z_wl), Pb=along(W,i,G.z_bot), Pp=along(W,i,G.z_plate);
+        const pT=project(T[0],T[1],T[2],v), pW=project(Pw[0],Pw[1],Pw[2],v), pB=project(Pb[0],Pb[1],Pb[2],v), pP=project(Pp[0],Pp[1],Pp[2],v);
+        if(b.parent>=0){ const hp=W.P[b.parent], pH=project(hp[0],hp[1],hp[2],v);
+          prims.push({t:"arm",d:(pH.d+pT.d)/2,pa:pH,pb:pT,lw:2.6}); }
+        prims.push({t:"spar",d:(pT.d+pW.d)/2,pa:pT,pb:pW,alpha:1});
+        prims.push({t:"spar",d:(pW.d+pB.d)/2,pa:pW,pb:pB,alpha:0.62});
+        prims.push({t:"stem",d:(pB.d+pP.d)/2,pa:pB,pb:pP});
+        prims.push({t:"plate",d:pP.d,c:Pp,u:W.ax[i]});
+        prims.push({t:"float",d:pW.d-1e-4,p:pW,bi:i,norm:cc.frames[fr][i][2]/HMAX});
+      } else if(b.type==="hub" && b.parent>=0){
+        const pH=project(W.P[i][0],W.P[i][1],W.P[i][2],v), pP=project(W.P[b.parent][0],W.P[b.parent][1],W.P[b.parent][2],v);
+        prims.push({t:"arm",d:(pH.d+pP.d)/2,pa:pH,pb:pP,lw:2.4});
+      }
+      if(b.type!=="buoy"){ const p=project(W.P[i][0],W.P[i][1],W.P[i][2],v); prims.push({t:"node",d:p.d,p,typ:b.type}); }
+    }
+    if(plat>=0 && hubs.length===4){ const q=hubs.map(i=>project(W.P[i][0],W.P[i][1],W.P[i][2],v));
+      const cx=q.reduce((s,p)=>s+p.X,0)/4, cy=q.reduce((s,p)=>s+p.Y,0)/4;
+      q.sort((p1,p2)=>Math.atan2(p1.Y-cy,p1.X-cx)-Math.atan2(p2.Y-cy,p2.X-cx));
+      prims.push({t:"deck",d:q.reduce((s,p)=>s+p.d,0)/4,q}); }
+    prims.sort((a,b)=>b.d-a.d);
+
+    let dmin=Infinity,dmax=-Infinity; for(const p of prims){if(p.d<dmin)dmin=p.d;if(p.d>dmax)dmax=p.d;}
+    const fade=pd=>1-0.32*((pd-dmin)/((dmax-dmin)||1));
+    const sparW=Math.max(2,0.5*G.spar_d*v.s), UP=ART().up, DN=ART().dn;
+    for(const pr of prims){
+      vctx.globalAlpha=fade(pr.d);
+      if(pr.t==="deck"){ vctx.beginPath(); pr.q.forEach((p,i)=>i?vctx.lineTo(p.X,p.Y):vctx.moveTo(p.X,p.Y)); vctx.closePath();
+        vctx.fillStyle=`color-mix(in srgb, ${accent} 18%, transparent)`; vctx.fill();
+        vctx.lineWidth=2; vctx.strokeStyle=`color-mix(in srgb, ${accent} 82%, transparent)`; vctx.stroke(); }
+      else if(pr.t==="arm"){ seg(pr.pa,pr.pb,pr.lw,`color-mix(in srgb, ${accent} 78%, ${line})`); }
+      else if(pr.t==="line"){ spring(pr.pa,pr.pb,pr.col,pr.lw); }
+      else if(pr.t==="rope"){ seg(pr.pa,pr.pb,pr.lw,pr.col); }
+      else if(pr.t==="ring"){ vctx.beginPath(); vctx.arc(pr.p.X,pr.p.Y,3,0,7); vctx.fillStyle=pr.col; vctx.fill(); }
+      else if(pr.t==="anchor"){ vctx.fillStyle=ink2; vctx.fillRect(pr.p.X-4,pr.p.Y-4,8,8); }
+      else if(pr.t==="spar"){ vctx.globalAlpha*=pr.alpha; capsule(pr.pa,pr.pb,sparW); }
+      else if(pr.t==="stem"){ vctx.globalAlpha*=0.62; seg(pr.pa,pr.pb,1.4,ink2); }
+      else if(pr.t==="plate"){ vctx.globalAlpha*=0.7; disc(pr.c,pr.u,G.plate_r,`color-mix(in srgb, ${warm} 55%, transparent)`,warm,v); }
+      else if(pr.t==="float"){ const p=pr.p, rad=Math.max(4,sparW*1.25), col=diverge(pr.norm);
+        vctx.beginPath(); vctx.ellipse(p.X,p.Y,rad,rad*0.6,0,0,7); vctx.fillStyle=col; vctx.fill();
+        vctx.lineWidth=(pr.bi===UP||pr.bi===DN)&&UP!==DN?2.2:1;
+        vctx.strokeStyle=(UP!==DN&&pr.bi===UP)?C('--down'):(UP!==DN&&pr.bi===DN)?C('--up'):`color-mix(in srgb, ${col} 55%, black)`;
+        vctx.stroke(); }
+      else if(pr.t==="node"){ const p=pr.p;
+        if(pr.typ==="hub"){ vctx.beginPath(); vctx.arc(p.X,p.Y,4,0,7); vctx.fillStyle=`color-mix(in srgb, ${accent} 72%, ${panel})`; vctx.fill(); }
+        else { const r=5.5, gr=vctx.createRadialGradient(p.X-r*0.4,p.Y-r*0.4,r*0.2,p.X,p.Y,r*1.2);
+          gr.addColorStop(0,`color-mix(in srgb, ${accent} 65%, white)`); gr.addColorStop(1,accent);
+          vctx.beginPath(); vctx.arc(p.X,p.Y,r,0,7); vctx.fillStyle=gr; vctx.fill(); vctx.lineWidth=1.5; vctx.strokeStyle=panel; vctx.stroke(); } }
+    }
+    vctx.globalAlpha=1;
+    // near wall last, faint, so it never hides the article
+    quad([[-FX,walls[1].y,-D],[FX,walls[1].y,-D],[FX,walls[1].y,0.45],[-FX,walls[1].y,0.45]],v,wall,0.04,0.45);
+    waveCorner(w); gnomon(h); scaleBar(v,w,h);
+    drawScope(fr); updateHud(fr,tsim);
+  }
+  function quad(pts,v,col,fa,sa){ const pp=pts.map(p=>project(p[0],p[1],p[2],v)); vctx.beginPath();
+    pp.forEach((p,i)=>i?vctx.lineTo(p.X,p.Y):vctx.moveTo(p.X,p.Y)); vctx.closePath();
+    vctx.globalAlpha=fa; vctx.fillStyle=col; vctx.fill(); vctx.globalAlpha=sa; vctx.lineWidth=1.1; vctx.strokeStyle=col; vctx.stroke(); vctx.globalAlpha=1; }
+  function seg(a,b,lw,col){ vctx.lineCap="round"; vctx.beginPath(); vctx.moveTo(a.X,a.Y); vctx.lineTo(b.X,b.Y);
+    vctx.lineWidth=lw; vctx.strokeStyle=col; vctx.stroke(); vctx.lineCap="butt"; }
+  // mooring line: zig-zag spring over the first 20 % (at the anchor), rope for the rest
+  function spring(a,b,col,lw){ const dx=b.X-a.X, dy=b.Y-a.Y, L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L, nx=-uy, ny=ux;
+    const ls=0.2*L, n=9, amp=4.2; vctx.lineJoin="round"; vctx.beginPath(); vctx.moveTo(a.X,a.Y);
+    for(let i=1;i<=n;i++){ const s=ls*i/(n+1), o=(i%2?1:-1)*amp; vctx.lineTo(a.X+ux*s+nx*o,a.Y+uy*s+ny*o); }
+    vctx.lineTo(a.X+ux*ls,a.Y+uy*ls); vctx.lineTo(b.X,b.Y); vctx.lineWidth=lw; vctx.strokeStyle=col; vctx.stroke(); }
+  // spar: shaded capsule of true diameter between screen points a and b
+  function capsule(a,b,wd){ const dx=b.X-a.X, dy=b.Y-a.Y, len=Math.hypot(dx,dy)||1, nx=-dy/len, ny=dx/len;
+    const e=C('--ink-2'), ctr=mix(hx(e),[255,255,255],0.5);
+    const g=vctx.createLinearGradient(a.X+nx*wd,a.Y+ny*wd,a.X-nx*wd,a.Y-ny*wd);
+    g.addColorStop(0,e); g.addColorStop(0.5,ctr); g.addColorStop(1,e);
+    vctx.beginPath(); vctx.moveTo(a.X+nx*wd,a.Y+ny*wd); vctx.lineTo(b.X+nx*wd,b.Y+ny*wd);
+    vctx.lineTo(b.X-nx*wd,b.Y-ny*wd); vctx.lineTo(a.X-nx*wd,a.Y-ny*wd); vctx.closePath(); vctx.fillStyle=g; vctx.fill(); }
+  function disc(c,u,r,fillCss,edgeCss,v){
+    let ax=1,ay=0,az_=0; if(Math.abs(u[0])>0.9){ax=0;ay=1;}
+    let e1=[u[1]*az_-u[2]*ay,u[2]*ax-u[0]*az_,u[0]*ay-u[1]*ax]; const n1=Math.hypot(e1[0],e1[1],e1[2])||1; e1=e1.map(q=>q/n1);
+    const e2=[u[1]*e1[2]-u[2]*e1[1],u[2]*e1[0]-u[0]*e1[2],u[0]*e1[1]-u[1]*e1[0]];
+    vctx.beginPath();
+    for(let i=0;i<28;i++){const a=i/28*6.2831853, c0=Math.cos(a)*r, s0=Math.sin(a)*r,
+      p=project(c[0]+c0*e1[0]+s0*e2[0],c[1]+c0*e1[1]+s0*e2[1],c[2]+c0*e1[2]+s0*e2[2],v); i?vctx.lineTo(p.X,p.Y):vctx.moveTo(p.X,p.Y);}
+    vctx.closePath(); vctx.fillStyle=fillCss; vctx.fill(); vctx.lineWidth=1; vctx.strokeStyle=edgeCss; vctx.stroke(); }
+  function waveCorner(w){ const sa=Math.sin(az),ca=Math.cos(az),se=Math.sin(el);
+    let dx=-sa, dy=se*ca; const L=Math.hypot(dx,dy)||1; dx/=L; dy/=L;
+    const ox=w-42, oy=46, len=20, bx=ox+dx*len, by=oy+dy*len;
+    vctx.fillStyle=C('--muted'); vctx.font="600 10px "+MONO; vctx.textAlign="right"; vctx.textBaseline="alphabetic"; vctx.fillText("wave", w-16, 26);
+    vctx.strokeStyle=C('--accent'); vctx.fillStyle=C('--accent'); vctx.lineWidth=2.2; vctx.lineCap="round";
+    vctx.beginPath(); vctx.moveTo(ox-dx*len,oy-dy*len); vctx.lineTo(bx,by); vctx.stroke(); vctx.lineCap="butt";
+    const hs=8; vctx.beginPath(); vctx.moveTo(bx,by); vctx.lineTo(bx-dx*hs-dy*hs*0.6,by-dy*hs+dx*hs*0.6);
+    vctx.lineTo(bx-dx*hs+dy*hs*0.6,by-dy*hs-dx*hs*0.6); vctx.closePath(); vctx.fill(); }
+  function gnomon(h){ const ox=46, oy=h-44, gs=22, ca=Math.cos(az),sa=Math.sin(az),ce=Math.cos(el),se=Math.sin(el);
+    const pj=(x,y,z)=>({X:ox+((-sa)*x+(ca)*y)*gs, Y:oy-((-se*ca)*x+(-se*sa)*y+(ce)*z)*gs});
+    for(const [d,lab,col] of [[[1,0,0],"x",C('--muted')],[[0,1,0],"y",C('--muted')],[[0,0,1],"z",C('--accent')]]){
+      const p=pj(d[0],d[1],d[2]); vctx.strokeStyle=col; vctx.lineWidth=1.8; vctx.beginPath(); vctx.moveTo(ox,oy); vctx.lineTo(p.X,p.Y); vctx.stroke();
+      vctx.fillStyle=col; vctx.font="600 10px "+MONO; vctx.textAlign="center"; vctx.textBaseline="middle"; vctx.fillText(lab,ox+(p.X-ox)*1.22,oy+(p.Y-oy)*1.22); } }
+  function scaleBar(v,w,h){ let Lm=1,px=v.s; for(const c of [0.5,1,2,5]){const q=c*v.s; if(q>=64){Lm=c;px=q;break;} Lm=c;px=q;}
+    const x0=w*0.5-px/2, x1=w*0.5+px/2, y=h-16; vctx.strokeStyle=C('--ink-2'); vctx.lineWidth=2; vctx.beginPath();
+    vctx.moveTo(x0,y);vctx.lineTo(x1,y); vctx.moveTo(x0,y-4);vctx.lineTo(x0,y+4); vctx.moveTo(x1,y-4);vctx.lineTo(x1,y+4); vctx.stroke();
+    vctx.fillStyle=C('--muted'); vctx.font="600 11px "+MONO; vctx.textAlign="center"; vctx.textBaseline="bottom"; vctx.fillText(Lm+" m",(x0+x1)/2,y-5); }
+
+  // ---- oscilloscope ----
+  let chan=null, sigQ="disp", sigC=2;
+  const QMETA={disp:{u:"mm",s:1000,lab:"Displacement"},vel:{u:"mm/s",s:1000,lab:"Velocity"},
+               acc:{u:"m/s²",s:1,lab:"Acceleration"},ten:{u:"N",s:1,lab:"Mooring-line tension"}};
+  const CNAME=["surge (x)","sway (y)","heave (z)"];
+  function lineName(ln){return (ln.anchor[0]<0?"upstream":"downstream")+(ln.anchor[1]>0?" +y":" −y");}
+  function buildChannels(){
+    const cc=CASE(), F=cc.frames.length, a=ART();
+    if(sigQ==="ten"){ const cols=[C('--down'),C('--accent'),C('--up'),C('--warm')];
+      chan={series:a.lines.map((ln,j)=>({lab:lineName(ln),col:cols[j],lw:1.8,val:cc.tension.map(r=>r[j])}))};
+    } else { const sc=QMETA[sigQ].s, mk=key=>cc.sig[key][sigQ].map(q=>q[sigC]*sc);
+      chan={series:[{lab:a.siglabels[0],col:C('--accent'),lw:1.6,val:mk("ref")},
+                    {lab:a.siglabels[1],col:C('--down'),lw:2,val:mk("up")},
+                    {lab:a.siglabels[2],col:C('--up'),lw:2,val:mk("dn")}]}; }
+    let lo=Infinity, hi=-Infinity; for(const s of chan.series) for(const q of s.val){lo=Math.min(lo,q);hi=Math.max(hi,q);}
+    if(sigQ==="ten"){ const pad=Math.max(0.08*(hi-lo),0.02*Math.abs(hi)+1e-6); chan.lo=lo-pad; chan.hi=hi+pad; }
+    else { const m=Math.max(Math.abs(lo),Math.abs(hi),1e-6)*1.12; chan.lo=-m; chan.hi=m; }
+    let hm=1e-6; for(let f=0;f<F;f++) BOD().forEach((b,i)=>{if(b.type==="buoy")hm=Math.max(hm,Math.abs(cc.frames[f][i][2]));}); HMAX=hm;
+    let td=1e-6; for(const r of cc.tension) for(const q of r) td=Math.max(td,Math.abs(q-a.T0)); TDEV=td;
+    document.getElementById("scopelegend").innerHTML=chan.series.map(s=>`<span><i style="background:${s.col}"></i>${s.lab}</span>`).join("");
+    document.querySelectorAll("#sigc button").forEach(b=>b.disabled=(sigQ==="ten"));
+  }
+  function fmt(v,span){const a=Math.abs(span); return a>=100?v.toFixed(0):a>=10?v.toFixed(1):a>=1?v.toFixed(2):v.toFixed(3);}
+  function refreshScopeLabels(){ const q=QMETA[sigQ];
+    document.getElementById("scope-h2").textContent=q.lab+(sigQ==="ten"?"":" · "+CNAME[sigC])+" over the wave cycle";
+    document.getElementById("scope-u").textContent=q.u+" · true amplitude"; }
+  function drawScope(fr){
+    const dpr=Math.min(2,window.devicePixelRatio||1), w=scope.clientWidth, h=scope.clientHeight;
+    if(scope.width!==w*dpr||scope.height!==h*dpr){scope.width=w*dpr;scope.height=h*dpr;}
+    sctx.setTransform(dpr,0,0,dpr,0,0); sctx.clearRect(0,0,w,h);
+    const padL=50,padR=8,padT=10,padB=16, iw=w-padL-padR, ih=h-padT-padB, F=chan.series[0].val.length;
+    const X=i=>padL+iw*i/(F-1), Y=q=>padT+ih*(chan.hi-q)/(chan.hi-chan.lo);
+    sctx.strokeStyle=C('--line'); sctx.lineWidth=1; sctx.font='10px '+MONO; sctx.fillStyle=C('--muted'); sctx.textAlign='right'; sctx.textBaseline='middle';
+    const span=chan.hi-chan.lo;
+    for(const t of [0.17,0.5,0.83]){ const gv=chan.hi-t*span, yy=Y(gv); sctx.globalAlpha=t===0.5?0.9:0.4;
+      sctx.beginPath(); sctx.moveTo(padL,yy); sctx.lineTo(w-padR,yy); sctx.stroke(); sctx.globalAlpha=1; sctx.fillText(fmt(gv,span),padL-6,yy); }
+    sctx.textAlign='left'; sctx.fillText(QMETA[sigQ].u,4,padT+4);
+    for(const s of chan.series){ sctx.beginPath(); sctx.strokeStyle=s.col; sctx.lineWidth=s.lw;
+      for(let i=0;i<F;i++){const x=X(i),y=Y(s.val[i]); i?sctx.lineTo(x,y):sctx.moveTo(x,y);} sctx.stroke(); }
+    const cx=X(fr); sctx.strokeStyle=C('--ink-2'); sctx.globalAlpha=0.5; sctx.beginPath(); sctx.moveTo(cx,padT); sctx.lineTo(cx,h-padB); sctx.stroke(); sctx.globalAlpha=1;
+    for(const s of chan.series){ sctx.beginPath(); sctx.arc(cx,Y(s.val[fr]),3,0,7); sctx.fillStyle=s.col; sctx.fill(); }
+  }
+
+  // ---- HUD + readouts ----
+  function updateHud(fr,tsim){
+    const cc=CASE(), a=ART(), f=cc.frames[fr], r=f[a.ref], mm=q=>(q*1000).toFixed(0), dg=q=>(q*180/Math.PI).toFixed(1);
+    const tmax=Math.max(...cc.tension[fr]);
+    const refName=a.key==="buoy"?"Buoy":a.key==="cluster"?"Hub":"Deck";
+    document.getElementById("hud").innerHTML=
+      hud("Wave phase",(tsim/cc.T*360%360).toFixed(0)+"°")+hud(refName+" heave",mm(r[2])+" mm")+
+      hud(refName+" surge",mm(r[0])+" mm")+hud(refName+" pitch",dg(r[4])+"°")+
+      (a.up!==a.dn?hud("Upwave spar tilt",dg(Math.hypot(f[a.up][3],f[a.up][4]))+"°"):"")+hud("Max line T",tmax.toFixed(1)+" N");
+    document.getElementById("tcode").textContent=tsim.toFixed(2)+" / "+(cc.n_frames*cc.dt_frame_s).toFixed(2)+" s";
+  }
+  function hud(l,n){return `<div class="h"><span class="lab">${l}</span><span class="num">${n}</span></div>`;}
+
+  // ---- article / case switch ----
+  const artsEl=document.getElementById("arts"), casesEl=document.getElementById("cases");
+  ARTS.forEach((a,i)=>{ const b=document.createElement("button"); b.type="button"; b.textContent=a.name.replace("4x4","4×4");
+    b.setAttribute("aria-pressed",i===ai?"true":"false"); b.onclick=()=>setArticle(i); artsEl.appendChild(b); });
+  function setArticle(i){ ai=i; artsEl.querySelectorAll("button").forEach((b,j)=>b.setAttribute("aria-pressed",j===i?"true":"false"));
+    casesEl.innerHTML=""; ART().cases.forEach((c,j)=>{ const b=document.createElement("button"); b.className="chip"; b.type="button";
+      b.textContent="T "+c.T.toFixed(1)+" s · H "+c.H.toFixed(2)+" m"; b.onclick=()=>setCase(j); casesEl.appendChild(b); });
+    setCase(Math.min(ci,ART().cases.length-1)); }
+  function setCase(i){
+    ci=i; frame=0; acc=0; buildChannels();
+    casesEl.querySelectorAll(".chip").forEach((c,j)=>c.setAttribute("aria-pressed",j===i?"true":"false"));
+    const cc=CASE(), a=ART();
+    document.getElementById("ro-T").innerHTML=cc.T.toFixed(2)+'<small> s</small>';
+    document.getElementById("ro-H").innerHTML=cc.H.toFixed(2)+'<small> m</small>';
+    document.getElementById("ro-rao").textContent=cc.rao_ref.toFixed(2);
+    document.getElementById("ro-tilt").innerHTML=cc.max_tilt_deg.toFixed(1)+'<small> °</small>';
+    document.getElementById("ro-ten").innerHTML=cc.min_tension_N.toFixed(1)+"–"+cc.max_tension_N.toFixed(1)+'<small> N</small>';
+    document.getElementById("ro-off").innerHTML="≤ "+cc.offset_bound_m.toFixed(2)+'<small> m</small>';
+    const warn=cc.max_tilt_deg>10?`<br><span class="warn">peak buoy tilt ${cc.max_tilt_deg.toFixed(0)}° — beyond the small-angle range, indicative</span>`:"";
+    document.getElementById("caselabel").innerHTML=`<b>${a.name.replace("4x4","4×4")}</b><br>T = ${cc.T.toFixed(1)} s, H = ${cc.H.toFixed(2)} m · lines k = ${a.k_line.toFixed(1)} N/m, T₀ = ${a.T0.toFixed(1)} N`+warn;
+    document.getElementById("seek").max=cc.n_frames-1;
+  }
+
+  // ---- controls ----
+  const playBtn=document.getElementById("play");
+  function setPlay(p){playing=p; document.getElementById("playlbl").textContent=p?"Pause":"Play";
+    document.getElementById("playico").innerHTML=p?'<rect x="2" y="1" width="3" height="10"/><rect x="7" y="1" width="3" height="10"/>':'<path d="M2 1l8 5-8 5z"/>';}
+  playBtn.onclick=()=>setPlay(!playing);
+  const seek=document.getElementById("seek"); seek.oninput=()=>{frame=+seek.value; if(playing)setPlay(false);};
+  document.querySelectorAll("#speed button").forEach(b=>b.onclick=()=>{ speed=+b.dataset.s;
+    document.querySelectorAll("#speed button").forEach(x=>x.setAttribute("aria-pressed","false")); b.setAttribute("aria-pressed","true");});
+  const exagEl=document.getElementById("exag");
+  function exagLabel(){document.getElementById("exagval").textContent=exag===1?"1× true":exag+"×";}
+  exagEl.oninput=()=>{exag=+exagEl.value; exagLabel();};
+  document.getElementById("orbit").onclick=e=>{autorot=!autorot; e.currentTarget.setAttribute("aria-pressed",autorot?"true":"false");};
+  function setSeg(sel,btn){document.querySelectorAll(sel+" button").forEach(x=>x.setAttribute("aria-pressed","false")); btn.setAttribute("aria-pressed","true");}
+  document.querySelectorAll("#sigq button").forEach(b=>b.onclick=()=>{sigQ=b.dataset.q; setSeg("#sigq",b); buildChannels(); refreshScopeLabels();});
+  document.querySelectorAll("#sigc button").forEach(b=>b.onclick=()=>{ if(b.disabled)return; sigC=+b.dataset.c; setSeg("#sigc",b); buildChannels(); refreshScopeLabels();});
+  window.addEventListener("keydown",e=>{ const tag=e.target&&e.target.tagName; if(tag==="INPUT"||tag==="TEXTAREA")return;
+    if(e.key===" "){e.preventDefault(); setPlay(!playing);}
+    else if(e.key==="ArrowRight"){setPlay(false); frame=(frame+1)%CASE().n_frames; seek.value=frame;}
+    else if(e.key==="ArrowLeft"){setPlay(false); frame=(frame-1+CASE().n_frames)%CASE().n_frames; seek.value=frame;}
+    else if(e.key==="ArrowUp"){e.preventDefault(); exag=Math.min(8,exag+1); exagEl.value=exag; exagLabel();}
+    else if(e.key==="ArrowDown"){e.preventDefault(); exag=Math.max(1,exag-1); exagEl.value=exag; exagLabel();}
+    else if(e.key==="r"||e.key==="R"){az=AZ0; el=EL0; zoom=1;} });
+  view.addEventListener("pointerdown",e=>{drag={x:e.clientX,y:e.clientY}; view.setPointerCapture(e.pointerId);});
+  view.addEventListener("pointermove",e=>{if(!drag)return; az+=(e.clientX-drag.x)*0.011; el+=(e.clientY-drag.y)*0.009;
+    el=Math.max(-0.5,Math.min(1.55,el)); drag={x:e.clientX,y:e.clientY};});
+  view.addEventListener("pointerup",()=>{drag=null;}); view.addEventListener("pointercancel",()=>{drag=null;});
+  view.addEventListener("wheel",e=>{e.preventDefault(); zoom*=e.deltaY<0?1.12:0.893; zoom=Math.max(0.3,Math.min(6,zoom));},{passive:false});
+  view.addEventListener("dblclick",()=>{az=AZ0; el=EL0; zoom=1;});
+  const pts=new Map(); let pinch0=0,zoom0=1;
+  view.addEventListener("pointerdown",e=>{pts.set(e.pointerId,e); if(pts.size===2){drag=null;
+    const[a,b]=[...pts.values()]; pinch0=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY); zoom0=zoom;}});
+  view.addEventListener("pointermove",e=>{ if(!pts.has(e.pointerId))return; pts.set(e.pointerId,e);
+    if(pts.size===2){ const[a,b]=[...pts.values()]; const d=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+      if(pinch0>0) zoom=Math.max(0.3,Math.min(6,zoom0*d/pinch0)); }});
+  const drop=e=>{pts.delete(e.pointerId); if(pts.size<2)pinch0=0;};
+  view.addEventListener("pointerup",drop); view.addEventListener("pointercancel",drop);
+
+  function tick(now){ requestAnimationFrame(tick); const dt=(now-last)/1000; last=now; if(autorot) az+=0.3*dt;
+    const cc=CASE(); if(playing){ acc+=dt*speed; const adv=Math.floor(acc/cc.dt_frame_s);
+      if(adv>0){ frame=(frame+adv)%cc.n_frames; acc-=adv*cc.dt_frame_s; } }
+    seek.value=frame; draw(); }
+  setArticle(ai); setPlay(playing); exagLabel(); refreshScopeLabels();
+  requestAnimationFrame(t=>{last=t;tick(t);});
+  window.addEventListener("resize",()=>draw());
+})();
+</script>

@@ -13,6 +13,8 @@ Deliverables:
 - [`RESPONSE-mooring.md`](RESPONSE-mooring.md): the reviewer response text.
 - `Flume_mooring_technical.pptx`: a 12-slide technical deck (`make_mooring_ppt.py`).
 - [`HWRL-questions.md`](HWRL-questions.md): open facility questions for OSU.
+- `mooring_motion.html`: interactive 3D motion viewer of the three moored articles in the flume
+  (`build_mooring_viewer.py`; see "Motion viewer" below).
 
 ## Answer
 
@@ -127,6 +129,33 @@ velocity u_r.
     keeps the slack-side lines taut for the same offset up- or downstream.
 - **Test-matrix note (not a mooring issue).** In 0.5 m waves at 2.6–3.0 s, the model predicts
   the pinned buoys tilting 30°+. Check the gimbal range, or cap H near those periods.
+
+## Motion viewer
+
+`mooring_motion.html` plays back the moored response of each article in the flume, using the
+FloatSim motion-viewer renderer (`../platform-12buoy/fin_study/platform_motion.html`).
+`mooring_motion_template.html` extends that renderer with:
+- the flume walls and floor, and the wall anchors;
+- the four mooring lines, each with its spring, **coloured by live line tension**;
+- the true spar and heave-plate geometry;
+- a free single buoy and the hub-only cluster.
+
+Cases: H = 0.3 m at T = 2.2, 2.8 and 3.5 s for each article.
+- The motion comes from `drift_td.simulate()`: drag-limited time domain, Morison drag relative
+  to the wave velocity, and the design mooring.
+- Each settled response is fitted with harmonics 1–3, so it loops over one period.
+- Line tension = pretension + line stiffness × stretch of each attachment.
+- Motion is shown at true scale by default.
+- The mean drift offset is not part of the time-domain model; its upper bound is shown as a
+  readout.
+- Cases with buoy tilts above 10° are flagged in the viewer as beyond the small-angle range.
+
+```bash
+python build_mooring_viewer.py run buoy          # seconds
+python build_mooring_viewer.py run cluster       # ~1 min per period
+python build_mooring_viewer.py run platform 2.8  # ~8 min per period; run periods in parallel
+python build_mooring_viewer.py html              # -> mooring_motion.html
+```
 
 ## How the flume size influences the mooring
 
