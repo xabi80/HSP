@@ -8,6 +8,22 @@ correction recorded in §3 below is the substantive result: the
 provisional "no resonance" reading from the single-amplitude STEP A/B
 sweep was wrong, and this document supersedes it.
 
+> **Corrections (2026-09-24). The OrcaFlex comparison is HELD.**
+> 1. **§6 "Independent validation — the long-wave limit" is retracted.**
+>    At T = 6.0 s, ω/ω_n = 3.143/6.0 = 0.52: that is not the long-wave
+>    limit. With relative-velocity drag the same case gives RAO 1.0325,
+>    not 0.9915, so the value depends on the model. See §6.
+> 2. **Every fan magnitude below (§3b, §3c, §5, §8) was computed with
+>    absolute-velocity (calm-water) Morison drag.** The driver never wired
+>    wave kinematics into drag (tracker `DRAG-WAVE-KINEMATICS-UNWIRED`).
+>    OrcaFlex uses relative-velocity Morison. The fan is **pending one
+>    rerun** after the relative-velocity wiring (STEP 5 PR1). The measured
+>    shifts are recorded in §3b. The findings text is deliberately NOT
+>    rewritten until the rerun.
+> 3. **The OrcaFlex comparison stays HELD** until that rerun. Otherwise the
+>    most drag-sensitive corner of the fan would show a FloatSim wiring
+>    difference, not a physics disagreement.
+
 **System.** 4 clusters × 3 buoys, `yaw_locked` joints
 buoy→hub→platform: **17 bodies / 102 DOF / 64 constraint rows**.
 Coupled N-body BEM (shared RAO database, heading 0 only), Cummins
@@ -92,7 +108,8 @@ operational `Cd_n = 5.0` and found:
 
 - **no overshoot** anywhere (platform-heave RAO < 1 at every period);
 - RAO rising monotonically toward the long-wave limit, reaching
-  **0.9915 at T = 6.0 s**.
+  **0.9915 at T = 6.0 s**. *(Correction 2026-09-24: T = 6.0 s is
+  ω/ω_n = 0.52, not the long-wave limit; see the retraction in §6.)*
 
 The provisional conclusion recorded in commit `958c19f` and the first
 `rao_3d.png` title was: *"no resonance peak — the 3.14 s heave mode is
@@ -105,6 +122,26 @@ does not probe the amplitudes where the resonance is visible.
 
 Sweeping **7 periods × 5 heights** at the operational `Cd_n = 5.0`
 (same build, adaptive settle) — platform-heave RAO:
+
+> **Pending rerun (2026-09-24).** These magnitudes use absolute-velocity
+> (calm-water) drag: no relative velocity, no drag excitation. Measured
+> reach (`studies/platform-12buoy/pr8_reldrag_check.py`, same model and
+> settle, platform-heave RAO):
+>
+> | H (m) | T (s) | recorded | current code | relative-velocity drag |
+> |---|---|---|---|---|
+> | 0.05 | 3.141 | 1.3935 | 1.3859 | 1.4426 (+4.1 %) |
+> | 1.00 | 3.141 | 0.2767 | 0.2749 | 0.4224 (+54 %; **unsettled**, windows differ 11.7 % at the 508 s cap) |
+> | 0.30 | 2.0 | 0.00185 | 0.00186 | 0.0521 (×28; drag excitation) |
+> | 0.30 | 6.0 | 0.99147 | 0.99148 | 1.0325 (+4.1 %) |
+>
+> - "Current code" differs from the record by ≤ 0.63 %. That is the post-PR8
+>   trapezoidal-convolution fix `9fb5b33`.
+> - The relative-velocity column is study-side wiring through FloatSim's
+>   Morison functions, with two latent kinematics defects corrected (Airy
+>   vertical sign; fluid sampled at displacement instead of absolute
+>   position).
+> - The findings in §3b–§5 are kept as recorded until the rerun.
 
 | T (s) | H=0.05 | H=0.15 | H=0.30 | H=0.60 | H=1.00 |
 |-------|--------|--------|--------|--------|--------|
@@ -177,23 +214,32 @@ amplitude (from the committed fan case CSVs, not derived):
 
 ---
 
-## 6. Independent validation — the long-wave limit
+## 6. ~~Independent validation — the long-wave limit~~ (RETRACTED 2026-09-24)
 
-As ω → 0 a floating body must follow the long wave exactly, so
-**RAO → 1** regardless of the model. Measured (H = 0.30 sweep):
+**What was claimed.** The H = 0.30 sweep's RAO rising to **0.9915 at
+T = 6.0 s** was presented as *"a model-independent check … No modeling
+error can fake RAO → 1 … the strongest single validation in the
+deliverable"*. The inclusion of this section was directed by the
+advisor.
 
-| T (s) | 3.8 | 4.0 | 4.5 | 5.0 | 6.0 |
-|-------|-----|-----|-----|-----|-----|
-| platform-heave RAO | 0.807 | 0.851 | 0.922 | 0.959 | **0.9915** |
+**Why it was mis-stated.**
+- RAO → 1 is a property of the limit ω → 0. At T = 6.0 s,
+  **ω/ω_n = 3.143 / 6.0 = 0.52**, which is not that limit. Below
+  resonance a floating body's heave RAO can legitimately sit above or
+  below 1 (dynamic amplification, excitation shape, damping). So a value
+  near 1 at 6 s validates nothing model-independently.
+- The "approach from below, still rising" came from the drag model. The
+  driver's drag acts on the absolute body velocity (calm water), so it
+  damps a body that is riding the long wave. With relative-velocity drag
+  the same case gives **1.0325**
+  (`studies/platform-12buoy/pr8_reldrag_out/H0p3_T6_rel.json`): above
+  unity, and model-dependent.
 
-RAO climbs monotonically to **0.9915 at T = 6.0 s** (0.85% below
-unity, still rising). **No modeling error can fake RAO → 1** — this is
-a model-independent check that the entire assembled pipeline (Cummins
-kernel + 64-row KKT joints + single-body-tiled hydrostatics +
-excitation) reproduces the correct rigid long-wave asymptote. The fan
-corroborates: RAO approaches 1 from below at long T across all
-amplitudes. This is the strongest single validation in the deliverable
-and it is amplitude-robust.
+**What stands.** The measured numbers (0.807 / 0.851 / 0.922 / 0.959 /
+0.9915 at T = 3.8 / 4.0 / 4.5 / 5.0 / 6.0 s, H = 0.30, calm-water drag)
+remain a record of what that model produced. They are **not** a
+validation. A genuine long-wave-limit check needs T ≫ T_n (ω/ω_n → 0),
+under both drag models.
 
 ---
 
@@ -224,6 +270,12 @@ and it is amplitude-robust.
 
 ## 8. Guidance for the OrcaFlex comparison
 
+> **HELD (2026-09-24).** Do not run the comparison against these numbers.
+> The fan is pending a rerun with relative-velocity drag (see the
+> corrections at the top). The guidance below is kept as written until
+> then. In particular, "isolates the linear impedance" at H ≈ 0.05 is
+> weaker than stated: relative drag still moves that corner by +4 %.
+
 - **Highest-information corner: small amplitude (H ≈ 0.05 m) near
   T ≈ 3.2–3.3 s.** There the resonance is barely gated, so the RAO is
   **most sensitive to Cd** (small drag errors move the peak the most),
@@ -236,7 +288,7 @@ and it is amplitude-robust.
 
   | Cd_n | driven peak RAO | driven peak T | in-band overshoot |
   |------|-----------------|---------------|-------------------|
-  | 5.0 (operational) | none in 1.2–6.0 s (→ 0.9915 @ 6 s) | — | none at H≥0.15 |
+  | 5.0 (operational) | none in 1.2–6.0 s (→ 0.9915 @ 6 s; calm-water drag, not a limit — §6) | — | none at H≥0.15 |
   | 2.5 | ≥ 1.058 (still rising at 4.0 s) | > 4.0 s | begins at T=3.6 |
   | 1.0 | **1.400** | **3.464 s** | T ≥ 3.0 s |
 
