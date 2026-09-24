@@ -32,6 +32,7 @@ import pytest
 
 from floatsim.hydro.morison import (
     MorisonElement,
+    PlateDragElement,
     make_morison_state_force,
     morison_element_force,
     startup_inertia_double_count_warnings,
@@ -595,6 +596,137 @@ def test_state_force_closure_rejects_bad_n_dof() -> None:
 
     with pytest.raises(ValueError, match="n_dof must be a positive multiple of 6"):
         make_morison_state_force([elem], n_dof=7, fluid_velocity_fn=u_fluid_fn, rho=_RHO)
+
+
+# ---------------------------------------------------------------------------
+# Fluid sampled at the ABSOLUTE position (STEP 5 PR1 commit b)
+# ---------------------------------------------------------------------------
+#
+# build_system's state is the DISPLACEMENT of each body's reference point from
+# its deck position, so the element point the closure computes (xi[0:3] + R @ arm)
+# is absolute only for a body whose reference point is the origin. The fluid
+# must be sampled at reference_point + displacement + R @ arm. Geometry: the
+# M11b 12-buoy platform buoy (reference z = -1.19567 m, plate at body z = -0.2617 m,
+# so the plate sits at -1.45737 m; a displacement-frame sample would put it at
+# -0.2617 m). Same class as the catenary anchor frame.
+
+_PLAT_REF = np.array([0.8839, 0.2946, -1.19567])
+_PLATE_Z_BODY = -0.2617
+
+
+def _platform_buoy_elements(body_index: int) -> list:  # type: ignore[type-arg]
+    plate = PlateDragElement(
+        body_index=body_index,
+        center_body=np.array([0.0, 0.0, _PLATE_Z_BODY]),
+        normal_body=np.array([0.0, 0.0, 1.0]),
+        radius=0.215,
+        thickness=0.0039,
+        Cd_n=5.0,
+        Cd_t=1.5,
+    )
+    spar = MorisonElement(
+        body_index=body_index,
+        node_a_body=np.array([0.0, 0.0, _PLATE_Z_BODY]),
+        node_b_body=np.array([0.0, 0.0, 1.19567]),
+        diameter=0.1682,
+        Cd=1.2,
+        Ca=0.0,
+        include_inertia=False,
+    )
+    return [spar, plate]
+
+
+def _recording_fluid() -> tuple[list, object]:  # type: ignore[type-arg]
+    seen: list = []  # type: ignore[type-arg]
+
+    def fn(pt, _t):  # type: ignore[no-untyped-def]
+        seen.append(np.array(pt, dtype=np.float64))
+        return np.zeros(3, dtype=np.float64)
+
+    return seen, fn
+
+
+def test_fluid_sampled_at_true_depth_of_the_platform_plate() -> None:
+    """Gate (b): the platform plate samples the fluid at z = -1.457 m, not -0.26 m."""
+    seen, fn = _recording_fluid()
+    refs = np.array([[0.0, 0.0, 0.0], _PLAT_REF])
+    sf = make_morison_state_force(
+        _platform_buoy_elements(1),
+        n_dof=12,
+        fluid_velocity_fn=fn,
+        rho=_RHO,
+        body_reference_points=refs,
+    )
+    sf(0.0, np.zeros(12), np.zeros(12))
+    spar_mid, plate_c = seen
+    np.testing.assert_allclose(plate_c, _PLAT_REF + np.array([0.0, 0.0, _PLATE_Z_BODY]), atol=1e-15)
+    assert plate_c[2] == pytest.approx(-1.45737, abs=1e-5)
+    np.testing.assert_allclose(
+        spar_mid, _PLAT_REF + np.array([0.0, 0.0, 0.5 * (_PLATE_Z_BODY + 1.19567)]), atol=1e-15
+    )
+
+
+def test_fluid_sampled_at_reference_point_plus_displacement_plus_arm() -> None:
+    """Under a displacement the sample is reference_point + xi[0:3] + R @ arm."""
+    from floatsim.bodies.rigid_body import quaternion_from_euler_zyx, rotation_matrix
+
+    seen, fn = _recording_fluid()
+    sf = make_morison_state_force(
+        _platform_buoy_elements(0),
+        n_dof=6,
+        fluid_velocity_fn=fn,
+        rho=_RHO,
+        body_reference_points=_PLAT_REF[None, :],
+    )
+    xi = np.array([0.10, -0.03, -0.05, 0.02, 0.07, -0.04])
+    sf(1.0, xi, np.zeros(6))
+    R = rotation_matrix(quaternion_from_euler_zyx(roll_rad=xi[3], pitch_rad=xi[4], yaw_rad=xi[5]))
+    expect = _PLAT_REF + xi[:3] + R @ np.array([0.0, 0.0, _PLATE_Z_BODY])
+    np.testing.assert_allclose(seen[1], expect, atol=1e-14)
+
+
+def test_default_reference_points_keep_the_displacement_frame() -> None:
+    """Without body_reference_points the sample is xi[0:3] + R @ arm, as before
+    (exact for bodies whose reference point is the origin)."""
+    seen, fn = _recording_fluid()
+    sf = make_morison_state_force(
+        _platform_buoy_elements(0), n_dof=6, fluid_velocity_fn=fn, rho=_RHO
+    )
+    sf(0.0, np.zeros(6), np.zeros(6))
+    np.testing.assert_allclose(seen[1], [0.0, 0.0, _PLATE_Z_BODY], atol=1e-15)
+
+
+def test_reference_points_leave_calm_water_forces_byte_identical() -> None:
+    """Only the fluid sampling point moves: with a zero fluid field the forces are
+    byte-identical with or without body reference points."""
+
+    def calm(_pt, _t):  # type: ignore[no-untyped-def]
+        return np.zeros(3, dtype=np.float64)
+
+    elems = [*_platform_buoy_elements(0), _vertical_cylinder(body_index=1)]
+    refs = np.array([_PLAT_REF, [-3.0, 2.0, -7.5]])
+    a = make_morison_state_force(elems, n_dof=12, fluid_velocity_fn=calm, rho=_RHO)
+    b = make_morison_state_force(
+        elems, n_dof=12, fluid_velocity_fn=calm, rho=_RHO, body_reference_points=refs
+    )
+    rng = np.random.default_rng(3)
+    for _ in range(25):
+        xi, xd = rng.normal(0, 0.1, 12), rng.normal(0, 0.5, 12)
+        assert a(0.7, xi, xd).tobytes() == b(0.7, xi, xd).tobytes()
+
+
+def test_body_reference_points_shape_is_validated() -> None:
+    def calm(_pt, _t):  # type: ignore[no-untyped-def]
+        return np.zeros(3, dtype=np.float64)
+
+    with pytest.raises(ValueError, match=r"body_reference_points must have shape \(2, 3\)"):
+        make_morison_state_force(
+            [_vertical_cylinder()],
+            n_dof=12,
+            fluid_velocity_fn=calm,
+            rho=_RHO,
+            body_reference_points=np.zeros((1, 3)),
+        )
 
 
 # ---------------------------------------------------------------------------

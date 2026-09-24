@@ -611,9 +611,14 @@ def _body_pose_from_xi(
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """Return ``(translation_3, R_3x3)`` for one body's xi slice.
 
-    ``xi_body[0:3]`` is the inertial-frame translation of the body
-    reference point; ``xi_body[3:6]`` is ``(roll, pitch, yaw)`` in
-    radians (ZYX-intrinsic), per ARCHITECTURE.md §3.
+    ``xi_body[0:3]`` is the inertial-frame DISPLACEMENT of the body
+    reference point from its deck position (``build_system``'s state
+    convention); it equals the absolute position only for a body whose
+    reference point is the origin. ``xi_body[3:6]`` is ``(roll, pitch,
+    yaw)`` in radians (ZYX-intrinsic), per ARCHITECTURE.md §3. Forces use
+    only the relative arm ``R @ arm``, so this frame is exact for them; the
+    fluid-sampling point adds the body's reference point back
+    (``make_morison_state_force(body_reference_points=...)``).
     """
     translation = xi_body[0:3].astype(np.float64, copy=True)
     q = quaternion_from_euler_zyx(
@@ -705,6 +710,7 @@ def make_morison_state_force(
     fluid_velocity_fn: FluidFieldFn,
     fluid_acceleration_fn: FluidFieldFn | None = None,
     rho: float,
+    body_reference_points: NDArray[np.floating] | None = None,
 ) -> Callable[[float, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]:
     """Build the ``(t, xi, xi_dot) -> F`` closure consumed by ``integrate_cummins``.
 
@@ -733,6 +739,16 @@ def make_morison_state_force(
         element uses the inertia term.
     rho
         Water density in kg/m³. Must be positive.
+    body_reference_points
+        Optional ``(n_dof // 6, 3)`` array: each body's deck
+        ``reference_point`` in m, the origin of its displacement
+        coordinates ``xi[6b:6b+3]``. The fluid callables are then sampled at
+        the ABSOLUTE point ``reference_point + xi[0:3] + R @ arm`` (wave
+        phase and depth decay depend on it). ``None`` (default) samples at
+        ``xi[0:3] + R @ arm``: exact only for bodies whose reference point
+        is the origin. Forces and moments are unaffected either way (they
+        use relative arms), so a calm-sea closure is byte-identical with or
+        without it.
 
     Returns
     -------
@@ -774,6 +790,14 @@ def make_morison_state_force(
                 f"[0, {n_bodies}) for n_dof = {n_dof}"
             )
     _check_plate_supersession(elem_list)
+    ref_points: NDArray[np.float64] | None = None
+    if body_reference_points is not None:
+        ref_points = np.asarray(body_reference_points, dtype=np.float64)
+        if ref_points.shape != (n_bodies, 3) or not np.all(np.isfinite(ref_points)):
+            raise ValueError(
+                f"body_reference_points must have shape ({n_bodies}, 3) and be finite; "
+                f"got shape {ref_points.shape}"
+            )
 
     def _state_force(
         t_eval: float,
@@ -797,8 +821,11 @@ def make_morison_state_force(
                 # Disc centre (inertial) -> uniform fluid sample over the
                 # compact disc; then integrate the face + edge terms.
                 center_inertial = r_ref + R_body @ e.center_body
+                center_sample = (
+                    center_inertial if ref_points is None else center_inertial + ref_points[b]
+                )
                 u_fluid_c = np.asarray(
-                    fluid_velocity_fn(center_inertial, float(t_eval)), dtype=np.float64
+                    fluid_velocity_fn(center_sample, float(t_eval)), dtype=np.float64
                 )
                 omega_inertial = R_body @ xi_dot[slc][3:6]
                 f6 = plate_element_force(
@@ -823,12 +850,13 @@ def make_morison_state_force(
             arm_inertial = mid_inertial - r_ref
             v_body_at_mid = _body_velocity_at(xi_dot[slc], R_body, arm_inertial)
 
-            u_fluid = np.asarray(fluid_velocity_fn(mid_inertial, float(t_eval)), dtype=np.float64)
+            mid_sample = mid_inertial if ref_points is None else mid_inertial + ref_points[b]
+            u_fluid = np.asarray(fluid_velocity_fn(mid_sample, float(t_eval)), dtype=np.float64)
             a_fluid: NDArray[np.float64] | None
             if e.include_inertia:
                 assert fluid_acceleration_fn is not None  # guaranteed at build time
                 a_fluid = np.asarray(
-                    fluid_acceleration_fn(mid_inertial, float(t_eval)),
+                    fluid_acceleration_fn(mid_sample, float(t_eval)),
                     dtype=np.float64,
                 )
             else:
