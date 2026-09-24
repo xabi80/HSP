@@ -32,6 +32,9 @@ The decks are in `floatsim_decks.py`. The re-check changed three things.
      FloatSim's 70.8 N·m/rad (hand check 73.9).
    - The deck convention is reference point = CoG = BEM origin.
    - Heave is unaffected (2.57 s).
+   - The 2.76 s is for this study's BEM (`single_osu_open`). The OSU study's own placeholder
+     BEM gives 2.69 s. That study is now fixed (`studies/osu-test-buoy`, tracker
+     `STUDY-HYDROSTATIC-REFERENCE-POINT`).
    - The articulated models (cluster, platform) were already consistent.
    - The single-buoy rows of `mooring_verify.py` inherit the bug and are **invalid**.
 2. **The moving-body drift refinement (`drift_td.py`, `drift_refined.py`) is withdrawn.**
@@ -49,10 +52,65 @@ The decks are in `floatsim_decks.py`. The re-check changed three things.
      "0° trim" and "the cluster's buoys do not tilt" results are therefore **superseded**, and
      so is the SWL-spar attachment it recommended for the pinned articles.
    - The fix (attach at the pin plane, balance the pretension on each spar, or reduce T₀) is a
-     design decision still open.
+     design decision still open. The static comparison is in "Attachment options" below.
 
 Still valid: the sizing (`mooring_sizing.py`), which covers inertia, drift bound, X-spread
 design and the flume-size section. It uses no motion simulation.
+
+## Attachment options for the pinned articles: static comparison (FloatSim)
+
+`attachment_options.py` → `attachment_options.json`. Everything runs in FloatSim:
+- FloatSim decks and FloatSim `Catenary` lines;
+- the moored equilibrium settled by FloatSim's constrained integrator, with joint-projected
+  residual ≤ 0.023 N against the 1 N tolerance;
+- the tilt-mode period from a drag-free free decay of the in-phase buoy tilt, every buoy
+  pitched 2° about its own pin.
+
+**The dynamic tilt comparison in waves waits for the relative-velocity drag fix** (tracker
+`DRAG-WAVE-KINEMATICS-UNWIRED`).
+
+The options:
+- **SWL spar:** the documented design.
+- **Pin-level:** fairlead at the pin (spar top), anchors on the wall at the pin height
+  (+0.72 m) so the lines stay horizontal.
+- **Balanced:** each moored spar also gets the line to the far-end anchor on its side, with
+  k and T₀ halved.
+- **T₀ for H:** pretension designed for a smaller test wave height. The lines go slack above
+  it.
+
+**Cluster** (unmoored tilt mode 2.862 s):
+
+| Option | Lines | T₀ / line | Static moored-buoy tilt | Tilt-mode period | Buildable? |
+|---|---|---|---|---|---|
+| SWL spar | 4 | 9.01 N | 4.91° (pitch 4.67, roll 1.52) | 2.763 s (−3.4 %) | yes |
+| Pin-level | 4 | 9.01 N | **0.00°** | 2.590 s (**−9.5 %**) | needs anchors at +0.72 m |
+| Balanced | 8 | 4.51 N | 1.52° (roll) | 2.788 s (−2.6 %) | no: lines pass 8.4 cm from other spars at rest |
+| T₀ for H 0.3 m | 4 | 3.89 N | 2.13° | 2.785 s (−2.7 %) | yes; slack above H 0.3 m |
+| T₀ for H 0.2 m | 4 | 2.11 N | 1.16° | 2.789 s (−2.5 %) | yes; slack above H 0.2 m |
+
+**4×4 platform** (unmoored tilt mode 2.917 s):
+
+| Option | Lines | T₀ / line | Static moored-buoy tilt | Tilt-mode period | Buildable? |
+|---|---|---|---|---|---|
+| SWL spar | 8 | 18.03 N | 9.10° (pitch 8.86, roll 3.18) | 2.802 s (−3.9 %) | yes |
+| Pin-level | 8 | 18.03 N | **0.00°** | 2.649 s (**−9.2 %**) | needs anchors at +0.72 m |
+| Balanced | 16 | 9.02 N | 3.05° (roll) | 2.849 s (−2.3 %) | no: lines run through the array (1.4 cm clearance) |
+| T₀ for H 0.3 m | 8 | 7.78 N | 4.03° | 2.842 s (−2.6 %) | yes; slack above H 0.3 m |
+| T₀ for H 0.2 m | 8 | 4.23 N | 2.19° | 2.849 s (−2.3 %) | yes; slack above H 0.2 m |
+
+- **Pin-level removes the static tilt entirely**, because the line acts through the pin. But it
+  stiffens the buoy-tilt mode by 9.2–9.5 %. The old linear-spring claim (−8.8 to −9.0 %)
+  holds in FloatSim.
+- **The old SWL-spar tilt-mode shift does not hold.** The linear-spring model gave −2.3 to
+  −2.4 %; FloatSim gives −3.4 / −3.9 %, plus the 4.9° / 9.1° static tilt. The platform's 9.1°
+  alone exceeds the 0.1 rad small-angle range.
+- **Balanced** leaves a roll tilt (1.5° / 3.1°) from the lines' lateral components, and its
+  lines cannot be routed clear of the other spars.
+- **Reduced T₀** scales the static tilt almost linearly: exactly for the cluster, within 3 %
+  for the platform. It trades station-keeping range, because the lines go slack above the
+  design H.
+- **The choice (Decision 1) is open.** The trade is zero static tilt against a 9 % stiffer
+  tilt mode, or a static tilt against the station-keeping range.
 
 ## Answer
 
@@ -157,9 +215,12 @@ built with the FloatSim motion-viewer renderer
   - Line tension is the magnitude of each FloatSim catenary's force at that frame's pose.
   - Displacements are measured from FloatSim's **unmoored** equilibrium, so a moored run shows
     what the lines do, including the static pretension tilt ("static" in the tilt readout).
-- **H = 0.1 m keeps the resonant buoy tilt inside FloatSim's small-angle range.** At larger H
-  near resonance, the lone free buoy's yaw goes numerically unstable once pitch passes ~13°:
-  small-angle kinematics, spar drag, and no yaw restraint.
+- **Validity: 9 of the 17 cases exceed FloatSim's 0.1 rad (5.7°) small-angle range** (tracker
+  `LEVEL2-INTEGRATOR-UNWIRED`, `docs/phase2-followups.md`). These are the T = 2.9 s resonant
+  cases (10.6–23.0°) and the moored pinned articles. The moored platform's 9.1° pretension tilt
+  exceeds it with no wave at all. Those tilts are indicative only, and the viewer flags them ⚠.
+  H = 0.1 m was chosen to keep the lone free buoy below the ~13° of pitch where its yaw goes
+  numerically unstable, which is the same LEVEL2 gap.
 - **The mean drift offset is not in the model.** Its upper bound is shown as a readout.
 
 | FloatSim, H = 0.1 m: heave RAO / peak buoy tilt | T = 2.2 s | T = 2.9 s | T = 3.5 s |
@@ -233,7 +294,8 @@ missing term.
    `floatsim_decks.moored_equilibrium` lets the constrained integrator settle instead, and gates
    the result on the joint-projected residual ≤ `_EQUILIBRIUM_TOL_N`.
 4. **The lone free buoy is unstable in yaw above ~13° of pitch** (small-angle kinematics, spar
-   drag, Izz = 0.063 kg·m², no yaw restraint). Pinned buoys are yaw-locked and immune.
+   drag, Izz = 0.063 kg·m², no yaw restraint). Pinned buoys are yaw-locked and immune. This is
+   `LEVEL2-INTEGRATOR-UNWIRED` manifesting, not a separate gap and not a patch target.
 5. **The driver's Morison drag is calm-water only.**
 6. **The catenary solver cold-starts.** `solve_catenary` runs one `scipy.root(hybr)` from
    H = V_A = 1 N, with no warm start or retry.
@@ -293,6 +355,8 @@ Wave gauges are referenced to the mean moored position.
 - **`floatsim_decks.py`**: the FloatSim decks of the three articles, moored (FloatSim
   `Catenary` lines) or free, and the build / wave-run helpers. `pitch_check.py` and
   `build_mooring_viewer.py` run on it.
+- **`attachment_options.py`**: the static attachment comparison and the drag-free tilt-mode
+  decays for the pinned articles (FloatSim), through `floatsim_decks.mooring_lines` options.
 - **`bem_cluster.py single`**: the single-buoy Capytaine BEM on the same hull, mesh and pipeline
   (`single_osu_open(_psd).nc`, about the CoG).
 - **Withdrawn**: `drift_td.py` / `drift_refined.py` (moving-body drift) and the single-buoy
@@ -321,6 +385,9 @@ python mooring_verify.py    # coupled check on the 3 articles + T_surge sweep (~
 python mooring_layout.py    # design table + layout schematic
 python bem_cluster.py single  # single-buoy BEM (~20 s); writes single_osu_open(_psd).nc
 python pitch_check.py       # FloatSim pitch decay + forced sweep (~10 min)
+python attachment_options.py static cluster pin_level   # ~2 min (platform ~20 min per option)
+python attachment_options.py tilt platform pin_level     # drag-free tilt-mode decay (~6 min)
+python attachment_options.py summary
 python make_mooring_ppt.py  # Flume_mooring_technical.pptx
 ```
 

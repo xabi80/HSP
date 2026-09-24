@@ -247,8 +247,10 @@
     from a separate run of the free-floating article. The mooring barely changes the wave-frequency motion, but on
     the cluster and platform its pretension adds a static buoy tilt ("static" in the readout). <b>Not shown:</b> the
     mean drift offset (the time-domain model has no splash-zone drift; the readout quotes its upper bound). Rigid
-    skeleton per the joint topology: each buoy's spar hangs from its pin and tilts with the buoy. Tilts above ~10°
-    (the resonant cases) are beyond the model's small-angle range and are indicative.
+    skeleton per the joint topology: each buoy's spar hangs from its pin and tilts with the buoy. <b>Validity:</b> FloatSim
+    integrates rotations with small-angle kinematics (full rotation kinematics, "LEVEL2", are not yet wired). Tilts above
+    0.1 rad (5.7°) are outside that range and are flagged ⚠ as indicative only; that includes the near-resonance cases and
+    the moored platform's static pretension tilt.
   </footer>
 </div>
 
@@ -271,6 +273,7 @@ const DATA=__DATA__;
   let acc=0, last=performance.now(), HMAX=1, TDEV=1;
   const ART=()=>ARTS[ai], CASE=()=>ARTS[ai].cases[ci], BOD=()=>ARTS[ai].bodies;
   // active motion variant: the moored run, or the same wave without the mooring
+  const TILT_VALID_DEG=0.1*180/Math.PI;  // 0.1 rad small-angle validity gate (LEVEL2)
   const VAR=()=>{const c=CASE(); return (!moored&&c.free)?c.free:c;};
   const MOORED=()=>!CASE().no_moored&&(moored||!CASE().free);
 
@@ -539,11 +542,12 @@ const DATA=__DATA__;
     document.getElementById("ro-H").innerHTML=cc.H.toFixed(2)+'<small> m</small>';
     document.getElementById("ro-rao").textContent=vv.rao_ref.toFixed(2);
     const st=on?(cc.static_tilt_deg||0):0;
-    document.getElementById("ro-tilt").innerHTML=vv.max_tilt_deg.toFixed(1)+'<small> °</small>'+(st>=0.05?`<small> (static ${st.toFixed(1)}°)</small>`:"");
+    const outside=vv.max_tilt_deg>TILT_VALID_DEG;
+    document.getElementById("ro-tilt").innerHTML=(outside?'<span class="warn">':'')+vv.max_tilt_deg.toFixed(1)+'<small> °</small>'+(outside?' ⚠</span>':'')+(st>=0.05?`<small> (static ${st.toFixed(1)}°)</small>`:"");
     document.getElementById("ro-ten").innerHTML=on?cc.min_tension_N.toFixed(1)+"–"+cc.max_tension_N.toFixed(1)+'<small> N</small>':"—";
     document.getElementById("ro-off").innerHTML=on?"≤ "+cc.offset_bound_m.toFixed(2)+'<small> m</small>':'<small>drifts away</small>';
     const splay=st>=0.5?`<br><span class="warn">line pretension alone tilts each moored buoy ${st.toFixed(1)}° about its pin: the line pulls its waterline toward the anchor, 0.72 m below the pin</span>`:"";
-    const warn=splay+(vv.max_tilt_deg>10?`<br><span class="warn">peak buoy tilt ${vv.max_tilt_deg.toFixed(0)}° — beyond the small-angle range, indicative</span>`:"");
+    const warn=splay+(outside?`<br><span class="warn">⚠ peak buoy tilt ${vv.max_tilt_deg.toFixed(1)}° exceeds 0.1 rad (5.7°): outside FloatSim's small-angle kinematics (LEVEL2 not wired) — indicative only${st>TILT_VALID_DEG?"; the static pretension tilt alone exceeds it":""}</span>`:"");
     const moorTxt=cc.no_moored?`<span class="warn">no moored run: ${cc.no_moored}; showing the free-floating run</span>`:on?(a.key==="platform"?`bridles k = ${a.k_line.toFixed(1)} N/m, T₀ = ${a.T0.toFixed(1)} N, two legs each (tension shown per leg)`:`lines k = ${a.k_line.toFixed(1)} N/m, T₀ = ${a.T0.toFixed(1)} N`):"no mooring (free-floating)";
     document.getElementById("caselabel").innerHTML=`<b>${a.name.replace("4x4","4×4")}</b><br>T = ${cc.T.toFixed(1)} s, H = ${cc.H.toFixed(2)} m · ${moorTxt}`+warn;
     document.getElementById("seek").max=cc.n_frames-1;

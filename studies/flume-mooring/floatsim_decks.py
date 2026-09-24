@@ -51,6 +51,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 os.environ.setdefault("PLAT_ROT_DEG", "45")
@@ -134,23 +135,31 @@ def _scale_drag(dk: Deck, s: float) -> Deck:
                                             if b.drag_elements else b for b in dk.bodies]})
 
 
-def line_design(article: str, n_spar: int) -> dict:
+def line_design(article: str, n_spar: int, H_design: float = 0.5) -> dict:
+    """mooring_sizing's X-spread line: Kx from T_surge; T0 keeps the slack side taut under the
+    drift offset + wave amplitude of the design wave height H_design (+20 %)."""
     a = ms.ARTICLES[NAMES[article]]
-    f05 = max(sum(ms.drift_per_spar(0.5, T)[:2]) for T in ms.T_WAVE)
+    f = max(sum(ms.drift_per_spar(H_design, T)[:2]) for T in ms.T_WAVE)
     Kx = (a["M"] + a["A"]) * (2 * np.pi / mv.T_SURGE) ** 2
-    xs = ms.xspread(Kx, n_spar * f05 / Kx, 0.25, mv.L_ANCHOR)
+    xs = ms.xspread(Kx, n_spar * f / Kx, 0.5 * H_design, mv.L_ANCHOR)
     return {"Kx": float(Kx), "k_line": float(xs["kl"]), "T0": float(xs["T0"])}
 
 
-def mooring_lines(dk: Deck, article: str) -> list[dict]:
-    """The FloatSim lines: body, fairlead (body frame), true anchor, stiffness k and pretension."""
+def mooring_lines(dk: Deck, article: str, *, fairlead: np.ndarray = WL_B, anchor_z: float = 0.0,
+                  H_design: float = 0.5, balanced: bool = False) -> list[dict]:
+    """The FloatSim lines: body, fairlead (body frame), true anchor, stiffness k and pretension.
+
+    Defaults = the documented design (fairlead at the spar SWL, anchors at the SWL, T0 for
+    H = 0.5 m). ``balanced``: every moored spar gets the line to the anchor at the other end of
+    the flume on its side too, with k and T0 halved, so the axial pretension cancels on the spar
+    (the single-buoy collar, generalized); total Kx is unchanged."""
     B = dk.bodies
     buoys = [k for k, b in enumerate(B) if (b.hydro_body_label or b.hydro_database)]
-    des = line_design(article, len(buoys))
+    des = line_design(article, len(buoys), H_design)
     out = []
     for sx in (-1, 1):
         for sy in (1, -1):
-            anchor = np.array([sx * mv.L_ANCHOR, sy * ms.W_FLUME / 2, 0.0])
+            anchor = np.array([sx * mv.L_ANCHOR, sy * ms.W_FLUME / 2, anchor_z])
             if article == "buoy":
                 legs, share = [buoys[0]], 1.0
             elif article == "cluster":
@@ -161,15 +170,17 @@ def mooring_lines(dk: Deck, article: str) -> list[dict]:
                 legs = [k for k in buoys if np.isclose(B[k].reference_point[0], sx * xr)
                         and np.sign(B[k].reference_point[1]) == sy]; share = 1.0 / len(legs)
             for k in legs:
-                out.append({"body": k, "name": B[k].name, "fairlead": WL_B.copy(),
-                            "anchor": anchor, "k": des["k_line"] * share,
-                            "T0": des["T0"] * share, "group": len(out) // len(legs)
-                            if article == "platform" else len(out)})
+                ends = [anchor, anchor * np.array([-1.0, 1.0, 1.0])] if balanced else [anchor]
+                for an in ends:
+                    out.append({"body": k, "name": B[k].name,
+                                "fairlead": np.asarray(fairlead, dtype=float).copy(),
+                                "anchor": an, "k": des["k_line"] * share / len(ends),
+                                "T0": des["T0"] * share / len(ends), "group": len(out)})
     return out
 
 
-def moored(dk: Deck, article: str) -> tuple[Deck, list[dict]]:
-    lines = mooring_lines(dk, article)
+def moored(dk: Deck, article: str, **opts) -> tuple[Deck, list[dict]]:  # type: ignore[no-untyped-def]
+    lines = mooring_lines(dk, article, **opts)
     conns = []
     for ln in lines:
         ref = np.asarray(dk.bodies[ln["body"]].reference_point, float)
@@ -244,14 +255,17 @@ def joint_residual(setup, xi: np.ndarray) -> float:  # type: ignore[no-untyped-d
     return float(np.abs(vh[rank:] @ r).max())
 
 
-def moored_equilibrium(article: str) -> np.ndarray:
-    """Static equilibrium of a moored articulated deck, found by FloatSim (see the module note)."""
+def moored_equilibrium(article: str, tag: str | None = None, **opts) -> np.ndarray:  # type: ignore[no-untyped-def]
+    """Static equilibrium of a moored articulated deck, found by FloatSim (see the module note).
+    ``opts`` go to ``mooring_lines`` (attachment variants); the result is cached under ``tag``
+    (default: the article = the documented design)."""
+    tag = tag or article
     cache = json.loads(EQ_CACHE.read_text()) if EQ_CACHE.exists() else {}
     dk0 = deck(article)
-    dkm, lines = moored(dk0, article)
+    dkm, lines = moored(dk0, article, **opts)
     key = [[round(ln["T0"], 6), round(ln["k"], 6), round(ln["L0"], 6)] for ln in lines]
-    if article in cache and cache[article]["lines"] == key:
-        return np.asarray(cache[article]["xi"])
+    if tag in cache and cache[tag]["lines"] == key:
+        return np.asarray(cache[tag]["xi"])
     hd = hdbs(article)
     s0 = build_system(dk0, dt=DT, t_max_kernel=T_KERNEL, solve_equilibrium=True, **hd)
     s1 = build_system(with_positions(dkm, s0.xi0), dt=DT, t_max_kernel=T_KERNEL,
@@ -270,15 +284,26 @@ def moored_equilibrium(article: str) -> np.ndarray:
            "tail_osc_amp": float(np.abs(r.xi[tail] - xi).max()),
            "max_buoy_tilt_deg": max(tilt), "mean_buoy_tilt_deg": float(np.mean(tilt)),
            "free_eq_max_abs": float(np.abs(s0.xi0).max())}
-    print(f"{article} moored equilibrium: joint residual {res:.3f} N, buoy tilt "
+    print(f"{tag} moored equilibrium: joint residual {res:.3f} N, buoy tilt "
           f"{min(tilt):.2f}-{max(tilt):.2f} deg, tail speed {rec['tail_max_speed_m_s']:.1e} m/s",
           flush=True)
     if res > fsd._EQUILIBRIUM_TOL_N:
-        raise RuntimeError(f"{article}: settled state misses FloatSim's equilibrium tolerance "
+        raise RuntimeError(f"{tag}: settled state misses FloatSim's equilibrium tolerance "
                            f"({res:.3f} N > {fsd._EQUILIBRIUM_TOL_N} N)")
-    cache = json.loads(EQ_CACHE.read_text()) if EQ_CACHE.exists() else {}
-    cache[article] = rec
-    EQ_CACHE.write_text(json.dumps(cache, indent=1))
+    lock = EQ_CACHE.with_suffix(".lock")          # parallel settles share the cache file
+    for _ in range(600):
+        try:
+            fdl = os.open(lock, os.O_CREAT | os.O_EXCL)
+            break
+        except FileExistsError:
+            time.sleep(0.1)
+    try:
+        cache = json.loads(EQ_CACHE.read_text()) if EQ_CACHE.exists() else {}
+        cache[tag] = rec
+        EQ_CACHE.write_text(json.dumps(cache, indent=1))
+    finally:
+        os.close(fdl)
+        lock.unlink(missing_ok=True)
     return xi
 
 
