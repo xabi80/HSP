@@ -1,5 +1,14 @@
 # Response to reviewer comment — mooring for the flume tests
 
+> **Under revision (2026-09-23). Do not send as-is.** The FloatSim re-check (README, "Status")
+> supersedes three kinds of statement below:
+> - the single-buoy pitch-period shift;
+> - "zero trim / no buoy tilt" for the cluster and platform: FloatSim's catenaries show the SWL
+>   line pretension tilting the moored pinned buoys;
+> - the moving-body drift paragraph (withdrawn).
+>
+> The sizing, the drift bound and the flume-size section stand.
+
 **Reviewer comment:** *which mooring is needed, and how could the flume size influence it?*
 
 ## Summary

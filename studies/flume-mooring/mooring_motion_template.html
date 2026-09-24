@@ -237,14 +237,18 @@
   </details>
 
   <footer id="foot">
-    Data: FloatSim time domain — Cummins radiation + velocity-level KKT joints + Morison drag on spar and heave
-    plate <b>relative to the wave velocity</b>, with the design mooring as linear springs at the attachments. Each
-    case is the settled response fitted with harmonics 1–3 of the wave frequency, so it loops over one period.
-    Line tension = pretension + line stiffness × stretch. <b>Mooring off</b> plays the same wave from a separate
-    run of the free-floating article (the mooring barely changes the wave-frequency motion). <b>Not shown:</b> the mean drift offset (the time-domain
-    model has no splash-zone drift; the readout quotes its upper bound). Rigid skeleton per the joint topology:
-    each buoy's spar hangs from its pin and tilts with the buoy. Tilts above ~10° are beyond the model's
-    small-angle range and are indicative.
+    Data: FloatSim — deck bodies with the coupled Capytaine BEM (Cummins radiation, velocity-level KKT pins), the
+    deck's Morison drag elements on spar and heave plate (FloatSim's still-water form), and the mooring as FloatSim
+    <b>Catenary</b> lines (elastic, pretensioned, anchored on the walls at the still-water line; the platform's
+    bridles are two lines per anchor). Frames are FloatSim's own output over the last two wave periods of the
+    settled run, shown as displacements from FloatSim's unmoored equilibrium; the moored cluster and platform start
+    from FloatSim's settled moored equilibrium. Line tension = FloatSim's catenary line force. H = 0.1 m keeps the
+    lone free buoy below the ~13° pitch where FloatSim's yaw goes unstable. <b>Mooring off</b> plays the same wave
+    from a separate run of the free-floating article. The mooring barely changes the wave-frequency motion, but on
+    the cluster and platform its pretension adds a static buoy tilt ("static" in the readout). <b>Not shown:</b> the
+    mean drift offset (the time-domain model has no splash-zone drift; the readout quotes its upper bound). Rigid
+    skeleton per the joint topology: each buoy's spar hangs from its pin and tilts with the buoy. Tilts above ~10°
+    (the resonant cases) are beyond the model's small-angle range and are indicative.
   </footer>
 </div>
 
@@ -268,7 +272,7 @@ const DATA=__DATA__;
   const ART=()=>ARTS[ai], CASE=()=>ARTS[ai].cases[ci], BOD=()=>ARTS[ai].bodies;
   // active motion variant: the moored run, or the same wave without the mooring
   const VAR=()=>{const c=CASE(); return (!moored&&c.free)?c.free:c;};
-  const MOORED=()=>moored||!CASE().free;
+  const MOORED=()=>!CASE().no_moored&&(moored||!CASE().free);
 
   // ---- camera / projection ----
   function project(x,y,z,v){
@@ -343,7 +347,7 @@ const DATA=__DATA__;
     const prims=[], ten=MOORED()?cc.tension[fr]:null, L=MOORED()?ART().lines:[];
     // mooring lines: anchor -> (bridle ring ->) SWL attachment on the spar(s)
     L.forEach((ln,j)=>{
-      const col=diverge((ten[j]-ART().T0)/TDEV);
+      const col=diverge((ten[j]-(ln.T0!==undefined?ln.T0:ART().T0))/TDEV);
       const att=ln.legs.map(i=>along(W,i,0)), att0=ln.legs.map(i=>along(W0,i,0));
       const pa=project(ln.anchor[0],ln.anchor[1],ln.anchor[2],v);
       let end;
@@ -470,7 +474,7 @@ const DATA=__DATA__;
     if(sigQ==="ten"&&!MOORED()){ sigQ="disp"; setSeg("#sigq",document.querySelector('#sigq button[data-q="disp"]')); refreshScopeLabels(); }
     document.querySelector('#sigq button[data-q="ten"]').disabled=!MOORED();
     if(sigQ==="ten"){ const cols=[C('--down'),C('--accent'),C('--up'),C('--warm')];
-      chan={series:a.lines.map((ln,j)=>({lab:lineName(ln),col:cols[j],lw:1.8,val:cc.tension.map(r=>r[j])}))};
+      chan={series:a.lines.map((ln,j)=>({lab:lineName(ln)+(a.lines.length>4?" · "+BOD()[ln.legs[0]].name:""),col:cols[j%4],lw:a.lines.length>4?1.2:1.8,val:cc.tension.map(r=>r[j])}))};
     } else { const sc=QMETA[sigQ].s, mk=key=>vv.sig[key][sigQ].map(q=>q[sigC]*sc);
       chan={series:[{lab:a.siglabels[0],col:C('--accent'),lw:1.6,val:mk("ref")},
                     {lab:a.siglabels[1],col:C('--down'),lw:2,val:mk("up")},
@@ -479,7 +483,7 @@ const DATA=__DATA__;
     if(sigQ==="ten"){ const pad=Math.max(0.08*(hi-lo),0.02*Math.abs(hi)+1e-6); chan.lo=lo-pad; chan.hi=hi+pad; }
     else { const m=Math.max(Math.abs(lo),Math.abs(hi),1e-6)*1.12; chan.lo=-m; chan.hi=m; }
     let hm=1e-6; for(let f=0;f<F;f++) BOD().forEach((b,i)=>{if(b.type==="buoy")hm=Math.max(hm,Math.abs(vv.frames[f][i][2]));}); HMAX=hm;
-    let td=1e-6; for(const r of cc.tension) for(const q of r) td=Math.max(td,Math.abs(q-a.T0)); TDEV=td;
+    let td=1e-6; if(cc.tension) for(const r of cc.tension) r.forEach((q,j)=>{td=Math.max(td,Math.abs(q-(a.lines[j].T0!==undefined?a.lines[j].T0:a.T0)));}); TDEV=td;
     document.getElementById("scopelegend").innerHTML=chan.series.map(s=>`<span><i style="background:${s.col}"></i>${s.lab}</span>`).join("");
     document.querySelectorAll("#sigc button").forEach(b=>b.disabled=(sigQ==="ten"));
   }
@@ -530,14 +534,17 @@ const DATA=__DATA__;
     ci=i; frame=0; acc=0; buildChannels();
     casesEl.querySelectorAll(".chip").forEach((c,j)=>c.setAttribute("aria-pressed",j===i?"true":"false"));
     const cc=CASE(), a=ART(), vv=VAR(), on=MOORED();
+    document.querySelectorAll("#moor button").forEach(b=>b.disabled=!!cc.no_moored);
     document.getElementById("ro-T").innerHTML=cc.T.toFixed(2)+'<small> s</small>';
     document.getElementById("ro-H").innerHTML=cc.H.toFixed(2)+'<small> m</small>';
     document.getElementById("ro-rao").textContent=vv.rao_ref.toFixed(2);
-    document.getElementById("ro-tilt").innerHTML=vv.max_tilt_deg.toFixed(1)+'<small> °</small>';
+    const st=on?(cc.static_tilt_deg||0):0;
+    document.getElementById("ro-tilt").innerHTML=vv.max_tilt_deg.toFixed(1)+'<small> °</small>'+(st>=0.05?`<small> (static ${st.toFixed(1)}°)</small>`:"");
     document.getElementById("ro-ten").innerHTML=on?cc.min_tension_N.toFixed(1)+"–"+cc.max_tension_N.toFixed(1)+'<small> N</small>':"—";
     document.getElementById("ro-off").innerHTML=on?"≤ "+cc.offset_bound_m.toFixed(2)+'<small> m</small>':'<small>drifts away</small>';
-    const warn=vv.max_tilt_deg>10?`<br><span class="warn">peak buoy tilt ${vv.max_tilt_deg.toFixed(0)}° — beyond the small-angle range, indicative</span>`:"";
-    const moorTxt=on?`lines k = ${a.k_line.toFixed(1)} N/m, T₀ = ${a.T0.toFixed(1)} N`:"no mooring (free-floating)";
+    const splay=st>=0.5?`<br><span class="warn">line pretension alone tilts each moored buoy ${st.toFixed(1)}° about its pin: the line pulls its waterline toward the anchor, 0.72 m below the pin</span>`:"";
+    const warn=splay+(vv.max_tilt_deg>10?`<br><span class="warn">peak buoy tilt ${vv.max_tilt_deg.toFixed(0)}° — beyond the small-angle range, indicative</span>`:"");
+    const moorTxt=cc.no_moored?`<span class="warn">no moored run: ${cc.no_moored}; showing the free-floating run</span>`:on?(a.key==="platform"?`bridles k = ${a.k_line.toFixed(1)} N/m, T₀ = ${a.T0.toFixed(1)} N, two legs each (tension shown per leg)`:`lines k = ${a.k_line.toFixed(1)} N/m, T₀ = ${a.T0.toFixed(1)} N`):"no mooring (free-floating)";
     document.getElementById("caselabel").innerHTML=`<b>${a.name.replace("4x4","4×4")}</b><br>T = ${cc.T.toFixed(1)} s, H = ${cc.H.toFixed(2)} m · ${moorTxt}`+warn;
     document.getElementById("seek").max=cc.n_frames-1;
   }

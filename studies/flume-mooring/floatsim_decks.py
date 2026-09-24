@@ -1,0 +1,321 @@
+"""FloatSim decks for the three flume articles, moored or free-floating.
+
+Everything here is FloatSim: the bodies are deck ``Body`` entries, the hydrodynamics come from
+the Capytaine databases through ``build_system``, drag is the deck's Morison ``drag_elements``
+(FloatSim's still-water drag), and the station-keeping mooring is four FloatSim ``Catenary``
+lines per article (Irvine elastic catenary, body to earth). Motions are integrated with
+``integrate_cummins`` under ``make_regular_wave_force`` -- the same composition every FloatSim
+study uses.
+
+Articles
+    1 buoy        one buoy, reference point = CoG (0, 0, -0.907); BEM single_osu_open (built by
+                  ``bem_cluster.py single``: same hull, mesh, omega grid and coupled FloatSim
+                  path as the cluster and platform; computed about the CoG, which is the deck
+                  convention: reference point = body origin = CoG = BEM origin).
+    1 cluster     4 buoys + hub (yaw-locked pins), 45 deg; coupled BEM cluster_osu_open_rot45.
+    4x4 platform  16 buoys + 4 hubs + deck (45 deg); coupled BEM from flume-wall-effect.
+
+Mooring lines (design point of mooring_sizing: T_surge = 15 s, wall anchors +-5 m, at the SWL)
+    per line: axial stiffness k = EA / L0 and pretension T0 from ``mooring_sizing.xspread``;
+    unstretched length L0 = chord - T0 / k; near-neutral line weight 0.02 N/m (light rope +
+    spring in water). Buoy: 4 lines to the spar at the SWL; cluster: one line per spar;
+    platform: each line's 2-leg bridle is two FloatSim lines from the same wall anchor to the two
+    spars of the half-row (k/2, T0/2 each) -- FloatSim catenaries are body-to-earth only.
+
+FloatSim note (anchor frame): ``make_catenary_state_force`` places the fairlead at the body's
+displacement + lever arm from its reference point, i.e. the geometry is only absolute when the
+body's reference point is at the origin (true for the OC4 validation decks). The flume bodies'
+reference points are not at the origin, so each anchor is given relative to the moored body's
+reference point; the line only sees anchor - fairlead, so its force is exact.
+
+FloatSim note (moored articulated equilibrium): ``solve_static_equilibrium`` solves
+C xi = F_state body by body and ignores the joints, so it cannot balance a line pull that one
+pinned buoy passes to the hub: hybr walks that buoy toward its anchor until the catenary goes
+slack and the line solver raises. ``moored_equilibrium`` lets FloatSim's own constrained
+integrator find the state instead: start from FloatSim's unmoored equilibrium, settle SETTLE_S in
+calm water (``integrate_cummins`` with the joints), take the mean over the last SETTLE_AVG_S, and
+accept it only if the static residual projected on the joint-feasible subspace null(G) is within
+FloatSim's own equilibrium tolerance (``_EQUILIBRIUM_TOL_N``). Cached in moored_equilibrium.json.
+
+FloatSim note (single small body): a one-body database takes the driver's per-body path (M8 Q2
+lock), whose retardation kernel runs the high-frequency asymptote gate with no small-body
+override -- the override (ITEM25-SMALL-BODY-APPLICABILITY) exists only on the coupled path. The
+lone OSU buoy (L ~ 1.7 m) cannot pass that gate, so ``build_single`` assembles it with the
+driver's own per-body functions (_per_body_lhs, _materialise_catenary, _build_drag_state_force,
+_compose_state_force, solve_static_equilibrium), identical to build_system's per-body branch
+except that the kernel receives the same small-body override the coupled path accepts.
+"""
+# ruff: noqa: E402, E702  -- sys.path bootstrap first; compact lines
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+
+os.environ.setdefault("PLAT_ROT_DEG", "45")
+
+import numpy as np
+
+HERE = Path(__file__).resolve().parent
+for _p in (HERE.parent.parent, HERE.parent / "platform-12buoy" / "flume-wall-effect", HERE):
+    sys.path.insert(0, str(_p))
+
+import articulated_wall as aw
+import mooring_sizing as ms
+import mooring_verify as mv
+
+import floatsim.driver as fsd
+from floatsim.driver import build_system
+from floatsim.hydro.excitation import make_regular_wave_force
+from floatsim.hydro.readers.capytaine import read_capytaine
+from floatsim.io.deck import (
+    Body,
+    Catenary,
+    CatenaryLine,
+    Deck,
+    Environment,
+    HydroDatabaseRef,
+    Inertia,
+    InitialConditions,
+    Output,
+    PlateMember,
+    Simulation,
+    distributed_cylinder_drag,
+)
+from floatsim.io.deck import RegularWave as DeckWave
+from floatsim.solver.newmark import integrate_cummins
+from floatsim.solver.ramp import HalfCosineRamp
+from floatsim.waves.regular import RegularWave
+
+BUOY_NC = HERE / "single_osu_open_psd.nc"      # bem_cluster.py single (same pipeline/mesh)
+CLUSTER_NC = HERE / "cluster_osu_open_rot45_psd.nc"
+PLATFORM_NC = (HERE.parent / "platform-12buoy" / "flume-wall-effect"
+               / f"coupled_osu_open{aw.SUF}_psd.nc")
+NAMES = {"buoy": "1 buoy", "cluster": "1 cluster (4 buoys)", "platform": "4x4 platform (45°)"}
+DT, T_KERNEL = 0.01, 30.0
+W_LINE = 0.02                        # N/m, near-neutral line in water
+WL_B = np.array([0.0, 0.0, -aw.ZB])  # spar at the SWL in a buoy's (CoG) frame
+OVR = aw.OVR
+EQ_CACHE = HERE / "moored_equilibrium.json"
+SETTLE_S, SETTLE_AVG_S = 240.0, 30.0
+
+
+def _drag(cd_scale: float = 1.0) -> list:
+    spar = distributed_cylinder_drag(z_bottom=aw._SPAR_BOT_B, z_top=aw._WL_B, diameter=aw.SPAR_D,
+                                     cd=aw.SPAR_CD * cd_scale, n_segments=10)
+    plate = PlateMember(type="plate", center=[0.0, 0.0, aw._PLATE_B], normal=[0.0, 0.0, 1.0],
+                        radius=aw.PLATE_R, thickness=aw.PLATE_T, Cd_n=aw.PLATE_CDN * cd_scale,
+                        Cd_t=aw.PLATE_CDT * cd_scale)
+    return [*spar, plate]
+
+
+def _buoy_deck(drag: list, pitch0: float = 0.0) -> Deck:
+    body = Body(name="buoy", reference_point=[0.0, 0.0, aw.ZB], mass=aw.M_BUOY,
+                inertia=Inertia(Ixx=aw.IXX, Iyy=aw.IYY, Izz=aw.IZZ),
+                hydro_database=HydroDatabaseRef(format="capytaine", path=str(BUOY_NC)),
+                initial_conditions=InitialConditions(position=[0, 0, 0, 0, pitch0, 0]),
+                drag_elements=drag)
+    return Deck(simulation=Simulation(duration=10.0, dt=DT),
+                environment=Environment(water_depth=200.0, water_density=aw.RHO, gravity=aw.G),
+                waves=DeckWave(type="regular", height=1.0, period=10.0, heading=0.0),
+                bodies=[body], output=Output(file="o.h5", channels=["heave"], sample_rate=10.0))
+
+
+def _strip_drag(dk: Deck) -> Deck:
+    return dk.model_copy(update={"bodies": [b.model_copy(update={"drag_elements": []})
+                                            for b in dk.bodies]})
+
+
+def _scale_drag(dk: Deck, s: float) -> Deck:
+    if s == 1.0:
+        return dk
+    return dk.model_copy(update={"bodies": [b.model_copy(update={"drag_elements": _drag(s)})
+                                            if b.drag_elements else b for b in dk.bodies]})
+
+
+def line_design(article: str, n_spar: int) -> dict:
+    a = ms.ARTICLES[NAMES[article]]
+    f05 = max(sum(ms.drift_per_spar(0.5, T)[:2]) for T in ms.T_WAVE)
+    Kx = (a["M"] + a["A"]) * (2 * np.pi / mv.T_SURGE) ** 2
+    xs = ms.xspread(Kx, n_spar * f05 / Kx, 0.25, mv.L_ANCHOR)
+    return {"Kx": float(Kx), "k_line": float(xs["kl"]), "T0": float(xs["T0"])}
+
+
+def mooring_lines(dk: Deck, article: str) -> list[dict]:
+    """The FloatSim lines: body, fairlead (body frame), true anchor, stiffness k and pretension."""
+    B = dk.bodies
+    buoys = [k for k, b in enumerate(B) if (b.hydro_body_label or b.hydro_database)]
+    des = line_design(article, len(buoys))
+    out = []
+    for sx in (-1, 1):
+        for sy in (1, -1):
+            anchor = np.array([sx * mv.L_ANCHOR, sy * ms.W_FLUME / 2, 0.0])
+            if article == "buoy":
+                legs, share = [buoys[0]], 1.0
+            elif article == "cluster":
+                legs = [k for k in buoys if np.sign(B[k].reference_point[0]) == sx
+                        and np.sign(B[k].reference_point[1]) == sy]; share = 1.0
+            else:
+                xr = max(abs(B[k].reference_point[0]) for k in buoys)
+                legs = [k for k in buoys if np.isclose(B[k].reference_point[0], sx * xr)
+                        and np.sign(B[k].reference_point[1]) == sy]; share = 1.0 / len(legs)
+            for k in legs:
+                out.append({"body": k, "name": B[k].name, "fairlead": WL_B.copy(),
+                            "anchor": anchor, "k": des["k_line"] * share,
+                            "T0": des["T0"] * share, "group": len(out) // len(legs)
+                            if article == "platform" else len(out)})
+    return out
+
+
+def moored(dk: Deck, article: str) -> tuple[Deck, list[dict]]:
+    lines = mooring_lines(dk, article)
+    conns = []
+    for ln in lines:
+        ref = np.asarray(dk.bodies[ln["body"]].reference_point, float)
+        chord = float(np.linalg.norm(ln["anchor"] - (ref + ln["fairlead"])))
+        L0 = chord - ln["T0"] / ln["k"]
+        conns.append(Catenary(type="catenary", body_a=ln["name"], body_b="earth",
+                              attach_a_body=ln["fairlead"].tolist(),
+                              attach_b_body=(ln["anchor"] - ref).tolist(),
+                              line=CatenaryLine(length=L0, weight_per_length=W_LINE,
+                                                EA=ln["k"] * L0)))
+        ln.update(chord=chord, L0=L0)
+    return dk.model_copy(update={"connections": conns}), lines
+
+
+def deck(article: str, *, drag: bool = True, cd_scale: float = 1.0, pitch0: float = 0.0) -> Deck:
+    if article == "buoy":
+        dk = _buoy_deck(_drag(cd_scale), pitch0)
+    else:
+        dk = mv._cluster_deck() if article == "cluster" else aw.deck()
+        dk = _scale_drag(dk, cd_scale)
+    return dk if drag else _strip_drag(dk)
+
+
+def hdbs(article: str) -> dict:
+    if article == "buoy":
+        return {"bem_databases": {"buoy": read_capytaine(BUOY_NC)}}
+    nc = CLUSTER_NC if article == "cluster" else PLATFORM_NC
+    return {"bem_databases": {}, "shared_hydro_database": read_capytaine(nc),
+            "asymptote_check_override": OVR, "kernel_decay_floor_override": OVR}
+
+
+def build_single(dk: Deck, hdb, solve_equilibrium: bool):  # type: ignore[no-untyped-def]
+    """build_system's per-body branch for the one-buoy deck (see the module note)."""
+    name_to_index = fsd._validate_body_names(dk)
+    body = dk.bodies[0]
+    lhs = fsd.assemble_global_lhs([fsd._per_body_lhs(body, hdb, gravity=dk.environment.gravity)])
+    kernel = fsd.assemble_global_kernel([fsd.compute_retardation_kernel(
+        hdb, t_max=T_KERNEL, dt=DT, asymptote_check_override=OVR,
+        kernel_decay_floor_override=OVR)])
+    n = lhs.n_dof
+    cats = [fsd._materialise_catenary(c, name_to_index) for c in dk.connections]
+    cat_force = fsd.make_catenary_state_force(cats, n_dof=n) if cats else None
+    drag_force = fsd._build_drag_state_force(dk, n, rho=dk.environment.water_density)
+    state = fsd._compose_state_force(None, cat_force, drag_force, n)
+    xi0 = fsd.pack_state([np.asarray(b.initial_conditions.position, float) for b in dk.bodies])
+    xd0 = fsd.pack_state([np.asarray(b.initial_conditions.velocity, float) for b in dk.bodies])
+    if solve_equilibrium:
+        xi0 = fsd.solve_static_equilibrium(lhs=lhs, state_force=state, xi0=xi0,
+                                           tol=fsd._EQUILIBRIUM_TOL_N).xi_eq
+    return fsd.SimulationSetup(lhs=lhs, kernel=kernel, state_force=state, xi0=xi0, xi_dot0=xd0,
+                               body_name_to_index=name_to_index, constraints=None)
+
+
+def with_positions(dk: Deck, xi: np.ndarray) -> Deck:
+    """The deck with each body's initial position set from the packed state xi."""
+    return dk.model_copy(update={"bodies": [b.model_copy(update={
+        "initial_conditions": b.initial_conditions.model_copy(
+            update={"position": [float(v) for v in xi[6 * k:6 * k + 6]]})})
+        for k, b in enumerate(dk.bodies)]})
+
+
+def joint_residual(setup, xi: np.ndarray) -> float:  # type: ignore[no-untyped-def]
+    """inf-norm of the static residual C xi - F_state(0, xi, 0) on the joint-feasible subspace
+    null(G(xi)): zero exactly when the residual is a pure joint reaction G^T lambda."""
+    n = setup.lhs.n_dof
+    r = setup.lhs.C @ xi - setup.state_force(0.0, xi, np.zeros(n))
+    if setup.constraints is None:
+        return float(np.abs(r).max())
+    g = np.asarray(setup.constraints.jacobian(xi))
+    _u, sv, vh = np.linalg.svd(g)
+    rank = int((sv > max(g.shape) * np.finfo(np.float64).eps * sv[0]).sum())
+    return float(np.abs(vh[rank:] @ r).max())
+
+
+def moored_equilibrium(article: str) -> np.ndarray:
+    """Static equilibrium of a moored articulated deck, found by FloatSim (see the module note)."""
+    cache = json.loads(EQ_CACHE.read_text()) if EQ_CACHE.exists() else {}
+    dk0 = deck(article)
+    dkm, lines = moored(dk0, article)
+    key = [[round(ln["T0"], 6), round(ln["k"], 6), round(ln["L0"], 6)] for ln in lines]
+    if article in cache and cache[article]["lines"] == key:
+        return np.asarray(cache[article]["xi"])
+    hd = hdbs(article)
+    s0 = build_system(dk0, dt=DT, t_max_kernel=T_KERNEL, solve_equilibrium=True, **hd)
+    s1 = build_system(with_positions(dkm, s0.xi0), dt=DT, t_max_kernel=T_KERNEL,
+                      solve_equilibrium=False, **hd)
+    r = integrate_cummins(lhs=s1.lhs, kernel=s1.kernel, xi0=s1.xi0, xi_dot0=s1.xi_dot0,
+                          duration=SETTLE_S, dt=DT, rho_inf=0.8, constraints=s1.constraints,
+                          state_force=s1.state_force, projection_interval=1)
+    tail = r.t >= r.t[-1] - SETTLE_AVG_S
+    xi = r.xi[tail].mean(axis=0)
+    res = joint_residual(s1, xi)
+    buoys = [k for k, b in enumerate(dkm.bodies) if b.hydro_body_label or b.hydro_database]
+    tilt = [float(np.degrees(np.hypot(xi[6 * k + 3], xi[6 * k + 4]))) for k in buoys]
+    rec = {"xi": xi.tolist(), "lines": key, "settle_s": SETTLE_S, "avg_s": SETTLE_AVG_S,
+           "joint_residual_N": res, "residual_at_free_eq_N": joint_residual(s1, s0.xi0),
+           "tail_max_speed_m_s": float(np.abs(r.xi_dot[tail]).max()),
+           "tail_osc_amp": float(np.abs(r.xi[tail] - xi).max()),
+           "max_buoy_tilt_deg": max(tilt), "mean_buoy_tilt_deg": float(np.mean(tilt)),
+           "free_eq_max_abs": float(np.abs(s0.xi0).max())}
+    print(f"{article} moored equilibrium: joint residual {res:.3f} N, buoy tilt "
+          f"{min(tilt):.2f}-{max(tilt):.2f} deg, tail speed {rec['tail_max_speed_m_s']:.1e} m/s",
+          flush=True)
+    if res > fsd._EQUILIBRIUM_TOL_N:
+        raise RuntimeError(f"{article}: settled state misses FloatSim's equilibrium tolerance "
+                           f"({res:.3f} N > {fsd._EQUILIBRIUM_TOL_N} N)")
+    cache = json.loads(EQ_CACHE.read_text()) if EQ_CACHE.exists() else {}
+    cache[article] = rec
+    EQ_CACHE.write_text(json.dumps(cache, indent=1))
+    return xi
+
+
+def build(dk: Deck, article: str, *, solve_equilibrium: bool = True, hd: dict | None = None):  # type: ignore[no-untyped-def]
+    hd = hd or hdbs(article)
+    if article == "buoy":
+        return build_single(dk, hd["bem_databases"]["buoy"], solve_equilibrium), hd
+    if solve_equilibrium and dk.connections:
+        dk = with_positions(dk, moored_equilibrium(article))
+        solve_equilibrium = False
+    return build_system(dk, dt=DT, t_max_kernel=T_KERNEL, solve_equilibrium=solve_equilibrium,
+                        **hd), hd
+
+
+def hydro_dof(dk: Deck) -> np.ndarray:
+    idx = []
+    for k, b in enumerate(dk.bodies):
+        if b.hydro_body_label is not None or b.hydro_database is not None:
+            idx.extend(range(6 * k, 6 * k + 6))
+    return np.asarray(idx, dtype=int)
+
+
+def run_wave(setup, hd: dict, dk: Deck, T: float, H: float, n_settle: float, n_keep: int):  # type: ignore[no-untyped-def]
+    """Regular wave (heading 0) through FloatSim's excitation + Cummins integrator."""
+    hdb = hd.get("shared_hydro_database") or hd["bem_databases"]["buoy"]
+    ramp = HalfCosineRamp(duration=15.0)
+    f_wave = make_regular_wave_force(hdb=hdb, wave=RegularWave(amplitude=0.5 * H,
+                                                               omega=2 * np.pi / T,
+                                                               heading_deg=0.0),
+                                     body_position=(0.0, 0.0, 0.0), ramp=ramp)
+    idx = hydro_dof(dk); n = setup.lhs.M_plus_Ainf.shape[0]
+
+    def ext(t):
+        f = np.zeros(n); f[idx] = f_wave(t); return f
+
+    return integrate_cummins(lhs=setup.lhs, kernel=setup.kernel, xi0=setup.xi0,
+                             xi_dot0=setup.xi_dot0, duration=15.0 + n_settle + n_keep * T,
+                             dt=DT, rho_inf=0.8, constraints=setup.constraints,
+                             external_force=ext, state_force=setup.state_force,
+                             projection_interval=1)

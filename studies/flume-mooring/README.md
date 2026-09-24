@@ -16,7 +16,48 @@ Deliverables:
 - `mooring_motion.html`: interactive 3D motion viewer of the three moored articles in the flume
   (`build_mooring_viewer.py`; see "Motion viewer" below).
 
+## Status: FloatSim re-check (2026-09-23)
+
+Every motion result below now comes from **FloatSim itself**:
+- the deck bodies and Capytaine BEM go through the driver;
+- drag is the deck's Morison elements;
+- the mooring is four FloatSim `Catenary` lines per article;
+- integration is `integrate_cummins` under `make_regular_wave_force`.
+
+The decks are in `floatsim_decks.py`. The re-check changed three things.
+
+1. **The single-buoy pitch period is 2.76 s, not 2.12 s.**
+   - The earlier single-buoy study code (`osu_buoy_common.build_lhs`) assembled the buoy about
+     the waterline and added the gravity term on top. That gave C55 = 265 N·m/rad instead of
+     FloatSim's 70.8 N·m/rad (hand check 73.9).
+   - The deck convention is reference point = CoG = BEM origin.
+   - Heave is unaffected (2.57 s).
+   - The articulated models (cluster, platform) were already consistent.
+   - The single-buoy rows of `mooring_verify.py` inherit the bug and are **invalid**.
+2. **The moving-body drift refinement (`drift_td.py`, `drift_refined.py`) is withdrawn.**
+   - It is custom code that carried the same single-buoy bug.
+   - Its wave-relative drag also passed body-relative positions for the articulated bodies.
+   - The design stays on the fixed-body drift bound, as before.
+3. **The line pretension tilts the pinned buoys (cluster, platform).**
+   - Each moored spar is pulled outward by its line at the SWL, 0.72 m below its pin. The
+     pretension therefore tilts that buoy about its pin before any wave or drift acts.
+   - FloatSim's settled moored equilibrium (`moored_equilibrium.json`) gives
+     **4.9° for the cluster's four buoys** and **9.1° for the platform's eight moored spars**.
+     The platform's eight unmoored inner buoys stay level.
+   - The single buoy is unaffected: its four lines balance on one collar.
+   - `mooring_verify.py` modelled the lines as linear springs, with no pretension moment. Its
+     "0° trim" and "the cluster's buoys do not tilt" results are therefore **superseded**, and
+     so is the SWL-spar attachment it recommended for the pinned articles.
+   - The fix (attach at the pin plane, balance the pretension on each spar, or reduce T₀) is a
+     design decision still open.
+
+Still valid: the sizing (`mooring_sizing.py`), which covers inertia, drift bound, X-spread
+design and the flume-size section. It uses no motion simulation.
+
 ## Answer
+
+> The sizing below stands. The attachment and tilt rows for the pinned articles, and the
+> single-buoy pitch row, are superseded; see **Status** above.
 
 An **X-spread of four soft, horizontal lines at the still-water line (SWL)** to wall anchors 5 m
 up- and downstream, sized for a **surge natural period of ~15 s** (≥ 3.75× the longest wave
@@ -49,6 +90,10 @@ period). Where the lines attach matters more than how stiff they are:
 ![layout](mooring_layout.png)
 
 ## Where to attach: at the SWL, not at the pins/deck, and not only at the corners
+
+> **Superseded for the pinned articles.** This section comes from `mooring_verify.py`, a
+> linear-spring check with no line pretension moment. FloatSim's catenaries show the SWL-spar
+> attachment tilting the moored buoys by the pretension alone. See **Status** above.
 
 `mooring_verify.py` adds the mooring to the real FloatSim models: the 6-DOF buoy, the 30-DOF
 cluster (4 buoys + hub, pinned KKT joints) and the 126-DOF platform (16 buoys + 4 hubs + deck).
@@ -94,111 +139,110 @@ springs need 2 m of linear stroke. 20 s halves the tilt-mode shift, at the cost 
 offset and 3.2 m of stroke. A single-point bridle at the pin plane would need **≥ 25 s** to reach
 the same (−3.4 %), with a 2 m offset.
 
-## Refinement: the drift on a moving article
-
-The design drift assumes each spar is **held fixed**. The real articles move with the waves, so
-`drift_td.py` recomputes the splash-zone drift from each spar's motion relative to the water:
-`F = ½ ρ Cd D ⟨η_r |u_r| u_r⟩` at the spar waterline, with relative elevation η_r and relative
-velocity u_r.
-
-- The motion comes from drag-limited FloatSim time-domain runs: the linear BEM excitation and
-  radiation, Morison drag on the spar and plate **relative to the Airy wave velocity**, and the
-  design mooring. The driver's own drag is calm-water, so the same drag elements are rebuilt
-  with wave kinematics.
-- Each case is run at H = 0.5 m, steepness-capped. The resulting ratio to the fixed-body value
-  is applied to the flume-depth bound (`drift_refined.py`).
-
-![refined drift](drift_refined.png)
-
-| | Design bound | Moving body, model valid (tilt ≤ 10°) | Moving body, largest (any tilt) |
-|---|---|---|---|
-| 1 buoy | 5.2 N | ≤ 0.1 N | −1.3 N (upstream, 2.0–2.1 s) |
-| 1 cluster | 20.9 N | ≤ 0.9 N | −21.4 N (upstream, 2.8 s) |
-| 4×4 platform | 83.6 N | ≤ 11.4 N (1.4–1.8 s) | −57.4 N (upstream, 2.8 s) |
-
-- **Away from the buoys' own resonances, the articles move with the water.** Their drift is a
-  small fraction of the bound. In the shortest waves the platform barely moves, so its drift
-  there approaches the fixed-body value for those periods, which is still ≤ 14 % of the design
-  bound.
-- **Near the pitch resonance (single buoy, 2.0–2.1 s) and the pinned buoys' tilt resonance
-  (2.6–3.0 s), the mean drift reverses and points upstream.** For the cluster it reaches about
-  the bound's magnitude.
-  - Those cases involve 30–56° buoy tilts, beyond the small-angle validity of the linear
-    joint/hydrostatic model, so the magnitudes there are **indicative**.
-  - The **design therefore stays on the bound, in both directions**. The symmetric X-spread
-    keeps the slack-side lines taut for the same offset up- or downstream.
-- **Test-matrix note (not a mooring issue).** In 0.5 m waves at 2.6–3.0 s, the model predicts
-  the pinned buoys tilting 30°+. Check the gimbal range, or cap H near those periods.
-
 ## Motion viewer
 
-`mooring_motion.html` plays back the moored response of each article in the flume, using the
-FloatSim motion-viewer renderer (`../platform-12buoy/fin_study/platform_motion.html`).
-`mooring_motion_template.html` extends that renderer with:
-- the flume walls and floor, and the wall anchors;
-- the four mooring lines, each with its spring, **coloured by live line tension**;
-- the true spar and heave-plate geometry;
-- a free single buoy and the hub-only cluster.
+`mooring_motion.html` plays back each article in the flume in a regular wave, H = 0.1 m, at
+T = 2.2, 2.9 and 3.5 s, **with and without the mooring** (the "Mooring on / off" control). It is
+built with the FloatSim motion-viewer renderer
+(`../platform-12buoy/fin_study/platform_motion.html`), extended in
+`mooring_motion_template.html` with:
+- the flume walls and floor;
+- the wall anchors;
+- the mooring lines, coloured by live tension;
+- the true spar and heave-plate geometry.
 
-Cases: H = 0.3 m at T = 2.2, 2.8 and 3.5 s for each article, each run **with and without the
-mooring** (the "Mooring on / off" control; off plays a separate run of the free-floating article).
-- The motion comes from `drift_td.simulate()`: drag-limited time domain, Morison drag relative
-  to the wave velocity, and the design mooring.
-- Each settled response is fitted with harmonics 1–3, so it loops over one period.
-- Line tension = pretension + line stiffness × stretch of each attachment.
-- Motion is shown at true scale by default.
-- The mean drift offset is not part of the time-domain model; its upper bound is shown as a
-  readout.
-- Cases with buoy tilts above 10° are flagged in the viewer as beyond the small-angle range.
+- **All motion is FloatSim output.**
+  - Decks come from `floatsim_decks.py`. The frames are FloatSim's own state over the last two
+    wave periods of the settled run, decimated and not refitted.
+  - Line tension is the magnitude of each FloatSim catenary's force at that frame's pose.
+  - Displacements are measured from FloatSim's **unmoored** equilibrium, so a moored run shows
+    what the lines do, including the static pretension tilt ("static" in the tilt readout).
+- **H = 0.1 m keeps the resonant buoy tilt inside FloatSim's small-angle range.** At larger H
+  near resonance, the lone free buoy's yaw goes numerically unstable once pitch passes ~13°:
+  small-angle kinematics, spar drag, and no yaw restraint.
+- **The mean drift offset is not in the model.** Its upper bound is shown as a readout.
+
+| FloatSim, H = 0.1 m: heave RAO / peak buoy tilt | T = 2.2 s | T = 2.9 s | T = 3.5 s |
+|---|---|---|---|
+| 1 buoy, moored | 0.73 / 4.7° | 1.42 / 10.6° | 1.23 / 2.8° |
+| 1 buoy, free | 0.72 / 4.1° | 1.45 / 12.7° | 1.25 / 2.7° |
+| 1 cluster, moored | 0.66 / 8.5° (static 4.9°) | 1.56 / 17.2° (static 4.9°) | 1.25 / 7.6° (static 4.9°) |
+| 1 cluster, free | 0.66 / 3.2° | 1.58 / 15.3° | 1.26 / 3.0° |
+| 4×4 platform, moored | 0.55 / 12.0° (static 9.1°) | 1.51 / 23.0° (static 9.1°) | run failed (catenary solver) |
+| 4×4 platform, free | 0.57 / 2.6° | 1.61 / 14.7° | 1.25 / 3.0° |
+
+Heave RAO is at the buoy's SWL (1 buoy), the hub (cluster) or the deck centre (platform). Peak tilt is the largest buoy tilt over the loop, measured from the unmoored equilibrium.
 
 ```bash
-python build_mooring_viewer.py run buoy          # seconds
-python build_mooring_viewer.py run cluster       # ~1 min per period
-python build_mooring_viewer.py run platform 2.8  # ~8 min per period; run periods in parallel
-python build_mooring_viewer.py run buoy --free   # the same cases without the mooring
-python build_mooring_viewer.py html              # -> mooring_motion.html
+python build_mooring_viewer.py run buoy 2.2,2.9,3.5 --H 0.1          # seconds per period
+python build_mooring_viewer.py run buoy 2.2,2.9,3.5 --H 0.1 --free   # the same, unmoored
+python build_mooring_viewer.py run cluster 2.2,2.9,3.5 --H 0.1       # ~1 min per period
+python build_mooring_viewer.py run platform 2.9 --H 0.1              # ~7 min; periods in parallel
+python build_mooring_viewer.py html                                  # -> mooring_motion.html
 ```
+
+The first moored cluster or platform run settles FloatSim's moored equilibrium and caches it in
+`moored_equilibrium.json`: about 2 min for the cluster, ~20 min for the platform. See
+"FloatSim limitations" for why.
 
 ## Why the buoys pitch so much near resonance
 
-The viewer shows up to ~40° of single-buoy pitch at 2.1–2.2 s and ~25° of pinned-buoy tilt at
-2.8 s, even at H = 0.3 m. `pitch_check.py` shows this is how the model behaves, not a missing
-term.
+`pitch_check.py` (all FloatSim) shows the large resonant pitch is the model's physics, not a
+missing term.
 
 ![pitch check](pitch_check.png)
 
-- **Morison drag is in the model**, on the velocity relative to the wave: the spar (10
-  segments, Cd 1.2) and the heave plate (normal Cd 5, edge Cd 1.5).
-  - Without drag the resonant pitch runs away: 316° for the buoy at 2.1 s, 180° for the
-    cluster at 2.8 s. The drag is what stops it.
-- **But drag damps pitch weakly.**
-  - Pitch free decay: ζ = 0.5 % at 2°, 1.0 % at 5°, 1.7 % at 10°, 3.0 % at 20°, 4.2 % at 30°.
-    Radiation adds only 0.18 %. Heave, by contrast, has ζ ≈ 12–13 %, confirmed by the field
-    decay.
-  - The buoy rotates about a point not far above its CoG, so the spar near that point barely
-    moves.
-  - The heave plate, which dominates heave damping, moves edgewise in pitch and presents only
-    its 4 mm edge. Its face drag acts on a lever of just its 0.14 m radius.
-  - This matches the earlier pitch-damping study (92 % spar / 8 % plate).
-- **The pitch periods sit inside the wave band:** 2.12 s for the single buoy, 2.86–2.92 s for
-  the pinned tilt mode. At 2.1 s, a 0.3 m wave already has an 8° slope. With ζ of a few percent
-  the resonance amplifies that several-fold, and the quadratic drag only balances it at tens of
-  degrees.
-- **Sensitivity to the unmeasured Cd:** doubling every Cd cuts the resonant single-buoy pitch
-  from 43° to 33°; ×4 cuts it to 25°. Off resonance (T ≤ 1.8 s or ≥ 2.6 s) drag barely matters,
-  and pitch is 1.4–2× the wave slope.
-- **The mooring is not the cause.** Free-floating, the buoy pitches 41° (39.5° moored). The
-  mooring slightly raises the pinned tilt at 2.8 s (27° vs 23–25° free), because it shortens
-  the tilt period by 2.4 %, toward 2.8 s.
+- **Morison drag is in the model**, on the spar (10 segments, Cd 1.2) and on the heave plate
+  (normal Cd 5, edge Cd 1.5). It is FloatSim's calm-water drag on the body velocity.
+- **The drag damps pitch weakly.**
+  - Single-buoy pitch free decay (T = 2.76 s): ζ = 0.66 % at 2°, 1.53 % at 5°, 2.82 % at 10°.
+    Radiation alone gives 0.03 %.
+  - Heave, by contrast, has ζ ≈ 12–13 % (field decay).
+  - The buoy rotates near its CoG, so the spar there barely moves. The heave plate moves
+    edgewise in pitch, presenting its 4 mm edge, and its face drag acts on a lever of only its
+    0.14 m radius.
+- **The pitch resonances sit in the wave band:** 2.76 s for the single buoy, 2.86–2.92 s for the
+  pinned buoys' tilt mode.
+  - Single buoy, H = 0.05 m (unmoored): resonant pitch **10.6°**, 14× the wave slope.
+  - Every Cd ×2 gives 7.5°; ×4 gives 5.4°; without drag, 53°.
+  - Off resonance (≤ 2.4 s or ≥ 3.1 s), drag barely matters.
+- **Cluster** (T = 2.9 s, H = 0.1 m): buoy tilt 15° with drag, 72° without.
+- **The mooring is not the cause.** Moored and free runs pitch alike (viewer table above).
 - **What the model leaves out (all would add damping):**
-  - the real perforated, webbed plate and its frame (the model has a smooth 4 mm disc);
-  - gimbal/pin friction on the pinned articles;
-  - instrumentation hardware;
-  - large-angle effects beyond the ~10° small-angle range.
-  The absolute pitch damping has never been measured. The open tank test (a pitch / tilt free
-  decay on one buoy) is what would pin it down.
-- **For the test plan:** expect large pitch near 1.9–2.4 s (single buoy) and 2.6–3.0 s (pinned
-  articles). Cap H there, or check the gimbal range.
+  - the real perforated, webbed plate and its frame;
+  - gimbal/pin friction;
+  - instrumentation;
+  - wave-relative drag (the driver's drag is calm-water).
+
+  The absolute pitch damping has never been measured. A pitch / tilt free decay on one buoy
+  in the tank would pin it down.
+- **For the test plan:** expect large pitch near 2.5–3.0 s for every article. Cap H there, or
+  check the gimbal range.
+
+## FloatSim limitations found (core fixes need approval)
+
+1. **The per-body kernel has no small-body override.** A one-body database takes the per-body
+   path, and its asymptote gate cannot be passed by a 1.7 m buoy. The override exists only on
+   the coupled path. `floatsim_decks.build_single` reuses the driver's per-body functions and
+   passes the override.
+2. **The catenary anchor frame.** `make_catenary_state_force` puts the fairlead at displacement
+   + arm, which is absolute only for a reference point at the origin. The anchors are given
+   relative to each body's reference point.
+3. **The static equilibrium ignores joints.** `solve_static_equilibrium` solves C·ξ = F body by
+   body, so a line pull balanced only through a pin sends hybr into a slack catenary.
+   `floatsim_decks.moored_equilibrium` lets the constrained integrator settle instead, and gates
+   the result on the joint-projected residual ≤ `_EQUILIBRIUM_TOL_N`.
+4. **The lone free buoy is unstable in yaw above ~13° of pitch** (small-angle kinematics, spar
+   drag, Izz = 0.063 kg·m², no yaw restraint). Pinned buoys are yaw-locked and immune.
+5. **The driver's Morison drag is calm-water only.**
+6. **The catenary solver cold-starts.** `solve_catenary` runs one `scipy.root(hybr)` from
+   H = V_A = 1 N, with no warm start or retry.
+   - The moored platform run at T = 3.5 s stopped at t = 25.7 s. Buoy7's line failed to solve
+     while buoy10's mirror-image line, with geometry equal to 10 significant figures, solved at
+     16.1 N (29 % strain, nearly horizontal).
+   - That makes it a solver-robustness failure, not a physical one. These spring lines are very
+     elastic (EA ≈ 52–55 N against 16–18 N of tension), far from the solver's starting guess.
+   - The viewer shows that case free-floating only, and says why.
 
 ## How the flume size influences the mooring
 
@@ -246,18 +290,20 @@ Wave gauges are referenced to the mean moored position.
     model by mass-weighted MAC (≥ 0.9). Heave uses the rigid-heave Rayleigh quotient, which is
     robust to the platform's near-degenerate heave-like modes.
   - The static drift response is a KKT solve `[K Gᵀ; G 0]`.
-- **`drift_td.py` / `drift_refined.py`**: the moving-body drift described above. Each buoy's
-  drag yaw moment is zeroed. It is physically nil for an axisymmetric spar and disc, but on the
-  buoy's tiny yaw inertia it makes the explicitly lagged drag force numerically unstable.
+- **`floatsim_decks.py`**: the FloatSim decks of the three articles, moored (FloatSim
+  `Catenary` lines) or free, and the build / wave-run helpers. `pitch_check.py` and
+  `build_mooring_viewer.py` run on it.
+- **`bem_cluster.py single`**: the single-buoy Capytaine BEM on the same hull, mesh and pipeline
+  (`single_osu_open(_psd).nc`, about the CoG).
+- **Withdrawn**: `drift_td.py` / `drift_refined.py` (moving-body drift) and the single-buoy
+  rows of `mooring_verify.py`. See Status.
 - **`mooring_layout.py`**: the line design table (`mooring_design_table.csv`) and the schematic.
 - **`make_mooring_ppt.py`**: the technical deck. It reads every number from the CSVs above.
 
 ## Limits
 
-- **The design drift is an upper bound** off resonance (fixed bodies, no shielding,
-  Cd = 1.2). Near the buoys' resonances the moving-body drift can reverse and approach it in
-  magnitude, so the bound is kept, in both directions. Load cells on the lines will measure
-  the true mean drift.
+- **The design drift is an upper bound** (fixed bodies, no shielding, Cd = 1.2). It is applied
+  in both directions. Load cells on the lines will measure the true mean drift.
 - **The coupled check is linear:** eigen-analysis plus static equilibrium. Regular waves produce
   only a mean drift. Irregular waves would add slow drift near T_surge, a fraction of the mean
   offset.
@@ -273,10 +319,8 @@ python mooring_sizing.py    # drift + stiffness window + X-spread line design
 python bem_cluster.py       # 45-deg cluster BEM (~1 min); writes cluster_osu_open_rot45(_psd).nc
 python mooring_verify.py    # coupled check on the 3 articles + T_surge sweep (~2 min)
 python mooring_layout.py    # design table + layout schematic
-python drift_td.py buoy 1.4,1.6,1.8,2.0,2.1,2.2,2.3,2.4,2.6,2.8,3.0,3.5,4.0     # seconds
-python drift_td.py cluster 1.4,1.6,1.8,2.0,2.1,2.2,2.3,2.4,2.6,2.8,3.0,3.5,4.0  # ~1 min each
-python drift_td.py platform 1.4,1.8,2.1,2.4,2.8,3.5   # ~8 min each; run periods in parallel
-python drift_refined.py     # refined drift figure + summary
+python bem_cluster.py single  # single-buoy BEM (~20 s); writes single_osu_open(_psd).nc
+python pitch_check.py       # FloatSim pitch decay + forced sweep (~10 min)
 python make_mooring_ppt.py  # Flume_mooring_technical.pptx
 ```
 

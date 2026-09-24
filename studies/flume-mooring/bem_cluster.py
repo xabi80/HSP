@@ -5,7 +5,11 @@ origin, deep water, no walls. Same hull, mesh resolution and FloatSim capytaine 
 platform's coupled_bem_osu.py (reuses its mesh / hydrostatics helpers), so the cluster, platform
 and single buoy share one hydrodynamic model. Writes cluster_osu_open_rot45.nc (+ _psd.nc).
 
-Run: python bem_cluster.py
+``python bem_cluster.py single`` builds the same coupled-schema database for ONE buoy at the
+origin (single_osu_open.nc, label buoy1): the single-buoy article then uses the same hull, mesh,
+omega grid and FloatSim coupled path as the cluster and platform.
+
+Run: python bem_cluster.py [single]
 """
 # ruff: noqa: E402, E702  -- sys.path bootstrap precedes the study imports; compact assembly
 from __future__ import annotations
@@ -33,6 +37,9 @@ CLUSTER_ROT_DEG = 45.0
 SUF = "" if CLUSTER_ROT_DEG == 0 else f"_rot{int(CLUSTER_ROT_DEG)}"
 ANG = np.deg2rad(np.array([0.0, 90.0, 180.0, 270.0]) + CLUSTER_ROT_DEG)
 CEN = [(R_INTRA * np.cos(a), R_INTRA * np.sin(a)) for a in ANG]
+SINGLE = len(sys.argv) > 1 and sys.argv[1] == "single"
+if SINGLE:
+    CEN = [(0.0, 0.0)]
 NB = len(CEN); NDOF = 6 * NB
 
 
@@ -48,20 +55,23 @@ def main() -> None:
     body = bodies[0]
     for b in bodies[1:]:
         body = body + b
-    labels = list(body.dofs)
-    print(f"cluster: {body.mesh.nb_faces} panels, {len(labels)} DOF", flush=True)
+    dofs = list(body.dofs)          # capytaine's DOF names (results are keyed by these)
+    # a lone FloatingBody names its DOFs without the body prefix -> coupled-schema labels
+    labels = [d if "__" in d else f"buoy1__{d}" for d in dofs]
+    print(f"{'single buoy' if SINGLE else 'cluster'}: {body.mesh.nb_faces} panels, "
+          f"{len(labels)} DOF", flush=True)
     t0 = time.perf_counter()
     A = np.zeros((len(om) + 1, NDOF, NDOF)); B = np.zeros_like(A)
     F = np.zeros((len(om) + 1, NDOF), complex)
     for k, w in enumerate([*list(om), np.inf]):
-        res = cb.solve_freq(body, labels, labels, float(w), with_diff=np.isfinite(w))
+        res = cb.solve_freq(body, dofs, dofs, float(w), with_diff=np.isfinite(w))
         for a, rr in enumerate(res[:NDOF]):
-            A[k, a, :] = [float(np.real(rr.added_masses[lab])) for lab in labels]
+            A[k, a, :] = [float(np.real(rr.added_masses[d])) for d in dofs]
             if np.isfinite(w):
-                B[k, a, :] = [float(np.real(rr.radiation_dampings[lab])) for lab in labels]
+                B[k, a, :] = [float(np.real(rr.radiation_dampings[d])) for d in dofs]
         if np.isfinite(w):
             dif = res[NDOF]; fk = froude_krylov_force(dif.problem)
-            F[k, :] = [complex(dif.forces[lab] + fk[lab]) for lab in labels]
+            F[k, :] = [complex(dif.forces[d] + fk[d]) for d in dofs]
     C6 = cb.single_buoy_c(); C = np.zeros((NDOF, NDOF))
     for i in range(NB):
         C[6 * i:6 * i + 6, 6 * i:6 * i + 6] = C6
@@ -78,9 +88,10 @@ def main() -> None:
                     radiating_dof=("radiating_dof", labels),
                     influenced_dof=("influenced_dof", labels),
                     complex=("complex", ["re", "im"])),
-        attrs=dict(rho=cb.RHO, g=cb.G, water_depth="inf", body_name="osu_cluster4_open"),
+        attrs=dict(rho=cb.RHO, g=cb.G, water_depth="inf",
+                   body_name="osu_single_open" if SINGLE else "osu_cluster4_open"),
     )
-    out = HERE / f"cluster_osu_open{SUF}.nc"
+    out = HERE / ("single_osu_open.nc" if SINGLE else f"cluster_osu_open{SUF}.nc")
     ds.to_netcdf(out)
     print(f"wrote {out.name} ({(time.perf_counter() - t0) / 60:.1f} min)", flush=True)
     psd_project.project(str(out))
