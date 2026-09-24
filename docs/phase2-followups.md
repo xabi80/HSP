@@ -2025,7 +2025,95 @@ the body follows the wave.
 **Blocks.** Any wave-relative drag result, including the OrcaFlex comparison of the M11b
 fan.
 
-**Status.** Open. Surfaced 2026-09-23.
+**Status.** Wiring and both defects RESOLVED by STEP 5 PR1 (2026-09-24):
+- `14518a3`: Airy sign, pinned by continuity / irrotationality / free-surface-condition
+  property tests, plus a negative control;
+- `bf15e9a`: fluid sampled at the absolute position (`body_reference_points`);
+- `1ea8662`: `build_system(drag_wave=, drag_wave_ramp=)`.
+
+Gates: the calm path is byte-identical on every drag deck, and the four PR8 cases are
+bit-identical to the study-side reference. **Still open:** the rerun of every wave-response
+result (`docs/drag-wave-rerun-plan.md`), which is blocked on the station-keeping decision
+(`EXCITATION-FIXED-REFERENCE-VS-DRIFT`).
+
+---
+
+### M11A-PR2-SPAR-DRAG-GATES-RED — two M11a PR2 gates red on main since the trapezoidal-convolution fix
+
+**Mechanism.** `tests/validation/test_m11a_pr2_spar_drag.py::test_gate1_spar_drag_vs_corrected_prediction`
+and `::test_gate4_discretization_convergence` measure the spar's drag damping of the M10 cluster
+tilt mode as ζ(with drag) − ζ(drag-free), each from the first two log-decrements. `_rot_decay`
+keeps only positive decrements.
+- Under the old rectangular radiation convolution the drag-free mode carried spurious damping:
+  the hard-coded `_ZETA_RAD = 0.00354` is that value.
+- The trapezoidal fix `9fb5b33` (2026-08-26) removed it. The drag-free mode is now essentially
+  undamped: first peaks 0.01531 → 0.01546, log-decrements −0.004 … +0.0007, zero plus a slight
+  modal beat. Both first decrements are negative, the filtered list is empty, and the mean is NaN.
+- With drag the decrements are clean (+0.011 … +0.016).
+
+**Bisect (2026-09-24).**
+- `912712a` (the fix's parent): 3 passed.
+- `9fb5b33`: 2 failed.
+- `f9f84d9` (main before STEP 5 PR1): 2 failed.
+- Unseen because no full suite ran between the 2026-08-10 baseline (`25de7ce`, 801/50/20/0) and
+  STEP 5 PR1's reconciliation.
+
+**Scope (proposed, NOT done).** Measure the drag share on a mode whose drag-free damping is ~0,
+without subtracting two noisy 2-peak decrements:
+- modal-coordinate log-decrement over more peaks, as `studies/spar-fin-decay/pitch_decay_verify.py`
+  does;
+- take the drag-free ζ as measured over a long window (it is ≈ 0, not 0.354 %);
+- keep the corrected-prediction tolerance unchanged.
+- Separate `fix-` PR; no tolerance widening.
+
+**Estimated effort.** ~½ day.
+
+**Blocks.** A green full suite.
+
+**Status.** Open. Surfaced 2026-09-24 by the STEP 5 PR1 full-suite reconciliation.
+
+---
+
+### EXCITATION-FIXED-REFERENCE-VS-DRIFT — linear excitation stays at the start position while wave-relative drag follows a drifting body
+
+**Mechanism.** `make_regular_wave_force(..., body_position=(0, 0, 0))` evaluates the linear
+BEM excitation at a FIXED reference (small-motion linear theory). Since STEP 5 PR1 the Morison
+drag samples the wave field at each body's TRUE position. An unmoored body with a mean drift
+(drag rectification, no surge restoring) therefore slides through the wave field while its
+excitation does not. The two excitations slip in phase once per wavelength travelled:
+beat period = λ / v_drift.
+
+**Measured (M11b platform, H = 1.0 m, T = 3.141 s, relative drag;
+`studies/platform-12buoy/pr8_h1_response.py`, `pr8_reldrag_out/h1_t3141_response.{png,json}`).**
+- Steady surge drift of **0.093 m/s**: 44 m over the 508 s run.
+- λ / v = 15.4 / 0.093 = **166 s**, against a measured heave envelope period of about 170 s.
+- The envelope swings 0.41–0.84 A undamped (49.5 % spread over the last 6 windows).
+- The stroboscopic section is a clean closed curve: quasi-periodic, not chaotic.
+- Spectral sidebands at ±0.02 rad/s around ω (resolution-limited), and no roll symmetry
+  breaking (buoy roll ≤ 0.3°).
+- This is why the case never met the adaptive-settle criterion. That criterion fits a single
+  frequency and assumes a steady amplitude. Raising the cap would not converge it.
+- Small-H cases drift 0.1–0.5 m and are barely affected.
+
+**Why latent / visibility.** With calm-water drag nothing depended on absolute position, so the
+drift was harmless (tracker PLATFORM-SURGE-DRIFT). Position-aware drag is the first code path to
+couple the drift to the wave phase.
+
+**Scope.** Choose the station-keeping model for wave-response runs:
+- (a) a soft surge mooring matching the tank design (T_surge ≈ 15 s), which bounds the offset
+  to ≲ 0.75 m. That is still a phase slip of up to 2π·0.75/λ, but bounded and physical, and it
+  must be matched in OrcaFlex;
+- (b) advect the excitation reference with the running-mean position (a core change to
+  `excitation.py`, consistent with tools that apply wave loads at the instantaneous position);
+- (c) unmoored, reporting drift and phase slip per case.
+
+**Estimated effort.** (a) study-side, ~1 day. (b) ~1 PR plus a validation case.
+
+**Blocks.** A settled, tool-comparable rerun of drag-dominated unmoored cases (M11b fan at
+large H, and the OrcaFlex comparison).
+
+**Status.** Open. Surfaced 2026-09-24 (STEP 5 PR1 reproduction gate). Decision needed before
+the rerun cycle.
 
 ---
 
