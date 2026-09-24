@@ -129,7 +129,8 @@ def drag_state_force(deck, n_dof: int, rho: float, variant: str, wave=None):  # 
 
 def _setup():  # type: ignore[no-untyped-def]
     deck = prp._deck_with_drag()
-    assert not deck.connections, "fan deck has no connectors / catenaries (drag is the only state force)"
+    # the fan deck has no connectors / catenaries: drag is its only state force
+    assert not deck.connections
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         setup = build_system(deck, bem_databases={}, dt=0.01, t_max_kernel=30.0,
@@ -189,10 +190,12 @@ def summary() -> None:
     print(f"{'H':>5} {'T':>6} {'recorded':>9} {'calm':>9} {'rel':>9} {'naive':>9}  "
           f"{'rel/calm':>8} {'naive/calm':>10}  settled(c,r,n)")
     for r in rows:
-        g = {v: (r[v]["rao_platform_heave"] if r[v] else float("nan")) for v in ("calm", "rel", "naive")}
+        g = {v: (r[v]["rao_platform_heave"] if r[v] else float("nan"))
+             for v in ("calm", "rel", "naive")}
         st = ",".join(str(r[v]["settled"])[0] if r[v] else "-" for v in ("calm", "rel", "naive"))
         print(f"{r['H']:>5} {r['T']:>6} {r['recorded']:>9.4f} {g['calm']:>9.4f} {g['rel']:>9.4f} "
-              f"{g['naive']:>9.4f}  {g['rel'] / g['calm']:>8.3f} {g['naive'] / g['calm']:>10.3f}  {st}")
+              f"{g['naive']:>9.4f}  {g['rel'] / g['calm']:>8.3f} "
+              f"{g['naive'] / g['calm']:>10.3f}  {st}")
     (OUT / "summary.json").write_text(json.dumps(rows, indent=1, default=str))
 
 
