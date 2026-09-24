@@ -90,7 +90,12 @@ inertia: `inertia_from_step.py`.
   override** (a coarse grid did not; the slender spar's surge/roll kernels ring long).
 - **Heave free-decay T = 2.52 s** (matches the FD) — the placeholder value. The real
   perforated/webbed plate adds *less* added mass → **shorter, ~2.3–2.4 s**.
-- **Pitch decay 2.11 s**, with **I_xx=I_yy=10.2, I_zz=0.063 kg·m²** — inertia about the CoG
+- **Pitch decay 2.69 s** (ζ ≈ 1.6 % at 0.1 rad; C55 = 73.9 N·m/rad about the CoG), with
+  **I_xx=I_yy=10.2, I_zz=0.063 kg·m²**. *Corrected 2026-09-23*: the earlier 2.11 s came from
+  a study-level assembly that referenced the waterline and added the gravity term to a BEM
+  already about the CoG (C55 265 instead of 73.9). `osu_buoy_common.py` now uses FloatSim's
+  per-body assembly with the reference at the CoG. Heave was unaffected. Tracker
+  `STUDY-HYDROSTATIC-REFERENCE-POINT`. Inertia about the CoG
   from gmsh's exact per-part tensors + the mass model (structure 8.16 kg over the solids at a
   uniform effective density; lead 13.36 kg at the ballast). Uniform-density is the one
   assumption (no per-part material list); replace with CATIA mass properties if available.
@@ -207,30 +212,41 @@ at the first swing (dropping as the motion decays) — the low-KC, high-`Cd` reg
 ## Heave-plate depth vs pitch performance (design study)
 `plate_depth_study.py` → `plate_depth_pitch_study.png` (data cached in
 `plate_depth_results.json`). Question: with the **ballast kept deep** (mass, CoG −0.907 m,
-inertia fixed → pitch restoring `C55` unchanged), does moving *only* the heave drag device
+inertia fixed), does moving *only* the heave drag device
 in z change pitch? Swept the BEM disc + Morison element over z ∈ [−1.10, −1.70] m (clean gap
 below the spar bottom), rebuilding the BEM and running heave + pitch free-decay at each.
 
-**Result — plate depth barely moves pitch.** Over a 4× change in lever arm (L = 0.19 → 0.79 m
-below CoG): pitch period 2.10 → 2.14 s (~2%), pitch damping ζ₁ 1.5 → 1.7% (0.2 pt); heave
-2.48–2.53 s / ~6.1% (flat); `C55` 261–269 N·m/rad (flat). Deeper is marginally better for pitch.
+**Result: plate depth moves the pitch *period* modestly and the pitch *damping* hardly at
+all.** Over a 4× change in lever arm (L = 0.19 → 0.79 m below CoG):
+- pitch period 2.63 → 2.78 s (+5.7 %);
+- pitch damping ζ₁ 1.5 → 1.7 % (+0.15 pt);
+- heave 2.48–2.53 s / ~6.1 % (flat);
+- `C55` 77.2 → 69.6 N·m/rad (−10 %). The disc's own buoyancy moves down with it, so "ballast
+  fixed" does not mean "C55 fixed".
+
+*Corrected 2026-09-23* (FloatSim per-body assembly, reference = CoG). The earlier sweep's
+2.10–2.14 s and "C55 261–269 (flat)" carried the waterline-reference error. Its C55 changed by
+the same ~8 N·m/rad, but against an inflated ~265 that looked flat.
 
 | plate z (m) | L below CoG (m) | pitch T (s) | pitch ζ₁ (%) | heave T (s) | heave ζ₁ (%) | C55 |
 |---|---|---|---|---|---|---|
-| −1.10 (shallow) | 0.19 | 2.10 | 1.5 | 2.48 | 6.2 | 269 |
-| −1.383 (current) | 0.48 | 2.12 | 1.5 | 2.53 | 6.1 | 265 |
-| −1.70 (deep) | 0.79 | 2.14 | 1.7 | 2.53 | 6.1 | 261 |
+| −1.10 (shallow) | 0.19 | 2.63 | 1.5 | 2.48 | 6.2 | 77.2 |
+| −1.25 | 0.34 | 2.66 | 1.6 | 2.52 | 6.1 | 75.3 |
+| −1.383 (current) | 0.48 | 2.70 | 1.6 | 2.53 | 6.1 | 73.6 |
+| −1.55 | 0.64 | 2.74 | 1.6 | 2.53 | 6.1 | 71.5 |
+| −1.70 (deep) | 0.79 | 2.78 | 1.7 | 2.53 | 6.1 | 69.6 |
 
 **Why.** An axial heave plate meets pitch **edge-on**: pitch about the CoG translates the
 on-axis plate horizontally (velocity θ̇·L), sliding it edgewise, so the broadside added mass
 and `Cd_n ≈ 5` damping that dominate *heave* are almost unengaged by pitch. The only
 pitch-relevant plate effect is its **tilt** (rotation about its own diameter), which scales
-with plate **size**, not depth. So plate depth is a heave knob, not a pitch knob; stability
-is a separate ballast/CoG knob.
+with plate **size**, not depth. So plate depth is a heave knob, not a pitch-*damping* knob.
+The pitch *period* moves through `C55` (the disc's buoyancy), a stability effect, not a
+damping one.
 
-**Design implication.** Place the drag device where draft / structure / packaging want it —
-pitch, heave and stability are all nearly indifferent over this range; co-locating it with
-the deep ballast (current) costs nothing and is marginally best for pitch. To actually raise
+**Design implication.** Place the drag device where draft / structure / packaging want it:
+heave and pitch damping are nearly indifferent over this range. Deeper lowers `C55` by up to
+10 % and lengthens the pitch period toward the 2.9 s test-wave band. To actually raise
 pitch damping the levers are plate **size**, plates **offset from the axis** (they move
 broadside in pitch), or **spar strakes / roughness** — not the axial plate's depth.
 
@@ -238,12 +254,13 @@ broadside in pitch), or **spar strakes / roughness** — not the axial plate's d
 the pitch conclusion is *more* robust to it, since the plate barely participates in pitch
 either way). Couldn't cleanly mesh the plate at the spar bottom (disc-kissing-cap BEM
 artifact) or up the spar (needs an annular collar); too-shallow also risks broaching. Coarse
-mesh for speed — the current-depth point reproduces the production values (2.12 s / 1.5%;
-2.53 s / 6.1%).
+mesh for speed — the current-depth point reproduces the production values (2.70 s / 1.6 %
+vs 2.69 s / 1.6 %; 2.53 s / 6.1 %).
 
 ## Status / next
 - **DONE:** geometry + mesh; mass/CoG/draft; spar BEM; full placeholder database + adapted
-  buoy model + decay check (heave 2.52 s, pitch 2.11 s); **production-grade kernel** (fine
+  buoy model + decay check (heave 2.52 s, pitch 2.69 s, corrected 2026-09-23);
+  **production-grade kernel** (fine
   grid, no override); **real inertia** (gmsh).
 - **OPEN (needs the tank):** the perforated heave-plate's **added mass AND damping** — a
   potential-flow BEM over-predicts them for an open frame, so the disc is a bracket; a

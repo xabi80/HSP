@@ -9,6 +9,7 @@ this script. Requires python-pptx (scripting-only, not a FloatSim runtime dep).
 # sign, arrows, minus, middot, subscripts); RUF001 flags these as "ambiguous unicode".
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from pptx import Presentation
@@ -676,6 +677,7 @@ _bullets(s, [
 ], t=5.05, w=11.9, size=14, gap=9)
 
 # --------------------------------------------------------- 12. Pitch study (plate depth)
+_PD = sorted(json.loads((HERE / "plate_depth_results.json").read_text()), key=lambda r: -r["z"])
 s = slide("Where to put the heave plate? — pitch performance", "design study")
 s.shapes.add_picture(str(HERE / "plate_depth_pitch_study.png"),
                      Inches(1.42), Inches(1.7), width=Inches(10.5))
@@ -687,9 +689,11 @@ tf.vertical_anchor = MSO_ANCHOR.MIDDLE
 p = tf.paragraphs[0]
 p.alignment = PP_ALIGN.CENTER
 for txt, opts in [
-    T("Plate depth barely moves pitch", b=True, c=TEAL_D),
-    T(" (2.10 → 2.14 s over a 4× lever-arm change) or heave — an axial plate meets pitch "
-      "EDGE-ON, so its broadside added mass & drag (which dominate heave) hardly engage it.  "),
+    T("Plate depth barely moves pitch damping", b=True, c=TEAL_D),
+    T(f" (ζ {_PD[0]['z_pitch']:.1f} → {_PD[-1]['z_pitch']:.1f} % over a 4× lever-arm change) or "
+      "heave: an axial plate meets pitch EDGE-ON, so its broadside added mass & drag hardly engage "
+      f"it. The period moves {_PD[0]['T_pitch']:.2f} → {_PD[-1]['T_pitch']:.2f} s through C55 "
+      "(the disc's buoyancy).  "),
     T("Deck tilt is a ballast/CoG job, not a plate-depth job.", b=True, c=TEAL_D),
 ]:
     r = p.add_run()

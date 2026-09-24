@@ -1,14 +1,19 @@
 """Parametric study: heave-plate (heave drag device) depth vs PITCH performance.
 
-Holds the BALLAST fixed — mass 21.52 kg, CoG −0.907 m, inertia 10.2 kg·m² — so the
-stability set-point (pitch restoring C55) is unchanged, and moves ONLY the heave drag
-device (the Capytaine BEM disc + its Morison drag element) in z. For each depth we rebuild
+Holds the BALLAST fixed — mass 21.52 kg, CoG −0.907 m, inertia 10.2 kg·m² — and moves ONLY
+the heave drag device (the Capytaine BEM disc + its Morison drag element) in z. For each depth we rebuild
 the BEM, assemble the Cummins system, and run heave + pitch free-decay, reporting the
 natural period and the first-swing damping ratio.
 
 The plate is the PLACEHOLDER solid equal-area disc (added mass is a potential-flow upper
 bound; the real perforated frame adds less), so read the TRENDS, not the absolute values.
 Free-decay only → excitation is written as zeros (diffraction skipped for speed).
+
+The Cummins system and the drag are FloatSim's own per-body assembly, through
+osu_buoy_common (deck body with reference point = CoG = BEM origin; each depth's BEM is built
+about the CoG). FIX (2026-09-23): this script used to assemble about the waterline with a CoG
+offset AND the gravity term, although the BEM is about the CoG -- C55 261-269 instead of ~74 and
+pitch periods 2.10-2.14 s. Heave was unaffected.
 
 Writes plate_depth_pitch_study.png next to this script. Requires capytaine. SLOW.
 Usage: python plate_depth_study.py [quick]
@@ -35,15 +40,15 @@ cpt.set_logging("ERROR")
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE.parents[1]))
-from floatsim.bodies.mass_properties import rigid_body_mass_matrix  # noqa: E402
-from floatsim.hydro.morison import MorisonElement, PlateDragElement, make_morison_state_force  # noqa: E402
-from floatsim.hydro.radiation import assemble_cummins_lhs  # noqa: E402
+sys.path.insert(0, str(_HERE))
+import osu_buoy_common as oc  # noqa: E402
+
 from floatsim.hydro.readers.capytaine import read_capytaine  # noqa: E402
 from floatsim.hydro.retardation import compute_retardation_kernel  # noqa: E402
 from floatsim.solver.equilibrium import solve_static_equilibrium  # noqa: E402
 from floatsim.solver.newmark import integrate_cummins  # noqa: E402
 
-# --- fixed ballast / body (the stability set-point does NOT move) ---
+# --- fixed ballast / body (C55 still moves a little: the disc's own buoyancy moves with it) ---
 RHO, G = 998.0, 9.806
 M_BODY, CoG_Z = 21.52, -0.907
 I_XX = I_YY = 10.2
@@ -114,28 +119,18 @@ def build_bem(z_plate: float, out_path: Path, coarse: bool = True) -> None:
 
 
 def make_drag(z_plate: float, n_seg: int = 10):  # type: ignore[no-untyped-def]
-    elems: list = []
-    edges = np.linspace(Z_BOT, _WL, n_seg + 1)
-    for i in range(n_seg):
-        elems.append(MorisonElement(body_index=0, node_a_body=np.array([0.0, 0.0, edges[i]]),
-                                     node_b_body=np.array([0.0, 0.0, edges[i + 1]]),
-                                     diameter=_SPAR_D, Cd=_SPAR_CD))
-    elems.append(PlateDragElement(body_index=0, center_body=np.array([0.0, 0.0, z_plate]),
-                                  normal_body=np.array([0.0, 0.0, 1.0]), radius=_PLATE_R,
-                                  thickness=_PLATE_T, Cd_n=_PLATE_CD_N, Cd_t=_PLATE_CD_T))
-    return make_morison_state_force(elems, n_dof=6, fluid_velocity_fn=lambda p, t: np.zeros(3), rho=RHO)
+    """FloatSim deck drag (spar + plate at z_plate), CoG frame, via osu_buoy_common."""
+    assert (Z_BOT, _SPAR_D, _SPAR_CD, _PLATE_R) == (
+        oc._SPAR_BOT, oc._SPAR_D, oc._SPAR_CD, oc._PLATE_R)
+    return oc.make_drag(n_seg, plate_z=z_plate)
 
 
 def decay(hdb, drag, z_plate: float, duration: float):  # type: ignore[no-untyped-def]
-    r = np.array([0.0, 0.0, CoG_Z])
-    i_ref = np.diag([I_XX, I_YY, I_ZZ]) + M_BODY * ((r @ r) * np.eye(3) - np.outer(r, r))
-    M = rigid_body_mass_matrix(mass=M_BODY, inertia_at_reference=i_ref, cog_offset_body=r)
-    lhs = assemble_cummins_lhs(rigid_body_mass=M, hdb=hdb, mass=M_BODY,
-                               cog_offset_from_bem_origin=r, gravity=G)
+    lhs = oc.build_lhs(hdb)                      # FloatSim per-body assembly, reference = CoG
     kernel = compute_retardation_kernel(hdb, t_max=KERNEL_TMAX, dt=DT,
                                         asymptote_check_override=_OVR, kernel_decay_floor_override=_OVR)
     eq = solve_static_equilibrium(lhs=lhs, state_force=drag)
-    out = {"C55": float(lhs.C[4, 4]), "A55": float(lhs.M_plus_Ainf[4, 4] - (I_YY + M_BODY * r @ r)),
+    out = {"C55": float(lhs.C[4, 4]), "A55": float(lhs.M_plus_Ainf[4, 4] - I_YY),
            "A33": float(lhs.M_plus_Ainf[2, 2] - M_BODY)}
     for dof, key in [(2, "heave"), (4, "pitch")]:
         xi0 = eq.xi_eq.copy(); xi0[dof] += 0.10
@@ -199,11 +194,12 @@ def make_plot(rows: list[dict]) -> None:
         ax.plot(z[cur], yp[cur], "o", ms=14, mfc="none", mec="#d1543a", mew=2.2)
         ax.axvline(-1.383, ls=":", color="#d1543a", lw=1.2)
         ax.set_xlabel("heave-plate depth  z (m)     ← deeper            shallower →")
-        ax.set_ylabel(ylab); ax.set_title(title, fontsize=11); ax.grid(alpha=0.3); ax.legend(loc="center right")
+        ax.set_ylabel(ylab); ax.set_title(title, fontsize=11); ax.grid(alpha=0.3); ax.legend(loc="best")
         ax.text(0.02, 0.03, note, transform=ax.transAxes, fontsize=8.5, color="#54636d")
     ax2.annotate("current −1.383 m", (z[cur], zp[cur]), textcoords="offset points",
                  xytext=(10, 10), fontsize=8, color="#d1543a")
-    fig.suptitle("OSU buoy — heave-plate depth barely moves pitch (ballast fixed; C55 ≈ const; placeholder disc → trend)",
+    fig.suptitle("OSU buoy — heave-plate depth vs pitch (ballast fixed; FloatSim, reference = CoG;"
+                 " placeholder disc → trend)",
                  fontsize=11.5, y=0.99)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     out = _HERE / "plate_depth_pitch_study.png"
