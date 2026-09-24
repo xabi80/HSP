@@ -78,6 +78,35 @@ research case.
 **Status.** Open. Not currently scheduled. Audit-surfaced
 2026-05-11.
 
+**Flume-mooring evidence (2026-09-23): the Item-2 gate is effectively
+tripping.** The flume station-keeping study
+(`studies/flume-mooring/`, commit `71a29fc`) runs the 1 buoy, the
+4-buoy cluster and the 16-buoy platform through FloatSim at
+H = 0.1 m, T = 2.2 / 2.9 / 3.5 s, moored and free (17 cases,
+`viewer_rows/*.json`). Against the conventions Item 2 / program-plan
+Q5 threshold `max|θ| ≥ 0.1 rad` (5.73°):
+- **9 of 17 cases exceed it.** Peak buoy tilt ranges 2.6°–23.0°;
+  the exceedances are the near-resonance cases (T = 2.9 s: 10.6°–
+  23.0°) and the moored pinned articles.
+- **The moored platform exceeds it statically.** Line pretension at
+  the spar SWL, 0.72 m below the pins, tilts the 8 moored spars by
+  9.1° (0.159 rad) before any wave acts (`moored_equilibrium.json`).
+  The moored cluster sits at 4.9° (0.086 rad).
+- **The large-tilt numbers are themselves suspect.** They come from
+  the small-angle kinematics this item describes, outside their
+  validity. Treat every tilt above 0.1 rad in that study as
+  indicative only; the study's viewer flags them.
+- **The lone free buoy's yaw instability above ~13° of pitch is this
+  item manifesting, not a separate gap.** Round-off in yaw grows
+  ~1e5× per 10 s once pitch passes ~13°. It is independent of `dt`,
+  absent for yaw-locked pinned buoys, and consistent with the Morison
+  path treating the integrator's small-angle Euler rates as body
+  angular velocity (`floatsim/hydro/morison.py:642` for cylinders,
+  `:803` for plates: `omega_inertial = R_body @ xi_dot[3:6]`) on a
+  body with
+  Izz = 0.063 kg·m². It is **not a patch target**: the fix is this
+  item.
+
 ---
 
 ### A1 — General 6-DOF rigid-link helper
@@ -1925,6 +1954,165 @@ surface / snapshot comparability). Sign and magnitude of the drift are
 
 **Status.** Open. Surfaced 2026-08-07 (drift check requested during the fin
 study). Mechanism measured; three follow-ups above remain.
+
+---
+
+### DRAG-WAVE-KINEMATICS-UNWIRED — Morison drag runs against calm water; the wave-kinematics path under it has two latent defects
+
+**Mechanism.** `build_system` wires the deck's Morison drag with a zero fluid field
+(`floatsim/driver.py:469-474`, `fluid_velocity_fn=_calm_fluid`). The drag uses the body
+velocity only: no relative velocity and no drag excitation. OrcaFlex and OpenFAST use
+relative-velocity Morison. The physics exists (`morison.py:472` cylinder, `:573` plate:
+`u_rel = u_fluid − u_body`); this is a WIRING gap. Two latent defects sit on the path the
+wiring would activate. Neither has a production consumer today.
+1. **`airy_velocity` vertical sign** (`floatsim/waves/kinematics.py:108`, since M5 PR4
+   `d7dfea2`). It returns `u_z = +A·ω·e^{kz}·sin ψ`. Against `RegularWave.elevation`,
+   that is exactly `−∂η/∂t` at the MWL. Runnable check: correlation −1.0000, residual
+   of `w + ∂η/∂t` 1.7e-10. The field fails continuity and irrotationality by exactly
+   2×. The module's own citations (Newman §6.3, Faltinsen 2.34) and its docstring's
+   kinematic condition give `u_z = −A·ω·e^{kz}·sin ψ`.
+   `tests/unit/test_airy_kinematics.py::test_velocity_quarter_period_is_purely_vertical`
+   asserts the wrong sign (u_z = +Aω at t = T/4, where η is falling).
+   `airy_acceleration` is consistent with the wrong velocity (a_z would flip with it).
+2. **Fluid sampled at displacement, not position** (`morison.py:618`,
+   `_body_pose_from_xi`; used at `:798`, `:817`). The docstring says `xi[0:3]` is the
+   reference point's inertial position. Under `build_system`, it is the DISPLACEMENT
+   from the body's `reference_point`. So the fluid is sampled at `xi[0:3] + R·arm`, which
+   drops the body's reference point: wrong x-phase, and wrong depth decay. Example: the
+   M11b plate at z ≈ −0.26 m instead of −1.457 m, e^{kz} ≈ 0.90 instead of 0.55 at
+   T = 3.141 s. It is harmless in calm water, because the forces use relative arms only
+   (`:822`). This is the same frame class as the catenary anchor (flume-mooring README,
+   FloatSim limitation 2).
+
+**Audit reference.** M11b PR8 fan reach check,
+`studies/platform-12buoy/pr8_reldrag_check.py`. The per-body composition reproduces the
+driver's drag to 0.00e+00 with a zero field. The "naive" variant is what wiring
+`airy_velocity` straight in would give.
+
+**Reach on the M11b PR8 fan (OrcaFlex comparison deliverable).** The fan used this calm-water
+path (`platform_rao_pilot.run_case` → `setup.state_force`). Re-run under the current code, same
+model and adaptive settle. Platform-heave RAO:
+
+| H (m) | T (s) | recorded | calm (current code) | rel (corrected) | naive (as-shipped) |
+|---|---|---|---|---|---|
+| 0.05 | 3.141 | 1.3935 | 1.3859 | 1.4426 (+4.1 %) | 1.6791 |
+| 1.0 | 3.141 | 0.2767 | 0.2749 | 0.4224 (+54 %, **unsettled**: windows differ 11.7 % at the 508 s cap) | 0.6241 |
+| 0.30 | 2.0 | 0.00185 | 0.00186 | 0.0521 (×28) | 0.4981 |
+| 0.30 | 6.0 | 0.99147 | 0.99148 | 1.0325 (+4.1 %) | 1.0828 |
+
+- Calm vs recorded is the post-PR8 trapezoidal-convolution fix (`9fb5b33`): −0.55 % / −0.63 %
+  at 3.141 s, ~0 elsewhere.
+- **Relative drag is order-unity where drag dominates**, and small near the lightly gated
+  resonance: +4 % at H = 0.05 m, +54 % at H = 1.0 m.
+- At T = 2.0 s the added drag excitation turns a cancelled response (0.002) into 0.05.
+- At T = 6.0 s the RAO overshoots unity (1.033). The closure's "0.9915, approaching 1 from
+  below" reflects calm-water drag damping the motion. It is not a model-independent approach:
+  ω/ω_n = 0.52 there.
+- The naive variant shows why both defects must be fixed before wiring: ×10 wrong at 2.0 s.
+
+**Why latent / visibility.** Wave kinematics never reach the drag, so neither defect was
+exercisable. A relative-velocity wiring PR is the first activation. Its pre-flight must
+include the kinematic free-surface-condition / continuity check above and an
+absolute-position test with a non-origin reference point. Otherwise the wiring PR would
+turn both defects on at once.
+
+**Scope.** Fix both defects (and the test that locks the sign) before or inside the
+wiring PR. Gate the wiring on the long-wave limit: the relative velocity must vanish as
+the body follows the wave.
+
+**Estimated effort.** Inside the relative-velocity wiring PR (STEP 5 item 1): +~1 day.
+
+**Blocks.** Any wave-relative drag result, including the OrcaFlex comparison of the M11b
+fan.
+
+**Status.** Open. Surfaced 2026-09-23.
+
+---
+
+### STUDY-HYDROSTATIC-REFERENCE-POINT — study-level assemblies add the gravity term to a BEM already about the CoG
+
+**Mechanism.** Three study-level hand assemblies call
+`assemble_cummins_lhs(..., cog_offset_from_bem_origin=(0, 0, z_G), gravity=g)` (a
+WATERLINE reference, CoG below it) on Capytaine databases that were solved about the
+CoG (`rotation_center` = CoG). The gravity term is added to a buoyancy-only `C`
+that is already about the CoG, where it should be zero. C44/C55 are inflated by
+exactly `m·g·|z_G|`. The rigid mass is also moved to the waterline (parallel axis),
+so M55 and M15 are wrong too. The heave row and column are untouched.
+- `studies/osu-test-buoy/osu_buoy_common.build_lhs`: C55 = 265.0 instead of 73.92
+  (21.52 × 9.806 × 0.907 = 191.4; 73.92 + 191.4 = 265.3). Pitch decay 2.11 s instead
+  of **2.69 s**. **Fixed 2026-09-23**: routed through FloatSim's
+  `driver._per_body_lhs` with the reference at the CoG.
+- `studies/osu-test-buoy/plate_depth_study.decay`: C55 261–269 instead of ~74.
+  **Fixed 2026-09-23**, same route.
+- `studies/spar-fin-decay/study_common.build_lhs`: C55 = 393.39 instead of 107.56
+  (28.67 × 9.81 × 1.0163 = 285.8; 107.56 + 285.8 = 393.4). Uncoupled pitch period
+  2.46 s instead of 3.36 s. **Open.**
+
+**Audit reference.** Surfaced by the flume-mooring FloatSim re-check
+(`studies/flume-mooring/README.md`, "Status"). The comparison against FloatSim's
+CoG-referenced per-body assembly is the evidence.
+
+**Why latent / visibility.**
+- **Heave is exactly decoupled** from the pitch block (identical C33, M33, and every
+  heave coupling ≤ 5e-13). Every validation that touched these studies was heave: the
+  field decay, the M11a PR1/PR4 gates and the DR2 phase anchor. Pitch was never
+  cross-checked against an independent reference.
+- **A waterline reference INFLATES stiffness.** The wrong `C` stays PSD, so the M11b
+  PR8 restoring-PSD gate cannot see it. These hand assemblies also bypass
+  `build_system`, so the gate never runs on them.
+- **Pattern.** This is the second hydrostatic-`C` assembly defect since M11b. The first
+  was `CAPYTAINE-MULTIBODY-HYDROSTATIC-COUPLING` (2026-08-01), which its own record
+  rules NOT a reference-point error. It is also the mirror image of the M5
+  hydrostatic-gravity bug: there a needed gravity term was missing, here a gravity
+  term is added where it must be zero.
+
+**Reach (traced 2026-09-23).**
+- **M8–M11 milestone results do not consume the wrong pitch block.**
+  - M10's cluster assembly (`cluster_study_common.build_lhs`) is CoG-referenced
+    with zero offset, and its hydrostatics come from `reference_single_bem.nc`
+    (C44 = C55 = 151.3582, about the CoG).
+  - M11b uses `build_system`.
+  - The M11a PR1 and PR4 gates read heave only. The spar-fin heave decay is identical
+    under both assemblies (histories agree to 1.8e-18 m; T_n and ζ = 2.5224e-02
+    unchanged).
+- **The spar-fin single-buoy RAO in waves is affected** (`sparfin_rao.py`: calm-water
+  `PlateMember` drag, whose patch velocities `ż ± x·θ̇` couple heave to pitch rate).
+  - Against the committed Cd 5 values, the heave RAO is +16.6 % (H 0.06) and +20.3 %
+    (H 0.12) at T = 2.5 s, and −2 to −3 % at 3.141 s.
+  - It reaches the single-buoy curves of the cross-model comparisons
+    (`rao_cross_model_plots.py`), the 4-model acceleration surfaces, the
+    fin-sensitivity note and the fin & array-size report. Their cluster and platform
+    curves are unaffected.
+  - `pitch_decay_verify.py` / `PITCH-DAMPING-VERIFICATION.md` inherit the wrong pitch
+    period.
+
+**Scope (proposed check, NOT built).** Compare every assembled hydrostatic `C` against
+the single-body CoG-referenced computation:
+1. BEM builders record the solve's `rotation_center` / `center_of_mass` as dataset
+   attributes (`bem_database.py`, `capytaine_run.py`, `bem_cluster.py`, the platform
+   builders). The readers surface them in `HydroDatabase.metadata`. Today the database
+   does not say which point it was solved about, which is how the mismatch stayed
+   silent.
+2. A pure function returning the expected 6×6 restoring about the deck body's CoG:
+   - the stored buoyancy-only `C` when the recorded rotation centre equals the CoG;
+   - otherwise a single-body Capytaine `compute_hydrostatics(rotation_center=CoG)`
+     recompute (the M11b STEP 2(c) method);
+   - plus the gravity term with zero offset.
+3. Assert the assembled `C` against it: relative 1e-6 on the diagonal, absolute on the
+   couplings. The error message names the implied reference offset when a C44/C55
+   mismatch equals `m·g·Δz`. This complements the PSD gate: that gate catches
+   *indefinite*, this one catches *consistent-but-wrong*.
+4. Studies assemble through FloatSim's per-body functions (as the OSU study now does),
+   so the check covers them too.
+
+**Estimated effort.** ~1 PR (builders' attributes, reader metadata, check + tests),
+plus the spar-fin study fix and re-runs of its RAO consumers.
+
+**Blocks.** Trustworthy pitch/roll results from any study-level assembly. The spar-fin
+single-buoy RAO record.
+
+**Status.** Open. Surfaced 2026-09-23. OSU study fixed; the spar-fin fix and the check
+await approval.
 
 ---
 
