@@ -88,11 +88,14 @@ from floatsim.mooring.catenary_analytic import (
     make_catenary_state_force,
 )
 from floatsim.solver.equilibrium import solve_static_equilibrium
+from floatsim.solver.ramp import HalfCosineRamp
 from floatsim.solver.state import (
     assemble_global_kernel,
     assemble_global_lhs,
     pack_state,
 )
+from floatsim.waves.kinematics import airy_velocity
+from floatsim.waves.regular import RegularWave as AiryWave
 
 _EARTH_NAME: Final[str] = "earth"
 _EARTH_INDEX: Final[int] = -1
@@ -407,7 +410,14 @@ def _compose_state_force(
     return _composed
 
 
-def _build_drag_state_force(deck: Deck, n_dof: int, *, rho: float) -> _StateForce | None:
+def _build_drag_state_force(
+    deck: Deck,
+    n_dof: int,
+    *,
+    rho: float,
+    wave: AiryWave | None = None,
+    ramp: HalfCosineRamp | None = None,
+) -> _StateForce | None:
     """Compose the deck's Morison ``drag_elements`` into a state-force
     closure (M11a PR1 / plan Q3-i). WIRING only -- no new physics.
 
@@ -419,13 +429,26 @@ def _build_drag_state_force(deck: Deck, n_dof: int, *, rho: float) -> _StateForc
     is therefore inert on this path (permitted but unused; matches the
     committed ``two_body_semisub_barge.yml`` element's ``Ca=1.0``).
 
-    Fluid is still water (calm) -- the free-decay convention the M10/M9
-    studies used. Wave-orbital-velocity-relative drag is a follow-on that
-    couples to the wave field (composed separately, M10 A4).
+    Fluid: with ``wave=None`` (default) the fluid is still water -- the
+    free-decay convention, byte-identical to the pre-STEP-5 path. With a
+    regular ``wave`` (STEP 5 PR1) the drag acts on the velocity RELATIVE to
+    its linear-Airy orbital field (:func:`floatsim.waves.kinematics.airy_velocity`),
+    sampled at each element's ABSOLUTE position (the deck reference points
+    are passed as ``body_reference_points``), and multiplied by ``ramp(t)``
+    when a ramp is given. This adds the drag excitation the calm-water path
+    lacks. The caller must pass the SAME wave and ramp it uses for the BEM
+    excitation (``make_regular_wave_force``); the deck's own ``waves``
+    section is not read here (studies build their excitation themselves).
+    Tracker DRAG-WAVE-KINEMATICS-UNWIRED.
 
     Returns ``None`` when no body declares ``drag_elements`` (the
     common case), so a drag-free deck's ``state_force`` is untouched.
     """
+    if ramp is not None and wave is None:
+        raise ValueError(
+            "drag_wave_ramp given without drag_wave: the ramp scales the wave "
+            "kinematics, so it needs the wave"
+        )
     elements: list[MorisonElement | PlateDragElement] = []
     for k, body in enumerate(deck.bodies):
         for e in body.drag_elements:
@@ -466,12 +489,31 @@ def _build_drag_state_force(deck: Deck, n_dof: int, *, rho: float) -> _StateForc
     if not elements:
         return None
 
-    calm = np.zeros(3, dtype=np.float64)
+    if wave is None:
+        calm = np.zeros(3, dtype=np.float64)
 
-    def _calm_fluid(_point: NDArray[np.float64], _t: float) -> NDArray[np.float64]:
-        return calm
+        def _calm_fluid(_point: NDArray[np.float64], _t: float) -> NDArray[np.float64]:
+            return calm
 
-    return make_morison_state_force(elements, n_dof=n_dof, fluid_velocity_fn=_calm_fluid, rho=rho)
+        return make_morison_state_force(
+            elements, n_dof=n_dof, fluid_velocity_fn=_calm_fluid, rho=rho
+        )
+
+    ref_points = np.array([b.reference_point for b in deck.bodies], dtype=np.float64)
+    wave_f: AiryWave = wave
+    ramp_f = ramp
+
+    def _wave_fluid(point: NDArray[np.float64], t: float) -> NDArray[np.float64]:
+        u = airy_velocity(wave_f, point, t)
+        return u if ramp_f is None else ramp_f.value(t) * u
+
+    return make_morison_state_force(
+        elements,
+        n_dof=n_dof,
+        fluid_velocity_fn=_wave_fluid,
+        rho=rho,
+        body_reference_points=ref_points,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -860,8 +902,16 @@ def build_system(
     asymptote_check_override: str | None = None,
     hydrostatic_database: HydroDatabase | None = None,
     kernel_decay_floor_override: str | None = None,
+    drag_wave: AiryWave | None = None,
+    drag_wave_ramp: HalfCosineRamp | None = None,
 ) -> SimulationSetup:
     """Materialise a deck-driven simulation setup.
+
+    ``drag_wave`` / ``drag_wave_ramp`` (STEP 5 PR1): the regular wave (and
+    its ramp) whose orbital velocity the deck's Morison drag acts relative
+    to. Pass the SAME wave and ramp used for the BEM excitation. ``None``
+    (default) keeps the calm-water drag, byte-identical to before. See
+    :func:`_build_drag_state_force`; tracker DRAG-WAVE-KINEMATICS-UNWIRED.
 
     ``asymptote_check_override`` (M10 PR0): a non-empty rationale string
     that bypasses the retardation-kernel high-frequency asymptote gate
@@ -926,6 +976,11 @@ def build_system(
         attach offset (BB-OFFSET-CONNECTOR); body-body Catenary.
     """
     # --- Body bookkeeping ---------------------------------------------------
+    if drag_wave_ramp is not None and drag_wave is None:
+        raise ValueError(
+            "drag_wave_ramp given without drag_wave: the ramp scales the wave "
+            "kinematics, so it needs the wave"
+        )
     name_to_index = _validate_body_names(deck)
 
     # --- LHS + kernel: coupled (shared database) or per-body block-diagonal --
@@ -999,7 +1054,9 @@ def build_system(
     # state-force alongside connector/catenary. Common to both the coupled
     # and per-body assembly paths. Drag-only (no inertia double-count);
     # None when no body declares drag_elements (drag-free decks untouched).
-    drag_force = _build_drag_state_force(deck, n_dof, rho=deck.environment.water_density)
+    drag_force = _build_drag_state_force(
+        deck, n_dof, rho=deck.environment.water_density, wave=drag_wave, ramp=drag_wave_ramp
+    )
     state_force = _compose_state_force(connector_force, catenary_force, drag_force, n_dof)
 
     # --- Constraints + restoring-PSD gate (M11b PR8) ------------------------

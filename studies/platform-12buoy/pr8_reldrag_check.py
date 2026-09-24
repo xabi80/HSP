@@ -21,6 +21,8 @@ kernel, joints, integrator, adaptive settle) and three drag variants:
                 standard deep-water field (the module's own citation: Newman 6.3 / Faltinsen 2.34)
                 has u_z = -A w e^kz sin(psi), so u_z is negated.
          The fluid velocity is ramped with the same HalfCosineRamp as the excitation.
+  driver the FloatSim wiring (STEP 5 PR1 commit c): ``build_system(drag_wave=,
+         drag_wave_ramp=)``. Gate: must reproduce "rel" exactly.
   naive  what wiring ``airy_velocity`` straight into the driver's drag builder would give
          (as-shipped vertical sign, displacement-relative sampling point) -- the STEP 5 PR1
          outcome without the two corrections.
@@ -28,7 +30,9 @@ kernel, joints, integrator, adaptive settle) and three drag variants:
 Wiring check (run first): with a zero fluid field, the per-body composition reproduces the
 driver's drag state force to machine precision at random states.
 
-Usage: python pr8_reldrag_check.py <H> <T> <variant>    (writes pr8_reldrag_out/<case>.json)
+Usage: python pr8_reldrag_check.py <H> <T> <variant> [--history]
+                                                         (writes pr8_reldrag_out/<case>.json;
+                                                          --history also saves the full run)
        python pr8_reldrag_check.py check                (wiring check only)
        python pr8_reldrag_check.py summary              (table vs the recorded fan / sweep)
 """
@@ -146,7 +150,7 @@ def drag_state_force(deck, n_dof: int, rho: float, variant: str, wave=None):  # 
     return _sum(forces)
 
 
-def _setup():  # type: ignore[no-untyped-def]
+def _setup(**drag_wave):  # type: ignore[no-untyped-def]
     deck = prp._deck_with_drag()
     # the fan deck has no connectors / catenaries: drag is its only state force
     assert not deck.connections
@@ -156,7 +160,7 @@ def _setup():  # type: ignore[no-untyped-def]
                              solve_equilibrium=False,
                              shared_hydro_database=read_capytaine(prp._PLAT_NC),
                              asymptote_check_override=prp._ASYMPTOTE_OVR,
-                             kernel_decay_floor_override=prp._KERNEL_EXEMPT)
+                             kernel_decay_floor_override=prp._KERNEL_EXEMPT, **drag_wave)
     return deck, setup
 
 
@@ -175,14 +179,26 @@ def wiring_check() -> float:
     return worst
 
 
-def run(H: float, T: float, variant: str) -> None:
+def run(H: float, T: float, variant: str, history: bool = False) -> None:
     OUT.mkdir(exist_ok=True)
-    deck, setup = _setup()
+    if variant == "driver":
+        wave = RegularWave(amplitude=0.5 * H, omega=2 * np.pi / T, heading_deg=0.0)
+        deck, setup = _setup(drag_wave=wave, drag_wave_ramp=HalfCosineRamp(duration=RAMP_S))
+    else:
+        deck, setup = _setup()
     n = setup.lhs.n_dof
-    if variant != "calm":
+    if variant not in ("calm", "driver"):
         wave = RegularWave(amplitude=0.5 * H, omega=2 * np.pi / T, heading_deg=0.0)
         setup = dataclasses.replace(setup, state_force=drag_state_force(
             deck, n, deck.environment.water_density, variant, wave))
+    captured: dict = {}  # type: ignore[type-arg]
+    orig = prp.integrate_cummins
+
+    def _capture(*a, **k):  # type: ignore[no-untyped-def]
+        captured["r"] = orig(*a, **k)
+        return captured["r"]
+
+    prp.integrate_cummins = _capture
     t0 = time.perf_counter()
     c = prp.run_case(setup, read_capytaine(prp._PLAT_NC), prp._hydro_dof(deck), height_m=H,
                      period_s=T, ramp_s=RAMP_S, cap_settle_s=CAP_S,
@@ -192,8 +208,16 @@ def run(H: float, T: float, variant: str) -> None:
            "rao_buoy_heave_min": min(buoys), "rao_buoy_heave_max": max(buoys),
            "rao_buoy_heave": buoys, "settled": c["settled"], "settle_ratio": c["settle_ratio"],
            "duration_s": c["duration_s"], "wall_s": time.perf_counter() - t0}
-    (OUT / f"H{H:g}_T{T:g}_{variant}.json".replace(".", "p").replace("pjson", ".json")).write_text(
-        json.dumps(rec, indent=1))
+    stem = f"H{H:g}_T{T:g}_{variant}".replace(".", "p")
+    (OUT / f"{stem}.json").write_text(json.dumps(rec, indent=1))
+    if history:        # full run for the response analysis (not committed: ~15 MB)
+        r = captured["r"]
+        b = [prp._buoy_body_index(k) for k in range(12)]
+        pdof = 6 * prp._buoy_body_index_platform()
+        np.savez_compressed(OUT / f"history_{stem}.npz", t=r.t, platform=r.xi[:, pdof:pdof + 6],
+                            buoy_heave=r.xi[:, [6 * k + 2 for k in b]],
+                            buoy_pitch=r.xi[:, [6 * k + 4 for k in b]],
+                            buoy_roll=r.xi[:, [6 * k + 3 for k in b]], omega=2 * np.pi / T, H=H)
     print(f"H {H} T {T} {variant}: platform-heave RAO {rec['rao_platform_heave']:.4f} "
           f"(settled {rec['settled']}, {rec['duration_s']:.0f} s sim, {rec['wall_s']:.0f} s wall)")
 
@@ -225,4 +249,4 @@ if __name__ == "__main__":
     elif sys.argv[1] == "summary":
         summary()
     else:
-        run(float(sys.argv[1]), float(sys.argv[2]), sys.argv[3])
+        run(float(sys.argv[1]), float(sys.argv[2]), sys.argv[3], "--history" in sys.argv)
