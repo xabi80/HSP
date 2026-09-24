@@ -41,7 +41,7 @@ from floatsim.hydro.morison import (  # noqa: E402
 from floatsim.solver.newmark import integrate_cummins  # noqa: E402
 
 _SPAR_D, _SPAR_CD = 0.1682, 1.2          # buoy spar Ø, transverse Cd (platform value)
-_WL_Z, _PLATE_Z = 0.0, sc.PLATE_Z        # waterline, plate z (eqdraft frame)
+_WL_Z, _PLATE_Z = sc.WL_Z_B, sc.PLATE_Z_B  # waterline, plate z (body/CoG frame, = build_lhs)
 _A, _T = sc.PLATE_RADIUS, 0.0039         # plate radius 0.215 m, rim thickness
 _CD_N, _CD_T = sc.PLATE_CD, 1.5          # plate normal 5.0, tangential 1.5
 _RHO = sc.RHO

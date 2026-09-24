@@ -2046,7 +2046,11 @@ so M55 and M15 are wrong too. The heave row and column are untouched.
   **Fixed 2026-09-23**, same route.
 - `studies/spar-fin-decay/study_common.build_lhs`: C55 = 393.39 instead of 107.56
   (28.67 × 9.81 × 1.0163 = 285.8; 107.56 + 285.8 = 393.4). Uncoupled pitch period
-  2.46 s instead of 3.36 s. **Open.**
+  2.46 s instead of 3.36 s. **Fixed 2026-09-24** (FloatSim per-body assembly; the pitch/surge
+  drag geometry of `sparfin_rao`, `sparfin_fin_fan` and `pitch_decay_verify` moved to the CoG
+  frame). `PITCH-DAMPING-VERIFICATION.md` re-run: pitch mode 3.26 s (was 2.32 s), ζ_rad
+  0.018 % (was 0.59 %), spar/plate 95/5. The single-buoy RAO outputs
+  (`sparfin_rao_out/`, the fin fan) are **stale, pending the post-PR1 rerun cycle**.
 
 **Audit reference.** Surfaced by the flume-mooring FloatSim re-check
 (`studies/flume-mooring/README.md`, "Status"). The comparison against FloatSim's
@@ -2111,8 +2115,8 @@ plus the spar-fin study fix and re-runs of its RAO consumers.
 **Blocks.** Trustworthy pitch/roll results from any study-level assembly. The spar-fin
 single-buoy RAO record.
 
-**Status.** Open. Surfaced 2026-09-23. OSU study fixed; the spar-fin fix and the check
-await approval.
+**Status.** Open. Surfaced 2026-09-23. OSU study fixed (2026-09-23); spar-fin pitch block
+fixed (2026-09-24); its RAO reruns are in the post-PR1 cycle. The check awaits approval.
 
 ---
 

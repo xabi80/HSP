@@ -65,8 +65,8 @@ _HEAVE_DOF = 2
 _N_DOF = 6
 
 # Drag geometry -- single-buoy mesh frame (origin at isolated waterline z=0).
-_PLATE_Z = sc.PLATE_Z  # -1.278 (mesh); plate at the buoy bottom
-_WL_Z = 0.0  # waterline = mesh origin
+_PLATE_Z = sc.PLATE_Z_B  # -0.2617, body (CoG) frame; plate at the buoy bottom
+_WL_Z = sc.WL_Z_B  # +1.0163, the waterline in the body (CoG) frame
 _SPAR_D = 0.1682  # 2*R_SPAR (cluster_common); identical to platform
 _SPAR_CD = 1.2
 _PLATE_R = sc.PLATE_RADIUS  # 0.215
@@ -93,7 +93,7 @@ def _drag_deck(cd_n: float) -> Deck:
     )
     body = Body(
         name="buoy",
-        reference_point=[0.0, 0.0, 0.0],
+        reference_point=[0.0, 0.0, sc.CoG_Z],  # = CoG = BEM origin (build_lhs convention)
         mass=sc.M_BODY,
         inertia=Inertia(Ixx=sc.I_XX, Iyy=sc.I_YY, Izz=sc.I_ZZ),
         hydro_database=HydroDatabaseRef(format="capytaine", path=str(_NC)),

@@ -1,5 +1,11 @@
 # Fin-size sensitivity (single buoy) — RAO + max acceleration
 
+> **Stale, pending rerun (2026-09-24).** These single-buoy RAOs used a pitch block
+> assembled about the waterline (C55 393 vs 107.6; tracker `STUDY-HYDROSTATIC-REFERENCE-POINT`,
+> now fixed) and calm-water drag (tracker `DRAG-WAVE-KINEMATICS-UNWIRED`). Heave RAO shifts of
+> up to +17–20 % at T = 2.5 s were measured from the pitch block alone. They are rerun in the
+> post-PR1 cycle.
+
 Rigorous per-fin BEM study to inform the fin-size decision. Fin radius
 {0.215 (baseline), 0.15, none}, corrected heights 0.04–0.12 m, plate Cd_n {5, 1}
 (no-fin has no plate → spar-only). Each fin uses its **own** parametric Capytaine

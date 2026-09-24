@@ -61,7 +61,7 @@ def _drag(fin_r, cd_n):  # type: ignore[no-untyped-def]
         environment=Environment(water_depth=200.0, water_density=sc.RHO, gravity=sc.G),
         waves=DeckWave(type="regular", height=1.0, period=10.0, heading=0.0),
         bodies=[Body(
-            name="buoy", reference_point=[0.0, 0.0, 0.0], mass=sc.M_BODY,
+            name="buoy", reference_point=[0.0, 0.0, sc.CoG_Z], mass=sc.M_BODY,
             inertia=Inertia(Ixx=sc.I_XX, Iyy=sc.I_YY, Izz=sc.I_ZZ),
             hydro_database=HydroDatabaseRef(format="capytaine", path="x.nc"),
             drag_elements=elems)],
