@@ -152,6 +152,11 @@
     <div class="pick">
       <div class="eyebrow">Article</div>
       <div class="seg" id="arts" role="group" aria-label="Article"></div>
+      <div class="eyebrow" style="margin-top:4px">Mooring</div>
+      <div class="seg" id="moor" role="group" aria-label="Mooring">
+        <button data-m="1" aria-pressed="true">On</button>
+        <button data-m="0" aria-pressed="false">Off (free-floating)</button>
+      </div>
       <div class="eyebrow" style="margin-top:4px">Wave</div>
       <div class="cases" id="cases"></div>
     </div>
@@ -235,7 +240,8 @@
     Data: FloatSim time domain — Cummins radiation + velocity-level KKT joints + Morison drag on spar and heave
     plate <b>relative to the wave velocity</b>, with the design mooring as linear springs at the attachments. Each
     case is the settled response fitted with harmonics 1–3 of the wave frequency, so it loops over one period.
-    Line tension = pretension + line stiffness × stretch. <b>Not shown:</b> the mean drift offset (the time-domain
+    Line tension = pretension + line stiffness × stretch. <b>Mooring off</b> plays the same wave from a separate
+    run of the free-floating article (the mooring barely changes the wave-frequency motion). <b>Not shown:</b> the mean drift offset (the time-domain
     model has no splash-zone drift; the readout quotes its upper bound). Rigid skeleton per the joint topology:
     each buoy's spar hangs from its pin and tilts with the buoy. Tilts above ~10° are beyond the model's
     small-angle range and are indicative.
@@ -255,11 +261,14 @@ const DATA=__DATA__;
   const MONO='ui-monospace,Consolas,"SF Mono",Menlo,monospace';
 
   // ---- state ----
-  let ai=ARTS.length-1, ci=0, frame=0, playing=!reduce, speed=1, exag=1;
+  let ai=ARTS.length-1, ci=0, frame=0, playing=!reduce, speed=1, exag=1, moored=true;
   const AZ0=-1.18, EL0=0.34;   // three-quarter side view, waves running left to right
   let az=AZ0, el=EL0, zoom=1, autorot=false, drag=null;
   let acc=0, last=performance.now(), HMAX=1, TDEV=1;
   const ART=()=>ARTS[ai], CASE=()=>ARTS[ai].cases[ci], BOD=()=>ARTS[ai].bodies;
+  // active motion variant: the moored run, or the same wave without the mooring
+  const VAR=()=>{const c=CASE(); return (!moored&&c.free)?c.free:c;};
+  const MOORED=()=>moored||!CASE().free;
 
   // ---- camera / projection ----
   function project(x,y,z,v){
@@ -287,7 +296,7 @@ const DATA=__DATA__;
     return [[e*c, e*d*b-f*a, e*d*a+f*b],[f*c, f*d*b+e*a, f*d*a-e*b],[-d, c*b, c*a]];}
   function mv(R,v){return [R[0][0]*v[0]+R[0][1]*v[1]+R[0][2]*v[2],R[1][0]*v[0]+R[1][1]*v[1]+R[1][2]*v[2],R[2][0]*v[0]+R[2][1]*v[1]+R[2][2]*v[2]];}
   function world(fr,EX){
-    const B=BOD(), F=CASE().frames[fr], n=B.length, P=[], R=[], top=[], ax=[];
+    const B=BOD(), F=VAR().frames[fr], n=B.length, P=[], R=[], top=[], ax=[];
     for(let i=0;i<n;i++){const d=F[i]; P.push([B[i].x0+EX*d[0],B[i].y0+EX*d[1],B[i].z0+EX*d[2]]); R.push(rot(EX*d[3],EX*d[4],EX*d[5]));}
     for(let i=0;i<n;i++){ if(B[i].type!=="buoy") continue;
       const a=mv(R[i],[0,0,1]); ax[i]=a;
@@ -331,7 +340,7 @@ const DATA=__DATA__;
     vctx.globalAlpha=1;
 
     // primitives with depth (painter's sort)
-    const prims=[], ten=cc.tension[fr], L=ART().lines;
+    const prims=[], ten=MOORED()?cc.tension[fr]:null, L=MOORED()?ART().lines:[];
     // mooring lines: anchor -> (bridle ring ->) SWL attachment on the spar(s)
     L.forEach((ln,j)=>{
       const col=diverge((ten[j]-ART().T0)/TDEV);
@@ -361,7 +370,7 @@ const DATA=__DATA__;
         prims.push({t:"spar",d:(pW.d+pB.d)/2,pa:pW,pb:pB,alpha:0.62});
         prims.push({t:"stem",d:(pB.d+pP.d)/2,pa:pB,pb:pP});
         prims.push({t:"plate",d:pP.d,c:Pp,u:W.ax[i]});
-        prims.push({t:"float",d:pW.d-1e-4,p:pW,bi:i,norm:cc.frames[fr][i][2]/HMAX});
+        prims.push({t:"float",d:pW.d-1e-4,p:pW,bi:i,norm:VAR().frames[fr][i][2]/HMAX});
       } else if(b.type==="hub" && b.parent>=0){
         const pH=project(W.P[i][0],W.P[i][1],W.P[i][2],v), pP=project(W.P[b.parent][0],W.P[b.parent][1],W.P[b.parent][2],v);
         prims.push({t:"arm",d:(pH.d+pP.d)/2,pa:pH,pb:pP,lw:2.4});
@@ -457,17 +466,19 @@ const DATA=__DATA__;
   const CNAME=["surge (x)","sway (y)","heave (z)"];
   function lineName(ln){return (ln.anchor[0]<0?"upstream":"downstream")+(ln.anchor[1]>0?" +y":" −y");}
   function buildChannels(){
-    const cc=CASE(), F=cc.frames.length, a=ART();
+    const cc=CASE(), vv=VAR(), F=vv.frames.length, a=ART();
+    if(sigQ==="ten"&&!MOORED()){ sigQ="disp"; setSeg("#sigq",document.querySelector('#sigq button[data-q="disp"]')); refreshScopeLabels(); }
+    document.querySelector('#sigq button[data-q="ten"]').disabled=!MOORED();
     if(sigQ==="ten"){ const cols=[C('--down'),C('--accent'),C('--up'),C('--warm')];
       chan={series:a.lines.map((ln,j)=>({lab:lineName(ln),col:cols[j],lw:1.8,val:cc.tension.map(r=>r[j])}))};
-    } else { const sc=QMETA[sigQ].s, mk=key=>cc.sig[key][sigQ].map(q=>q[sigC]*sc);
+    } else { const sc=QMETA[sigQ].s, mk=key=>vv.sig[key][sigQ].map(q=>q[sigC]*sc);
       chan={series:[{lab:a.siglabels[0],col:C('--accent'),lw:1.6,val:mk("ref")},
                     {lab:a.siglabels[1],col:C('--down'),lw:2,val:mk("up")},
                     {lab:a.siglabels[2],col:C('--up'),lw:2,val:mk("dn")}]}; }
     let lo=Infinity, hi=-Infinity; for(const s of chan.series) for(const q of s.val){lo=Math.min(lo,q);hi=Math.max(hi,q);}
     if(sigQ==="ten"){ const pad=Math.max(0.08*(hi-lo),0.02*Math.abs(hi)+1e-6); chan.lo=lo-pad; chan.hi=hi+pad; }
     else { const m=Math.max(Math.abs(lo),Math.abs(hi),1e-6)*1.12; chan.lo=-m; chan.hi=m; }
-    let hm=1e-6; for(let f=0;f<F;f++) BOD().forEach((b,i)=>{if(b.type==="buoy")hm=Math.max(hm,Math.abs(cc.frames[f][i][2]));}); HMAX=hm;
+    let hm=1e-6; for(let f=0;f<F;f++) BOD().forEach((b,i)=>{if(b.type==="buoy")hm=Math.max(hm,Math.abs(vv.frames[f][i][2]));}); HMAX=hm;
     let td=1e-6; for(const r of cc.tension) for(const q of r) td=Math.max(td,Math.abs(q-a.T0)); TDEV=td;
     document.getElementById("scopelegend").innerHTML=chan.series.map(s=>`<span><i style="background:${s.col}"></i>${s.lab}</span>`).join("");
     document.querySelectorAll("#sigc button").forEach(b=>b.disabled=(sigQ==="ten"));
@@ -495,13 +506,14 @@ const DATA=__DATA__;
 
   // ---- HUD + readouts ----
   function updateHud(fr,tsim){
-    const cc=CASE(), a=ART(), f=cc.frames[fr], r=f[a.ref], mm=q=>(q*1000).toFixed(0), dg=q=>(q*180/Math.PI).toFixed(1);
-    const tmax=Math.max(...cc.tension[fr]);
+    const cc=CASE(), a=ART(), f=VAR().frames[fr], r=f[a.ref], mm=q=>(q*1000).toFixed(0), dg=q=>(q*180/Math.PI).toFixed(1);
+    const tmax=MOORED()?Math.max(...cc.tension[fr]):null;
     const refName=a.key==="buoy"?"Buoy":a.key==="cluster"?"Hub":"Deck";
     document.getElementById("hud").innerHTML=
       hud("Wave phase",(tsim/cc.T*360%360).toFixed(0)+"°")+hud(refName+" heave",mm(r[2])+" mm")+
       hud(refName+" surge",mm(r[0])+" mm")+hud(refName+" pitch",dg(r[4])+"°")+
-      (a.up!==a.dn?hud("Upwave spar tilt",dg(Math.hypot(f[a.up][3],f[a.up][4]))+"°"):"")+hud("Max line T",tmax.toFixed(1)+" N");
+      (a.up!==a.dn?hud("Upwave spar tilt",dg(Math.hypot(f[a.up][3],f[a.up][4]))+"°"):"")+
+      (tmax!==null?hud("Max line T",tmax.toFixed(1)+" N"):hud("Mooring","off"));
     document.getElementById("tcode").textContent=tsim.toFixed(2)+" / "+(cc.n_frames*cc.dt_frame_s).toFixed(2)+" s";
   }
   function hud(l,n){return `<div class="h"><span class="lab">${l}</span><span class="num">${n}</span></div>`;}
@@ -517,15 +529,16 @@ const DATA=__DATA__;
   function setCase(i){
     ci=i; frame=0; acc=0; buildChannels();
     casesEl.querySelectorAll(".chip").forEach((c,j)=>c.setAttribute("aria-pressed",j===i?"true":"false"));
-    const cc=CASE(), a=ART();
+    const cc=CASE(), a=ART(), vv=VAR(), on=MOORED();
     document.getElementById("ro-T").innerHTML=cc.T.toFixed(2)+'<small> s</small>';
     document.getElementById("ro-H").innerHTML=cc.H.toFixed(2)+'<small> m</small>';
-    document.getElementById("ro-rao").textContent=cc.rao_ref.toFixed(2);
-    document.getElementById("ro-tilt").innerHTML=cc.max_tilt_deg.toFixed(1)+'<small> °</small>';
-    document.getElementById("ro-ten").innerHTML=cc.min_tension_N.toFixed(1)+"–"+cc.max_tension_N.toFixed(1)+'<small> N</small>';
-    document.getElementById("ro-off").innerHTML="≤ "+cc.offset_bound_m.toFixed(2)+'<small> m</small>';
-    const warn=cc.max_tilt_deg>10?`<br><span class="warn">peak buoy tilt ${cc.max_tilt_deg.toFixed(0)}° — beyond the small-angle range, indicative</span>`:"";
-    document.getElementById("caselabel").innerHTML=`<b>${a.name.replace("4x4","4×4")}</b><br>T = ${cc.T.toFixed(1)} s, H = ${cc.H.toFixed(2)} m · lines k = ${a.k_line.toFixed(1)} N/m, T₀ = ${a.T0.toFixed(1)} N`+warn;
+    document.getElementById("ro-rao").textContent=vv.rao_ref.toFixed(2);
+    document.getElementById("ro-tilt").innerHTML=vv.max_tilt_deg.toFixed(1)+'<small> °</small>';
+    document.getElementById("ro-ten").innerHTML=on?cc.min_tension_N.toFixed(1)+"–"+cc.max_tension_N.toFixed(1)+'<small> N</small>':"—";
+    document.getElementById("ro-off").innerHTML=on?"≤ "+cc.offset_bound_m.toFixed(2)+'<small> m</small>':'<small>drifts away</small>';
+    const warn=vv.max_tilt_deg>10?`<br><span class="warn">peak buoy tilt ${vv.max_tilt_deg.toFixed(0)}° — beyond the small-angle range, indicative</span>`:"";
+    const moorTxt=on?`lines k = ${a.k_line.toFixed(1)} N/m, T₀ = ${a.T0.toFixed(1)} N`:"no mooring (free-floating)";
+    document.getElementById("caselabel").innerHTML=`<b>${a.name.replace("4x4","4×4")}</b><br>T = ${cc.T.toFixed(1)} s, H = ${cc.H.toFixed(2)} m · ${moorTxt}`+warn;
     document.getElementById("seek").max=cc.n_frames-1;
   }
 
@@ -541,6 +554,9 @@ const DATA=__DATA__;
   function exagLabel(){document.getElementById("exagval").textContent=exag===1?"1× true":exag+"×";}
   exagEl.oninput=()=>{exag=+exagEl.value; exagLabel();};
   document.getElementById("orbit").onclick=e=>{autorot=!autorot; e.currentTarget.setAttribute("aria-pressed",autorot?"true":"false");};
+  document.querySelectorAll("#moor button").forEach(b=>b.onclick=()=>{ moored=b.dataset.m==="1";
+    document.querySelectorAll("#moor button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
+    setCase(ci); });
   function setSeg(sel,btn){document.querySelectorAll(sel+" button").forEach(x=>x.setAttribute("aria-pressed","false")); btn.setAttribute("aria-pressed","true");}
   document.querySelectorAll("#sigq button").forEach(b=>b.onclick=()=>{sigQ=b.dataset.q; setSeg("#sigq",b); buildChannels(); refreshScopeLabels();});
   document.querySelectorAll("#sigc button").forEach(b=>b.onclick=()=>{ if(b.disabled)return; sigC=+b.dataset.c; setSeg("#sigc",b); buildChannels(); refreshScopeLabels();});

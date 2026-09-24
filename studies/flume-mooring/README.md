@@ -140,7 +140,8 @@ FloatSim motion-viewer renderer (`../platform-12buoy/fin_study/platform_motion.h
 - the true spar and heave-plate geometry;
 - a free single buoy and the hub-only cluster.
 
-Cases: H = 0.3 m at T = 2.2, 2.8 and 3.5 s for each article.
+Cases: H = 0.3 m at T = 2.2, 2.8 and 3.5 s for each article, each run **with and without the
+mooring** (the "Mooring on / off" control; off plays a separate run of the free-floating article).
 - The motion comes from `drift_td.simulate()`: drag-limited time domain, Morison drag relative
   to the wave velocity, and the design mooring.
 - Each settled response is fitted with harmonics 1–3, so it loops over one period.
@@ -154,8 +155,50 @@ Cases: H = 0.3 m at T = 2.2, 2.8 and 3.5 s for each article.
 python build_mooring_viewer.py run buoy          # seconds
 python build_mooring_viewer.py run cluster       # ~1 min per period
 python build_mooring_viewer.py run platform 2.8  # ~8 min per period; run periods in parallel
+python build_mooring_viewer.py run buoy --free   # the same cases without the mooring
 python build_mooring_viewer.py html              # -> mooring_motion.html
 ```
+
+## Why the buoys pitch so much near resonance
+
+The viewer shows up to ~40° of single-buoy pitch at 2.1–2.2 s and ~25° of pinned-buoy tilt at
+2.8 s, even at H = 0.3 m. `pitch_check.py` shows this is how the model behaves, not a missing
+term.
+
+![pitch check](pitch_check.png)
+
+- **Morison drag is in the model**, on the velocity relative to the wave: the spar (10
+  segments, Cd 1.2) and the heave plate (normal Cd 5, edge Cd 1.5).
+  - Without drag the resonant pitch runs away: 316° for the buoy at 2.1 s, 180° for the
+    cluster at 2.8 s. The drag is what stops it.
+- **But drag damps pitch weakly.**
+  - Pitch free decay: ζ = 0.5 % at 2°, 1.0 % at 5°, 1.7 % at 10°, 3.0 % at 20°, 4.2 % at 30°.
+    Radiation adds only 0.18 %. Heave, by contrast, has ζ ≈ 12–13 %, confirmed by the field
+    decay.
+  - The buoy rotates about a point not far above its CoG, so the spar near that point barely
+    moves.
+  - The heave plate, which dominates heave damping, moves edgewise in pitch and presents only
+    its 4 mm edge. Its face drag acts on a lever of just its 0.14 m radius.
+  - This matches the earlier pitch-damping study (92 % spar / 8 % plate).
+- **The pitch periods sit inside the wave band:** 2.12 s for the single buoy, 2.86–2.92 s for
+  the pinned tilt mode. At 2.1 s, a 0.3 m wave already has an 8° slope. With ζ of a few percent
+  the resonance amplifies that several-fold, and the quadratic drag only balances it at tens of
+  degrees.
+- **Sensitivity to the unmeasured Cd:** doubling every Cd cuts the resonant single-buoy pitch
+  from 43° to 33°; ×4 cuts it to 25°. Off resonance (T ≤ 1.8 s or ≥ 2.6 s) drag barely matters,
+  and pitch is 1.4–2× the wave slope.
+- **The mooring is not the cause.** Free-floating, the buoy pitches 41° (39.5° moored). The
+  mooring slightly raises the pinned tilt at 2.8 s (27° vs 23–25° free), because it shortens
+  the tilt period by 2.4 %, toward 2.8 s.
+- **What the model leaves out (all would add damping):**
+  - the real perforated, webbed plate and its frame (the model has a smooth 4 mm disc);
+  - gimbal/pin friction on the pinned articles;
+  - instrumentation hardware;
+  - large-angle effects beyond the ~10° small-angle range.
+  The absolute pitch damping has never been measured. The open tank test (a pitch / tilt free
+  decay on one buoy) is what would pin it down.
+- **For the test plan:** expect large pitch near 1.9–2.4 s (single buoy) and 2.6–3.0 s (pinned
+  articles). Cap H there, or check the gimbal range.
 
 ## How the flume size influences the mooring
 

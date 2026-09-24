@@ -15,7 +15,7 @@ per-line stiffness / pretension of the design (mooring_sizing.xspread). The mean
 drift offset is not part of the time-domain model; the readout quotes its upper bound.
 
 Usage:
-    python build_mooring_viewer.py run <buoy|cluster|platform> <T1,T2,...> [--H 0.3]
+    python build_mooring_viewer.py run <buoy|cluster|platform> <T1,T2,...> [--H 0.3] [--free]
     python build_mooring_viewer.py html
 Writes viewer_rows/*.json (per case) and mooring_motion.html.
 """
@@ -139,7 +139,8 @@ def point(Q, b, r):  # type: ignore[no-untyped-def]
     return Q[:, 6 * b:6 * b + 3] + np.cross(Q[:, 6 * b + 3:6 * b + 6], r)
 
 
-def run(article: str, periods: list[float], H: float) -> None:
+def run(article: str, periods: list[float], H: float, free: bool = False) -> None:
+    """free=True: the same case without the mooring (free-floating article)."""
     ROWS.mkdir(exist_ok=True)
     m = dtd.build(article)
     B = bodies(article)
@@ -153,11 +154,12 @@ def run(article: str, periods: list[float], H: float) -> None:
     up = min(buoys, key=lambda i: (B[i]["x0"], B[i]["y0"]))
     dn = max(buoys, key=lambda i: (B[i]["x0"], B[i]["y0"]))
     for T in periods:
-        jp = ROWS / (f"{article}_H{H:g}_T{T:g}".replace(".", "p") + ".json")
+        jp = ROWS / (f"{article}_H{H:g}_T{T:g}".replace(".", "p") + ("_free" if free else "")
+                     + ".json")
         if jp.exists():
             continue
         t0 = time.perf_counter()
-        r, wv = dtd.simulate(m, T, H, n_win=N_WIN)
+        r, wv = dtd.simulate(m, T, H, n_win=N_WIN, moored=not free)
         w, A = wv["omega"], wv["A"]
         msk = r.t >= r.t[-1] - N_WIN * T + 0.5 * dtd.DT
         coef = harmonic_fit(r.t[msk], r.xi[msk] - m["xi0"], w)
@@ -181,23 +183,25 @@ def run(article: str, periods: list[float], H: float) -> None:
             att0 = np.array(ln["ring"] if ln["ring"] else
                             [B[ln["legs"][0]]["x0"], B[ln["legs"][0]]["y0"], 0.0])
             e = att0 - np.array(ln["anchor"]); e /= np.linalg.norm(e)
-            tension[:, j] = des["T0"] + des["k_line"] * (d @ e)
+            tension[:, j] = des["T0"] + des["k_line"] * (d @ e) if not free else np.nan
         tilt = max(float(np.degrees(np.max(np.hypot(Q[:, 6 * b + 3], Q[:, 6 * b + 4]))))
                    for b in buoys)
         zref = point(Q, ref, np.zeros(3))[:, 2]
         F_bound = n_spar * sum(ms.drift_per_spar(H, T)[:2])
         row = {"T": T, "H": round(wv["H_used"], 4), "omega": round(float(w), 5),
                "amp_m": round(float(A), 5), "n_frames": NF, "dt_frame_s": round(T / NF, 6),
-               "frames": frames, "sig": sig, "tension": np.round(tension, 3).tolist(),
+               "frames": frames, "sig": sig,
+               "tension": None if free else np.round(tension, 3).tolist(),
                "rao_ref": round(float(0.5 * (zref.max() - zref.min()) / A), 4),
-               "max_tilt_deg": round(tilt, 2), "max_tension_N": round(float(tension.max()), 2),
-               "min_tension_N": round(float(tension.min()), 2),
+               "max_tilt_deg": round(tilt, 2), "moored": not free,
+               "max_tension_N": None if free else round(float(tension.max()), 2),
+               "min_tension_N": None if free else round(float(tension.min()), 2),
                "offset_bound_m": round(float(F_bound / des["Kx"]), 3),
                "wall_min": round((time.perf_counter() - t0) / 60, 2)}
         jp.write_text(json.dumps(row, separators=(",", ":")))
-        print(f"{article} T {T} H {row['H']}: heave RAO {row['rao_ref']:.3f}, tilt "
-              f"{row['max_tilt_deg']:.1f}°, T_line {row['min_tension_N']:.1f}-"
-              f"{row['max_tension_N']:.1f} N, {row['wall_min']:.1f} min", flush=True)
+        print(f"{article}{' (free)' if free else ''} T {T} H {row['H']}: heave RAO "
+              f"{row['rao_ref']:.3f}, tilt {row['max_tilt_deg']:.1f}°, {row['wall_min']:.1f} min",
+              flush=True)
     meta = {"key": article, "name": NAMES[article], "bodies": B, "lines": L, "ref": ref,
             "up": up, "dn": dn, "k_line": round(des["k_line"], 3), "T0": round(des["T0"], 3),
             "Kx": round(des["Kx"], 3)}
@@ -217,8 +221,16 @@ def html() -> None:
         if not mp.exists():
             continue
         meta = json.loads(mp.read_text())
-        cases = sorted((json.loads(f.read_text()) for f in ROWS.glob(f"{key}_H*_T*.json")),
-                       key=lambda c: (c["H"], c["T"]))
+        rows = {f.stem: json.loads(f.read_text()) for f in ROWS.glob(f"{key}_H*_T*.json")}
+        cases = []
+        for stem, c in rows.items():
+            if stem.endswith("_free"):
+                continue
+            fr = rows.get(stem + "_free")
+            if fr:
+                c["free"] = {k: fr[k] for k in ("frames", "sig", "rao_ref", "max_tilt_deg")}
+            cases.append(c)
+        cases.sort(key=lambda c: (c["H"], c["T"]))
         arts.append({**meta, "siglabels": SIGLAB[key], "cases": cases})
     data = {"geom": {"z_top": Z_TOP, "z_wl": Z_WL, "z_bot": Z_BOT, "z_plate": Z_PLATE,
                      "plate_r": ms.PLATE_R, "spar_d": ms.SPAR_D, "flume_w": ms.W_FLUME,
@@ -241,9 +253,10 @@ def main() -> None:
     ap.add_argument("article", nargs="?", choices=["buoy", "cluster", "platform"])
     ap.add_argument("periods", nargs="?", default="2.2,2.8,3.5")
     ap.add_argument("--H", type=float, default=0.3)
+    ap.add_argument("--free", action="store_true", help="run without the mooring")
     a = ap.parse_args()
     if a.step == "run":
-        run(a.article, [float(x) for x in a.periods.split(",")], a.H)
+        run(a.article, [float(x) for x in a.periods.split(",")], a.H, a.free)
     else:
         html()
 

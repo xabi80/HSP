@@ -125,23 +125,38 @@ def build(article: str) -> dict:
 
 
 # ------------------------------------------------------------------ one regular-wave case
-def simulate(m: dict, T: float, H: float, n_win: int = N_WIN):  # type: ignore[no-untyped-def]
-    """Drag-limited, moored time-domain run in a regular wave. Returns the integration result
-    and the wave (H_used, A, omega, k); the last n_win periods are the settled window."""
+def simulate(m: dict, T: float, H: float, n_win: int = N_WIN, *,  # type: ignore[no-untyped-def]
+             moored: bool = True, drag_mode: str = "relative"):
+    """Drag-limited time-domain run in a regular wave. Returns the integration result and the
+    wave (H_used, A, omega, k); the last n_win periods are the settled window.
+
+    moored     -- include the design mooring (False: free-floating article).
+    drag_mode  -- "relative": Morison drag on the velocity relative to the Airy wave velocity
+                  (the physical form, used for every result); "calm": drag on the body velocity
+                  only (the driver's still-water form); "none": no drag (radiation damping only).
+    """
     Hu = float(ms.drift_per_spar(H, T)[2]); A = 0.5 * Hu
     w = 2 * np.pi / T; k = w * w / G
     ramp = HalfCosineRamp(duration=RAMP_S)
 
     def fluid_u(p, t):
+        if drag_mode == "calm":
+            return np.zeros(3)
         e = np.exp(k * min(float(p[2]), 0.0)); th = w * t - k * float(p[0])
         return ramp.value(t) * A * w * e * np.array([np.cos(th), 0.0, -np.sin(th)])
 
+    if drag_mode not in ("relative", "calm", "none"):
+        raise ValueError(f"drag_mode must be relative / calm / none, got {drag_mode!r}")
     drag = make_morison_state_force(m["elements"], n_dof=m["n"], fluid_velocity_fn=fluid_u,
                                     rho=RHO)
     f_spar05 = max(sum(ms.drift_per_spar(0.5, Tw)[:2]) for Tw in ms.T_WAVE)
     kxyz, kyaw = mv.mooring_design({"name": m["name"], "nspar": len(m["spars"])}, mv.T_SURGE,
                                    f_spar05)
-    K = mv.mooring_k(m["n"], m["moor"], kxyz, kyaw); xi0 = m["xi0"]
+    K = mv.mooring_k(m["n"], m["moor"], kxyz, kyaw) if moored else np.zeros((m["n"], m["n"]))
+    xi0 = m["xi0"]
+    if drag_mode == "none":
+        def drag(t, xi, xd):  # same signature as the Morison state force
+            return np.zeros(m["n"])
     # drag yaw moment of each buoy about its own axis is physically nil (axisymmetric spar +
     # disc), but the discretised plate's tangential drag on the tiny buoy yaw inertia
     # (0.063 kg m^2) makes the explicitly lagged state force numerically unstable -> zero it
