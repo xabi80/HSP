@@ -37,12 +37,13 @@ connected.**
 - Heave period −0.43 %, pitch period −0.10 %, no trim.
 - Attaching at the spar top instead would give −1.3 % pitch period and a 0.8° mean trim.
 
-**1 cluster, 4 buoys (Phase 2).**
-- Two lines attach to the upstream buoy's spar and two to the downstream buoy's spar, both at
-  the SWL.
-- Per line: 8.2 N/m, 9.0 N pretension, 16.5 N maximum tension.
-- Mean offset: 0.76 m (0.28 m at H = 0.3 m).
-- Heave −0.45 %, hub pitch −0.9 %, buoy-tilt mode −2.4 %, no hub trim.
+**1 cluster, 4 buoys (Phase 2, 45° test orientation).**
+- The cluster sits square to the flume, with two buoys facing the waves. Each of the four lines
+  attaches to the nearest spar, at the SWL.
+- Per line: 8.3 N/m, 9.0 N pretension, 16.5 N maximum tension.
+- Mean offset: 0.71 m (0.27 m at H = 0.3 m).
+- Heave −0.45 %, hub pitch −0.45 %, buoy-tilt mode −2.4 %, no hub trim, and no buoy tilt: each
+  spar holds its own drift.
 
 **4×4 platform (Phase 3, 45° test orientation).**
 - The lines attach at the SWL to the upstream and downstream rows of four spars. Each line ends
@@ -53,7 +54,7 @@ connected.**
 
 The three designs give the same surge period and the same offset because the horizontal inertia
 and the drift both scale with the number of buoys. The design scales by buoy count: per-line
-stiffness and pretension are ×4 for the cluster and ×16.6 for the platform.
+stiffness and pretension are ×4.1 for the cluster and ×16.6 for the platform.
 
 ## Why the lines attach at the waterline
 
@@ -71,8 +72,9 @@ lever arm. For the articulated cluster and platform we compared three alternativ
 - **Below the waterline.**
   - The drift then tilts the attached buoys up to 11°.
 
-With the recommended attachment, the largest buoy tilt under drift is 3.0° at H = 0.5 m (1.1° at
-H = 0.3 m). This tilt is not a mooring effect. It comes from the drift acting 0.72 m below each
+With the recommended attachment, the platform's largest buoy tilt under drift is 3.0° at
+H = 0.5 m (1.1° at H = 0.3 m); the cluster's buoys do not tilt at all. This tilt is not a
+mooring effect. It comes from the drift acting 0.72 m below each
 pin, and appears with any station-keeping, in the flume or in the field.
 
 ## How the flume size influences the mooring
@@ -88,7 +90,7 @@ pin, and appears with any station-keeping, in the flume or in the field.
 - **Width (3.66 m)** sets the X-spread angle (20°), and so the sideways stiffness: about ⅓ of
   surge, a 26 s sway period.
   - A lateral disturbance of 10 % of the drift moves the platform 0.21 m. It has 0.80 m of
-    clearance to each wall (1.27 m for the cluster, 1.69 m for the buoy).
+    clearance to each wall (1.39 m for the cluster, 1.69 m for the buoy).
   - Longer anchor spans would soften the small heave coupling further. But they would roughly
     double the lateral excursion toward the walls. **The flume width is what fixes the anchors
     at about ±5 m.**
@@ -97,8 +99,18 @@ pin, and appears with any station-keeping, in the flume or in the field.
 
 ## Conservatism and verification
 
-- The drift is an **upper bound**: fixed bodies, no shielding between spars, the steepest waves
-  of the test matrix. Real offsets and line tensions will be lower.
+- The design drift is an **upper bound** for spars held fixed: no shielding between spars, and
+  the steepest waves of the test matrix.
+- We also computed the drift on the **moving** articles, using drag-limited time-domain
+  simulations with the flow velocity relative to each spar's waterline.
+  - Away from the buoys' own resonances, the articles move with the water and the drift is a
+    small fraction of the bound: ≤ 0.1 N (buoy), ≤ 0.9 N (cluster) and ≤ 11 N (platform),
+    against 5 / 21 / 84 N.
+  - Near the buoys' pitch and tilt resonances the mean drift reverses and points upstream, and
+    can approach the bound's magnitude. Those cases involve large buoy tilts, beyond the model's
+    small-angle range.
+  - The mooring is therefore sized on the bound in both directions, which the symmetric
+    X-spread provides.
 - Before testing, a static pull test will verify the mooring stiffness and pretension. Load
   cells on the lines will measure the actual mean drift during the tests, which is itself useful
   data.

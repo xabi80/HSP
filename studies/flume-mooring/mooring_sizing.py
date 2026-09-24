@@ -48,6 +48,7 @@ M_BUOY = 21.52                               # OSU buoy, unloaded floating mass 
 C33_BUOY = 194.5                             # N/m, single-buoy heave waterplane stiffness
 A11_BUOY = 18.87                             # kg, single-buoy low-freq surge added mass (BEM)
 A11_ARRAY_PER_BUOY = 310.6 / 16              # kg, per buoy inside the 16-buoy array (coupled BEM)
+A11_CLUSTER = 78.81                          # kg, 4-buoy cluster rigid surge (bem_cluster.py)
 C55_BUOY = (10.2 + 5.03) * (2 * np.pi / 2.11) ** 2   # N m/rad, from the validated 2.11 s pitch
 T_WAVE = np.linspace(1.4, 4.0, 53)           # regular-wave sweep band (s)
 T_WAVE_MAX = float(T_WAVE.max())
@@ -84,12 +85,12 @@ def centres(n_cluster: int, rot_deg: float) -> np.ndarray:
                       arm * np.sin(c) + 0.5 * S * np.sin(b)) for c in ang_c for b in ang_b])
 
 
-CL = centres(1, 0.0)              # Phase-2 cluster: 4 buoys, one points at each wall (worst)
+CL = centres(1, 45.0)             # Phase-2 cluster, 45 deg test orientation (2 buoys upwave)
 PF = centres(4, 45.0)             # Phase-3 platform, 45 deg test orientation
 ARTICLES = {
     "1 buoy": dict(n=1, M=M_BUOY, A=A11_BUOY, half_w=PLATE_R, C55=C55_BUOY,
                    z_top=0.718, top="spar top"),
-    "1 cluster (4 buoys)": dict(n=4, M=4 * M_BUOY + 2.0, A=4 * A11_ARRAY_PER_BUOY,
+    "1 cluster (4 buoys)": dict(n=4, M=4 * M_BUOY + 2.0, A=A11_CLUSTER,
                                 half_w=float(np.abs(CL[:, 1]).max()) + PLATE_R,
                                 C55=C33_BUOY * float((CL[:, 0] ** 2).sum()),
                                 z_top=0.717, top="hub"),

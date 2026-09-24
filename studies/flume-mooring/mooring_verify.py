@@ -12,8 +12,9 @@ to the system stiffness as B^T K B with B = [I, -skew(r)] for an attachment offs
 Attachment options are the physically realisable ones: on the single buoy, the spar at the
 waterline / top (+0.72 m) / CoG depth (-0.91 m); on the pinned articles, a single-point bridle at
 the pin plane (hub / deck frame, +0.72 m -- every pin in the model sits there) or the lines
-split by bridles over the bow and stern spars (cluster: bow + stern buoy; platform: the 4-buoy
-bow and stern rows, or only the 4 corner buoys) at the waterline or at CoG depth.
+split by bridles over the up- and downstream spars (cluster, 45 deg: its 4 spars, one line each;
+platform: the 4-buoy bow and stern rows, or only the 4 corner buoys) at the waterline or at CoG
+depth.
 
 For each article and attachment:
   * NATURAL PERIODS (surge, heave, pitch), moored vs unmoored: constrained generalized eigen-
@@ -136,6 +137,9 @@ def article_buoy():
                      "spar, CoG depth (-0.91 m)": [(0, (0, 0, -0.907))]})
 
 
+CLUSTER_ROT_DEG = 45.0   # cluster test orientation: square, two buoys facing the waves
+
+
 def _cluster_deck():
     spar = distributed_cylinder_drag(z_bottom=aw._SPAR_BOT_B, z_top=aw._WL_B, diameter=aw.SPAR_D,
                                      cd=aw.SPAR_CD, n_segments=10)
@@ -143,7 +147,7 @@ def _cluster_deck():
                         radius=aw.PLATE_R, thickness=aw.PLATE_T, Cd_n=aw.PLATE_CDN,
                         Cd_t=aw.PLATE_CDT)
     r = 0.5 * 1.25 / 1.5; bodies: list = []; joints: list = []
-    for k, a in enumerate(np.deg2rad([0.0, 90.0, 180.0, 270.0])):
+    for k, a in enumerate(np.deg2rad(np.array([0.0, 90.0, 180.0, 270.0]) + CLUSTER_ROT_DEG)):
         bx, by = r * np.cos(a), r * np.sin(a)
         bodies.append(Body(name=f"buoy{k + 1}", reference_point=[bx, by, aw.ZB], mass=aw.M_BUOY,
                            inertia=Inertia(Ixx=aw.IXX, Iyy=aw.IYY, Izz=aw.IZZ),
@@ -190,7 +194,7 @@ def _spar_attachments(ref, z_ref, spar_sets):
 
 def _outer_buoys(dk, which):
     """Bridle attachment buoys: 'rows' = every buoy of the bow and stern rows (extreme |x|;
-    the bow + stern buoy for the cluster), 'corners' = the 4 grid corners."""
+    all 4 buoys of the 45 deg cluster), 'corners' = the 4 grid corners."""
     pos = [(k, b.reference_point) for k, b in enumerate(dk.bodies) if b.hydro_body_label]
     xs = np.array([p[0] for _, p in pos]); ys = np.array([p[1] for _, p in pos])
     if which == "corners":
@@ -201,9 +205,9 @@ def _outer_buoys(dk, which):
 
 def article_cluster():
     dk = _cluster_deck()
-    return _articulated("1 cluster (4 buoys)", dk, HERE / "cluster_osu_open_psd.nc",
+    return _articulated("1 cluster (4 buoys)", dk, HERE / "cluster_osu_open_rot45_psd.nc",
                         len(dk.bodies) - 1, aw.ZH,
-                        [("bow+stern spars", _outer_buoys(dk, "rows"), ("waterline", "cog"))])
+                        [("4 spars", _outer_buoys(dk, "rows"), ("waterline", "cog"))])
 
 
 def article_platform():
@@ -295,7 +299,7 @@ def static(art, K, F):
 
 T_SWEEP = (10.0, 15.0, 20.0, 25.0, 30.0)
 SWEEP_ATT = {"1 buoy": ["spar, waterline"],
-             "1 cluster (4 buoys)": ["pin plane (+0.72 m)", "bow+stern spars, waterline"],
+             "1 cluster (4 buoys)": ["pin plane (+0.72 m)", "4 spars, waterline"],
              "4x4 platform (45°)": ["pin plane (+0.72 m)", "bow+stern rows (8 spars), waterline"]}
 
 
@@ -399,7 +403,7 @@ def _att_style(att):
     if "corner" in att:
         return "#8fb9bb", "waterline, 4 corner spars only"
     if "waterline" in att:
-        return "#0c8b96", "waterline (buoy spar / bow+stern spars)"
+        return "#0c8b96", "waterline (buoy spar / cluster spars / bow+stern rows)"
     return "#e08214", "CoG depth, −0.91 m (spar)"
 
 

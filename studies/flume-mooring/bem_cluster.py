@@ -1,8 +1,9 @@
-"""Coupled BEM for the Phase-2 test cluster: 4 OSU-plate buoys (square, 0/90/180/270 deg) on the
-Phase-3 intra-cluster radius (0.5 m x 1.25/1.5 = 0.417 m), centred at the origin, deep water, no
-walls. Same hull, mesh resolution and FloatSim capytaine schema as the platform's
-coupled_bem_osu.py (reuses its mesh / hydrostatics helpers), so the cluster, platform and single
-buoy share one hydrodynamic model. Writes cluster_osu_open.nc (+ _psd.nc).
+"""Coupled BEM for the Phase-2 test cluster: 4 OSU-plate buoys on the Phase-3 intra-cluster radius
+(0.5 m x 1.25/1.5 = 0.417 m) at 45/135/225/315 deg -- the 45 deg test orientation, a square with
+two buoys facing the waves (CLUSTER_ROT_DEG = 0 gives the 0/90/180/270 diamond) -- centred at the
+origin, deep water, no walls. Same hull, mesh resolution and FloatSim capytaine schema as the
+platform's coupled_bem_osu.py (reuses its mesh / hydrostatics helpers), so the cluster, platform
+and single buoy share one hydrodynamic model. Writes cluster_osu_open_rot45.nc (+ _psd.nc).
 
 Run: python bem_cluster.py
 """
@@ -28,7 +29,9 @@ import psd_project
 from capytaine.bem.airy_waves import froude_krylov_force
 
 R_INTRA = 0.5 * 1.25 / 1.5
-ANG = np.deg2rad([0.0, 90.0, 180.0, 270.0])
+CLUSTER_ROT_DEG = 45.0
+SUF = "" if CLUSTER_ROT_DEG == 0 else f"_rot{int(CLUSTER_ROT_DEG)}"
+ANG = np.deg2rad(np.array([0.0, 90.0, 180.0, 270.0]) + CLUSTER_ROT_DEG)
 CEN = [(R_INTRA * np.cos(a), R_INTRA * np.sin(a)) for a in ANG]
 NB = len(CEN); NDOF = 6 * NB
 
@@ -77,7 +80,7 @@ def main() -> None:
                     complex=("complex", ["re", "im"])),
         attrs=dict(rho=cb.RHO, g=cb.G, water_depth="inf", body_name="osu_cluster4_open"),
     )
-    out = HERE / "cluster_osu_open.nc"
+    out = HERE / f"cluster_osu_open{SUF}.nc"
     ds.to_netcdf(out)
     print(f"wrote {out.name} ({(time.perf_counter() - t0) / 60:.1f} min)", flush=True)
     psd_project.project(str(out))

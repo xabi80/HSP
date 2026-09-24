@@ -5,7 +5,7 @@ Design (from mooring_sizing.py + the coupled check in mooring_verify.py): an X-s
 horizontal lines at the still-water line (SWL) to wall anchors 5 m up- and downstream, each line
 a soft linear spring in series with low-stretch rope; the lines attach at the SWL of the spar(s):
   * 1 buoy     -- one collar on the spar at the SWL (all 4 lines);
-  * 1 cluster  -- the upstream and downstream buoy spars (2 lines each);
+  * 1 cluster (45 deg) -- its 4 spars, one line each (two upstream, two downstream);
   * 4x4 platform (45 deg) -- the upstream and downstream rows of 4 spars (each line ends in a
     2-leg bridle to 2 spars).
 Per-line stiffness, pretension, pre-stretch and the stroke the spring must provide are tabulated
@@ -34,7 +34,7 @@ WL, PIN, DECK = 0.0, 0.717, 0.90                 # z of SWL, pins, deck frame (m
 SPAR_BOT, PLATE_Z, PLATE_T = -0.967, -1.383, 0.03
 S = 1.25 / 1.5
 CLUSTER = np.array([(0.5 * S * np.cos(a), 0.5 * S * np.sin(a))
-                    for a in np.deg2rad([180.0, 90.0, 0.0, 270.0])])
+                    for a in np.deg2rad([45.0, 135.0, 225.0, 315.0])])
 PLATFORM = np.array([(x, y) for x in (-0.884, -0.295, 0.295, 0.884)
                      for y in (-0.884, -0.295, 0.295, 0.884)])
 TEAL, RUST, INK, SEA = "#0c8b96", "#b2432c", "#23313a", "#dcecef"
@@ -105,15 +105,15 @@ def plan_views(axs):
     _buoys(axs[0], [(0.0, 0.0)])
     for a in anchors:
         _line(axs[0], (0.0, 0.0), a)
-    # cluster: hub + arms, lines to the upstream (-x) and downstream (+x) spars
-    _flume(axs[1], "1 cluster — upstream + downstream spars at the SWL")
+    # cluster (45 deg): hub + arms, each line to the nearest spar
+    _flume(axs[1], "1 cluster (45°) — its 4 spars at the SWL, one line each")
     for x, y in CLUSTER:
         axs[1].plot([0, x], [0, y], color="0.55", lw=1.2, zorder=1)
     axs[1].add_patch(Circle((0, 0), 0.05, color="0.45", zorder=3))
     _buoys(axs[1], CLUSTER)
-    up, dn = tuple(CLUSTER[0]), tuple(CLUSTER[2])
     for a in anchors:
-        _line(axs[1], up if a[0] < 0 else dn, a)
+        _line(axs[1], (0.5 * S * np.cos(np.pi / 4) * np.sign(a[0]),
+                       0.5 * S * np.sin(np.pi / 4) * np.sign(a[1])), a)
     # platform: deck frame + rows; each line -> ring -> 2-leg bridle to 2 spars of its half-row
     _flume(axs[2], "4×4 platform (45°) — upstream + downstream rows of 4 spars at the SWL")
     hub = [(-0.589, -0.589), (-0.589, 0.589), (0.589, 0.589), (0.589, -0.589), (-0.589, -0.589)]
