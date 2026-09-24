@@ -62,6 +62,19 @@ from floatsim.waves.kinematics import airy_velocity  # noqa: E402
 from floatsim.waves.regular import RegularWave  # noqa: E402
 
 OUT = _HERE / "pr8_reldrag_out"
+
+
+def _airy_sign_fixed() -> bool:
+    """True once floatsim's airy_velocity satisfies w = d(eta)/dt at the MWL (STEP 5 PR1
+    commit a). Before it, "rel" negates u_z; after it, "naive" negates u_z to reproduce the
+    as-shipped field. Either way the variants mean the same physics as in the record."""
+    w = RegularWave(amplitude=1.0, omega=1.0, heading_deg=0.0)
+    t, h = 0.3, 1.0e-6
+    deta = (float(w.elevation(t + h)) - float(w.elevation(t - h))) / (2 * h)
+    return bool(np.sign(airy_velocity(w, np.zeros(3), t)[2]) == np.sign(deta))
+
+
+_SIGN_FIXED = _airy_sign_fixed()
 RAMP_S, CAP_S = 20.0, 450.0
 RECORDED = {  # platform-heave RAO as committed (fan: pr8_fan_out/rao_summary.csv;
     # T = 6.0: pr8_pilot_out/period_sweep_ext_H0p30.csv, 958c19f)
@@ -111,9 +124,14 @@ def drag_state_force(deck, n_dof: int, rho: float, variant: str, wave=None):  # 
                                               rho=rho) for e in els.values()])
     if variant == "naive":
         flat = [e for es in els.values() for e in es]
-        return make_morison_state_force(
-            flat, n_dof=n_dof, rho=rho,
-            fluid_velocity_fn=lambda p, t: ramp.value(t) * airy_velocity(wave, p, t))
+
+        def shipped(p, t):  # type: ignore[no-untyped-def]
+            u = airy_velocity(wave, p, t)
+            if _SIGN_FIXED:          # reproduce the pre-fix (as-shipped) field
+                u = u.copy()
+                u[2] = -u[2]
+            return ramp.value(t) * u
+        return make_morison_state_force(flat, n_dof=n_dof, rho=rho, fluid_velocity_fn=shipped)
     assert variant == "rel"
     forces = []
     for k, es in els.items():
@@ -121,7 +139,8 @@ def drag_state_force(deck, n_dof: int, rho: float, variant: str, wave=None):  # 
 
         def fluid(p, t, ref=ref):  # type: ignore[no-untyped-def]
             u = airy_velocity(wave, p + ref, t)          # (i) absolute sampling point
-            u[2] = -u[2]                                  # (ii) u_z = d(eta)/dt at the MWL
+            if not _SIGN_FIXED:
+                u[2] = -u[2]                              # (ii) u_z = d(eta)/dt at the MWL
             return ramp.value(t) * u
         forces.append(make_morison_state_force(es, n_dof=n_dof, fluid_velocity_fn=fluid, rho=rho))
     return _sum(forces)

@@ -34,19 +34,31 @@ derivative gives the surface vertical velocity::
 
 For a deep-water Airy wave the velocity field is::
 
-    u_x = A·ω · e^{kz} · cos(ψ) · cos β
-    u_y = A·ω · e^{kz} · cos(ψ) · sin β
-    u_z = A·ω · e^{kz} · sin(ψ)
+    u_x =  A·ω · e^{kz} · cos(ψ) · cos β
+    u_y =  A·ω · e^{kz} · cos(ψ) · sin β
+    u_z = −A·ω · e^{kz} · sin(ψ)          (= dη/dt at z = 0)
 
 and the acceleration field is the partial time derivative::
 
     a_x = −A·ω² · e^{kz} · sin(ψ) · cos β
     a_y = −A·ω² · e^{kz} · sin(ψ) · sin β
-    a_z =  A·ω² · e^{kz} · cos(ψ)
+    a_z = −A·ω² · e^{kz} · cos(ψ)          (= d²η/dt² at z = 0)
 
 The horizontal velocity is in phase with the elevation; the vertical
-velocity leads it by ``π/2``; both decay exponentially with depth at
-rate ``k``.
+velocity leads it by ``π/2`` (it is ``dη/dt`` at the surface); both decay
+exponentially with depth at rate ``k``. The field is divergence-free and
+irrotational below the MWL (it is ``∇`` of the potential
+``Φ = (A·g/ω)·e^{kz}·sin ψ``).
+
+Sign fix (STEP 5 PR1, 2026-09-24). Up to this fix ``u_z`` and ``a_z`` had
+the opposite sign (``u_z = +A·ω·e^{kz}·sin ψ``). That field is
+``−dη/dt`` at the MWL and violates continuity and irrotationality by
+exactly 2×. The M5 PR4 unit test asserted the wrong value, so it encoded the
+defect. The functions had no production consumer (the driver's Morison drag
+ran against calm water), so no committed result used them. The sign is now
+pinned by physical-law tests (``tests/unit/test_airy_kinematics.py``:
+continuity, irrotationality, ``w = dη/dt`` and ``a_z = d²η/dt²`` at z = 0).
+Tracker ``DRAG-WAVE-KINEMATICS-UNWIRED``.
 """
 
 from __future__ import annotations
@@ -105,7 +117,7 @@ def airy_velocity(wave: RegularWave, point: NDArray[np.floating], t: float) -> N
     psi, decay = _phase_and_decay(wave, p, t)
     beta = np.radians(wave.heading_deg)
     horiz = wave.amplitude * wave.omega * decay * np.cos(psi)
-    vert = wave.amplitude * wave.omega * decay * np.sin(psi)
+    vert = -wave.amplitude * wave.omega * decay * np.sin(psi)  # = d(eta)/dt at z = 0
     return np.array([horiz * np.cos(beta), horiz * np.sin(beta), vert], dtype=np.float64)
 
 
@@ -114,10 +126,9 @@ def airy_acceleration(
 ) -> NDArray[np.float64]:
     """Inertial-frame fluid acceleration at ``point`` and time ``t`` (m/s²).
 
-    Same conventions as :func:`airy_velocity`. The horizontal component
-    lags the velocity by ``π/2`` (sin instead of cos); the vertical
-    component leads (cos instead of sin), per the analytical
-    differentiation in the module docstring.
+    Same conventions as :func:`airy_velocity`. It is the partial time
+    derivative of the velocity field, so each component leads the matching
+    velocity component by ``π/2``; at the MWL ``a_z = d²η/dt²``.
     """
     p = np.asarray(point, dtype=np.float64)
     if p.shape != (3,):
@@ -125,5 +136,5 @@ def airy_acceleration(
     psi, decay = _phase_and_decay(wave, p, t)
     beta = np.radians(wave.heading_deg)
     horiz = -wave.amplitude * (wave.omega**2) * decay * np.sin(psi)
-    vert = wave.amplitude * (wave.omega**2) * decay * np.cos(psi)
+    vert = -wave.amplitude * (wave.omega**2) * decay * np.cos(psi)  # = d2(eta)/dt2 at z = 0
     return np.array([horiz * np.cos(beta), horiz * np.sin(beta), vert], dtype=np.float64)
