@@ -26,10 +26,10 @@ from pptx.util import Inches, Pt
 
 HERE = Path(__file__).resolve().parent
 
-# Results for the TEST orientation: 45 deg (corner-on), all from the authoritative coupled
+# Results for the TEST orientation: 45 deg (flat-on), all from the authoritative coupled
 # 21-body BEM. The single-array frequency-domain method under-converges in image count at long
 # periods, so the sidewall effect is read from the coupled solve (small and flat across the band).
-# ORI selects the orientation-tagged figures/data ("" = 0 deg flat-on, "_rot45" = 45 deg).
+# ORI selects the orientation-tagged figures/data ("" = 0 deg corner-on, "_rot45" = 45 deg).
 ORI = "_rot45"
 R = {
     "T_heave": -0.55, "zeta": "6.4% → 6.4%", "buoy_tilt": "0.0005 → 0.0007 rad",
@@ -172,7 +172,7 @@ r.font.name, r.font.size, r.font.bold, r.font.color.rgb = FONT, Pt(17), True, WH
 p = tb.text_frame.add_paragraph()
 r = p.add_run()
 r.text = ("The dominant flume artifact is the finite 2.7 m depth, not the walls. "
-          "16-buoy platform (4 clusters × 4), 2.5 m to buoy centres, tested corner-on (45°) "
+          "16-buoy platform (4 clusters × 4), 2.5 m to buoy centres, tested flat-on (45°) "
           "with ~0.80 m side clearance.")
 r.font.name, r.font.size, r.font.color.rgb = FONT, Pt(13), LIGHT
 
@@ -206,7 +206,7 @@ bullets(s, [
            "articulated (gimbal buoy→hub, hub→deck).")]),
     (0, [T("Hull: ", b=True), T("Phase-1 decay-correlated spar + heave plate (T ≈ 2.6 s, "
            "ζ ≈ 13 %).")]),
-    (0, [T("Size: ", b=True), T("2.5 m to buoy centres, corner-on (45°); span across the "
+    (0, [T("Size: ", b=True), T("2.5 m to buoy centres, flat-on (45°); span across the "
            "flume 2.06 m "),
          T(f"({R['span_pct']} % of width)", b=True),
          T(f"; clearance ~0.{R['clearance_cm']} m/side.")]),
@@ -216,7 +216,7 @@ bullets(s, [
            "depth-robust). The finite-depth effect is a separate, Airy-corroborated facility "
            "effect assessed at 2.7 m.", size=14)]),
     (0, [T("Reviewer's 0.6 m: at the 45° test orientation the as-built clearance is ~0.80 m; the "
-           "widest (flat-on) orientation, 0.44 m, gives the same result — see the orientation "
+           "widest (corner-on) orientation, 0.44 m, gives the same result — see the orientation "
            "slide.", c=GREY, size=13)]),
 ], w=6.5, t=1.75, gap=8)
 
@@ -323,7 +323,7 @@ caption(s, [T("Articulated 21-body accelerations at the deck centre and four clu
 s = slide("Orientation robustness — 0° vs 45°", "orientation")
 s.shapes.add_picture(str(HERE / "orientation_compare.png"), Inches(1.55), Inches(1.75),
                      width=Inches(10.2))
-caption(s, [T("The platform is tested corner-on (45°, 0.80 m/side). Turning it flat-on — 0°, "
+caption(s, [T("The platform is tested flat-on (45°, 0.80 m/side). Turning it corner-on — 0°, "
              "the widest orientation at 0.44 m/side (a 90° turn is a symmetry no-op) — "),
             T("gives the same answer", b=True, c=TEAL_D),
             T(": free-decay −0.55 % both, excitation wall effect 3.6 vs 3.5 %. The effect is set "

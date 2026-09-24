@@ -1,8 +1,8 @@
-"""0deg (square, flat-on) vs 45deg (diagonal, corner-on) orientation comparison for the
+"""0deg (diamond, corner-on) vs 45deg (square, flat-on) orientation comparison for the
 16-buoy platform in the flume. Rotating the platform 90deg is a 4-fold-symmetric no-op; 45deg
-is the genuinely different orientation, and it turns the platform corner-on to the side walls,
-nearly doubling the clearance (0.44 -> 0.80 m/side). This quantifies whether that changes the
-(small) wall effect -- it does not, because the effect is set by bulk blockage, not clearance.
+is the genuinely different orientation, and it turns the platform flat-on (sides parallel to the
+walls), nearly doubling the clearance (0.44 -> 0.80 m/side). This quantifies whether that changes
+the (small) wall effect -- it does not, because the effect is set by bulk blockage, not clearance.
 
 The sidewall effect is read from the AUTHORITATIVE coupled BEM (open vs walled excitation on the
 platform-heave mode); the single-array frequency-domain method under-converges at long periods.
@@ -67,21 +67,21 @@ def main() -> None:
     band = (T0 >= 2.0) & (T0 <= 4.0)
     b45 = (T45 >= 2.0) & (T45 <= 4.0)
     print(" orientation |  clearance | free-decay dT | max |wall effect on exc| (2-4 s)")
-    print(f"  0deg  (flat-on)  | {clearance(0) * 100:5.0f} cm |   {decay_shift(''):+6.2f}%    |"
+    print(f"  0deg (corner-on) | {clearance(0) * 100:5.0f} cm |   {decay_shift(''):+6.2f}%    |"
           f"   {np.max(np.abs(p0[band])):5.1f}%")
     dt45 = decay_shift("_rot45")
-    print(f"  45deg (corner)   | {clearance(45) * 100:5.0f} cm |   {dt45:+6.2f}%    |"
+    print(f"  45deg (flat-on)  | {clearance(45) * 100:5.0f} cm |   {dt45:+6.2f}%    |"
           f"   {np.max(np.abs(p45[b45])):5.1f}%")
 
     fig, ax = plt.subplots(figsize=(9.0, 4.5))
-    ax.plot(T0, p0, "o-", color=RED, lw=2, label="0° (flat-on, 0.44 m/side clearance)")
-    ax.plot(T45, p45, "s--", color=TEAL, lw=2, label="45° (corner-on, 0.80 m/side clearance)")
+    ax.plot(T0, p0, "o-", color=RED, lw=2, label="0° (corner-on, 0.44 m/side clearance)")
+    ax.plot(T45, p45, "s--", color=TEAL, lw=2, label="45° (flat-on, 0.80 m/side clearance)")
     ax.axhspan(-5, 5, color="0.9", zorder=0)
     ax.axhline(0, color="0.4", lw=0.8)
     ax.set_xlim(1.8, 4.1)
     ax.set_xlabel("wave period T (s)")
     ax.set_ylabel("sidewall effect on heave excitation (%)")
-    ax.set_title("Orientation effect — 0° (flat-on) vs 45° (corner-on), coupled BEM\n"
+    ax.set_title("Orientation effect — 0° (corner-on) vs 45° (flat-on), coupled BEM\n"
                  "doubling the clearance (0.44→0.80 m) leaves the small wall effect unchanged — "
                  "it is set by bulk blockage, not clearance",
                  fontsize=10.5, fontweight="bold")

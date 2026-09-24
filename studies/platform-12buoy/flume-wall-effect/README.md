@@ -16,8 +16,8 @@ effect** — on the Phase-3 platform when tested in the OSU Hinsdale **Large Wav
 circle** (Phase-3 spec; `../platform-16buoy/platform16_common.py` layout scaled ×0.833). Each
 buoy is the **Phase-1 decay-correlated hull** (`../../osu-test-buoy/osu_buoy_common.py`: 0.159 m
 spar, equal-area heave-plate disc r = 0.1437 m) — the geometry that reproduced the Phase-1
-free-decay (T ≈ 2.6 s, ζ ≈ 13 %). **Tested corner-on (45°)**: span across the flume 2.06 m
-(56 % of the width) → **~80 cm/side** clearance. The flat-on 0° orientation — the widest, at
+free-decay (T ≈ 2.6 s, ζ ≈ 13 %). **Tested flat-on (45°)**: span across the flume 2.06 m
+(56 % of the width) → **~80 cm/side** clearance. The corner-on 0° orientation — the widest, at
 44 cm/side — is run as the comparison case and gives the same result (see below).
 
 ## Result at a glance (walls-in vs walls-out, same depth)
@@ -69,14 +69,14 @@ independent corroboration that the depth effect is real and method-independent.
 
 ## Orientation robustness (0° vs 45°)
 
-The test orientation is **45° (corner-on)**, run with `PLAT_ROT_DEG=45` (outputs carry a `_rot45`
+The test orientation is **45° (flat-on)**, run with `PLAT_ROT_DEG=45` (outputs carry a `_rot45`
 suffix). A 90° rotation is a symmetry no-op (4-fold layout), so the study also runs the **0°
-flat-on** case — the widest orientation, with roughly half the clearance — as the comparison:
+corner-on** case — the widest orientation, with roughly half the clearance — as the comparison:
 
 | Orientation | Clearance | Free-decay ΔT | Excitation wall effect (coupled BEM) |
 |---|---|---|---|
-| 0° (flat-on) | 0.44 m/side | −0.55 % | ≤ 3.5 % |
-| 45° (corner-on) | 0.80 m/side | −0.55 % | ≤ 3.6 % |
+| 0° (corner-on) | 0.44 m/side | −0.55 % | ≤ 3.5 % |
+| 45° (flat-on) | 0.80 m/side | −0.55 % | ≤ 3.6 % |
 
 The wall effect is **unchanged** despite doubling the clearance (`orientation_compare.png`,
 `compare_orientations.py`) — it is set by the bulk channel blockage, not the nearest-buoy

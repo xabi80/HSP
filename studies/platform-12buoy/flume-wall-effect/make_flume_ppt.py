@@ -15,7 +15,7 @@ from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Inches, Pt
 
 HERE = Path(__file__).resolve().parent
-ORI = "_rot45"   # test orientation: 45 deg corner-on ("" = 0 deg flat-on)
+ORI = "_rot45"   # test orientation: 45 deg flat-on ("" = 0 deg corner-on)
 TEAL, TEAL_D = RGBColor(0x0C, 0x8B, 0x96), RGBColor(0x0A, 0x55, 0x60)
 INK, GREY = RGBColor(0x25, 0x32, 0x3A), RGBColor(0x54, 0x63, 0x6D)
 LIGHT = RGBColor(0xEE, 0xF6, 0xF7)
@@ -129,7 +129,7 @@ s.shapes.add_picture(str(HERE / f"flume_blockage{ORI}.png"), Inches(7.15), Inche
 bullets(s, [
     (0, [T("We want to test a floating platform — 16 buoys on a 2.5 m frame — in OSU's "
            "wave flume (a long tank, "), T("3.66 m wide", b=True), T(").")]),
-    (0, [T("It sits corner-on in the middle of the tank, about 0.8 m from each wall. A reviewer "
+    (0, [T("It sits square to the tank in the middle, about 0.8 m from each wall. A reviewer "
            "worried:")]),
     (1, [T("“the platform makes waves, they bounce off the side walls, come back, and "
            "corrupt the measured data.”", i=True, c=TEAL_D)]),

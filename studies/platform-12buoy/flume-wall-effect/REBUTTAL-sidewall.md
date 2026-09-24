@@ -25,10 +25,11 @@ facility property, not a sidewall artifact.**
 Platform = **16 spar-plate buoys** (4 clusters × 4, square layout) at the Phase-3 layout (buoy
 centres on a 2.5 m circle), each the Phase-1 decay-correlated hull (0.159 m spar, equal-area
 heave plate r = 0.144 m; the geometry that reproduced the Phase-1 free-decay at T ≈ 2.6 s,
-ζ ≈ 13 %). The platform is tested **corner-on (45°)**: with the plates, its span across the
-3.66 m flume is 2.06 m (56 % of the width), giving **~0.80 m side clearance** — more than the
-reviewer's 0.6 m. We also analysed the flat-on (0°) orientation, the widest at ~0.44 m/side, and
-it gives the same result (see "Orientation independence" below).
+ζ ≈ 13 %). The platform is tested **flat-on (45°)**, the 4×4 grid square to the flume: with the
+plates, its span across the 3.66 m flume is 2.06 m (56 % of the width), giving **~0.80 m side
+clearance** — more than the reviewer's 0.6 m. We also analysed the corner-on (0°) orientation (the
+grid turned diagonally), the widest at ~0.44 m/side, and it gives the same result (see
+"Orientation independence" below).
 
 Side walls (W = 3.66 m) are imposed by the **method of images**. Every comparison is
 **walls-in vs walls-out at the same depth**, which isolates the sidewall effect the reviewer
@@ -109,13 +110,13 @@ effect is real, method-independent, and, like any finite-depth correction, routi
 
 The reviewer's argument rests on the 0.6 m clearance. We tested whether clearance is actually
 what drives the effect by re-running the entire study with the platform **rotated 45°** (a 90°
-rotation is a symmetry no-op for the 4-fold-symmetric layout). At 45° the platform is corner-on
+rotation is a symmetry no-op for the 4-fold-symmetric layout). At 45° the platform is flat-on
 to the walls and the side clearance **nearly doubles, 0.44 → 0.80 m**:
 
 | Orientation | Clearance | Free-decay ΔT | Excitation wall effect (coupled BEM) |
 |---|---|---|---|
-| 0° (flat-on) | 0.44 m/side | −0.55 % | ≤ 3.5 % |
-| 45° (corner-on) | 0.80 m/side | −0.55 % | ≤ 3.6 % |
+| 0° (corner-on) | 0.44 m/side | −0.55 % | ≤ 3.5 % |
+| 45° (flat-on) | 0.80 m/side | −0.55 % | ≤ 3.6 % |
 
 The wall effect is **unchanged** despite doubling the clearance. It is set by the **bulk channel
 blockage** — the total array volume relative to the flume cross-section, which is
@@ -130,7 +131,7 @@ robust to how the platform is oriented in the flume.
 - **Long-period tests (T > 3 s):** apply the standard finite-depth correction — the response
   there is depth-dominated (the sidewall effect stays ≤ 4 % at every period).
 - **Clearance number:** at the 45° test orientation the as-built clearance is ~0.80 m (more than
-  the reviewer's 0.6 m); the widest, flat-on orientation (~0.44 m) was analysed too and gives the
+  the reviewer's 0.6 m); the widest, corner-on orientation (~0.44 m) was analysed too and gives the
   same result.
 - **Method fidelity:** the sidewall effect is taken from the coupled 21-body BEM; the simpler
   single-array frequency-domain model under-converges in image count at long periods, so its
