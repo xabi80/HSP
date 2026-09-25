@@ -22,11 +22,11 @@ Mooring lines (design point of mooring_sizing: T_surge = 15 s, wall anchors +-5 
     platform: each line's 2-leg bridle is two FloatSim lines from the same wall anchor to the two
     spars of the half-row (k/2, T0/2 each) -- FloatSim catenaries are body-to-earth only.
 
-FloatSim note (anchor frame): ``make_catenary_state_force`` places the fairlead at the body's
-displacement + lever arm from its reference point, i.e. the geometry is only absolute when the
-body's reference point is at the origin (true for the OC4 validation decks). The flume bodies'
-reference points are not at the origin, so each anchor is given relative to the moored body's
-reference point; the line only sees anchor - fairlead, so its force is exact.
+FloatSim note (anchor frame): the deck anchors are the TRUE inertial wall anchors. Since
+flume-mooring Phase C2, ``build_system`` passes each body's reference point to
+``make_catenary_state_force``, which places the fairlead at reference point + displacement + arm
+(``build_single`` does the same). Before C2 the fairlead sat at displacement + arm, and this
+module gave each anchor relative to the moored body's reference point instead (same force).
 
 FloatSim note (moored articulated equilibrium): ``solve_static_equilibrium`` solves
 C xi = F_state body by body and ignores the joints, so it cannot balance a line pull that one
@@ -192,7 +192,7 @@ def moored(dk: Deck, article: str, w_line: float = W_LINE,  # type: ignore[no-un
         L0 = chord - ln["T0"] / ln["k"]
         conns.append(Catenary(type="catenary", body_a=ln["name"], body_b="earth",
                               attach_a_body=ln["fairlead"].tolist(),
-                              attach_b_body=(ln["anchor"] - ref).tolist(),
+                              attach_b_body=ln["anchor"].tolist(),
                               line=CatenaryLine(length=L0, weight_per_length=w_line,
                                                 EA=ln["k"] * L0)))
         ln.update(chord=chord, L0=L0, w=w_line)
@@ -226,7 +226,9 @@ def build_single(dk: Deck, hdb, solve_equilibrium: bool):  # type: ignore[no-unt
         kernel_decay_floor_override=OVR)])
     n = lhs.n_dof
     cats = [fsd._materialise_catenary(c, name_to_index) for c in dk.connections]
-    cat_force = fsd.make_catenary_state_force(cats, n_dof=n) if cats else None
+    refs = np.array([b.reference_point for b in dk.bodies], dtype=np.float64)
+    cat_force = (fsd.make_catenary_state_force(cats, n_dof=n, body_reference_points=refs)
+                 if cats else None)
     drag_force = fsd._build_drag_state_force(dk, n, rho=dk.environment.water_density)
     state = fsd._compose_state_force(None, cat_force, drag_force, n)
     xi0 = fsd.pack_state([np.asarray(b.initial_conditions.position, float) for b in dk.bodies])

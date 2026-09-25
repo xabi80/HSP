@@ -323,7 +323,9 @@ def _materialise_catenary(conn: Catenary, name_to_index: dict[str, int]) -> Cate
 
     Body-to-earth only at PR3-locked scope. The deck-side anchor
     (whichever is 'earth') has its attach_*_body field interpreted as
-    the inertial-frame anchor position.
+    the inertial-frame anchor position -- the TRUE world coordinate,
+    whatever the body's reference_point (build_system passes the
+    reference points to the state force; flume-mooring Phase C2).
     """
     a = _resolve_endpoint(conn.body_a, name_to_index, "Catenary.body_a")
     b = _resolve_endpoint(conn.body_b, name_to_index, "Catenary.body_b")
@@ -1045,8 +1047,17 @@ def build_system(
             raise TypeError(f"unknown Connection type: {type(conn).__name__}")
 
     connector_force = make_connector_state_force(connectors, n_dof=n_dof) if connectors else None
+    # Flume-mooring Phase C2: xi is the displacement from each body's
+    # reference point and the deck anchor is inertial, so the fairlead is
+    # placed at reference_point + xi + arm (exact no-op for origin references).
     catenary_force = (
-        make_catenary_state_force(catenary_attachments, n_dof=n_dof)
+        make_catenary_state_force(
+            catenary_attachments,
+            n_dof=n_dof,
+            body_reference_points=np.array(
+                [b.reference_point for b in deck.bodies], dtype=np.float64
+            ),
+        )
         if catenary_attachments
         else None
     )

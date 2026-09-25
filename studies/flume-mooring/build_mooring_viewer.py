@@ -96,13 +96,15 @@ def run(article: str, periods: list[float], H: float, free: bool = False) -> Non
     dn = max(buoys, key=lambda i: (B[i]["x0"], B[i]["y0"]))
     # one FloatSim catenary force per line, to read its tension at each frame
     line_forces = []
+    refs = np.array([b.reference_point for b in dk_m.bodies], dtype=float)
     for ln, c in zip(lines, dk_m.connections, strict=True):
         att = CatenaryAttachment(body_index=ln["body"], fairlead_body=np.asarray(c.attach_a_body),
                                  anchor_global=np.asarray(c.attach_b_body),
                                  line=CatenaryLine(length=c.line.length,
                                                    weight_per_length=c.line.weight_per_length,
                                                    EA=c.line.EA), seabed_depth=200.0)
-        line_forces.append((ln["body"], make_catenary_state_force([att], n_dof=n)))
+        line_forces.append((ln["body"], make_catenary_state_force(
+            [att], n_dof=n, body_reference_points=refs)))
     wl = fd.WL_B
     for T in periods:
         jp = ROWS / (f"{article}_H{H:g}_T{T:g}".replace(".", "p") + ("_free" if free else "")

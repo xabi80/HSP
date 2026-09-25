@@ -531,6 +531,8 @@ def _skew_3(r: NDArray[np.floating]) -> NDArray[np.float64]:
 def make_catenary_state_force(
     attachments: Sequence[CatenaryAttachment],
     n_dof: int,
+    *,
+    body_reference_points: NDArray[np.floating] | None = None,
 ) -> Callable[[float, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]:
     """Build the ``(t, xi, xi_dot) -> F`` closure consumed by
     :func:`floatsim.solver.newmark.integrate_cummins`.
@@ -552,9 +554,10 @@ def make_catenary_state_force(
     2. Compute the inertial-frame fairlead position via small-
        angle linear rotation:
 
-           r_fairlead_inertial = body_ref_position + r_arm
+           r_fairlead_inertial = reference_point + xi[6k : 6k+3] + r_arm
            r_arm = fairlead_body + theta x fairlead_body
-           (where ``theta = xi[6k+3 : 6k+6]``)
+           (where ``theta = xi[6k+3 : 6k+6]``; ``reference_point`` is
+           zero unless ``body_reference_points`` is given)
 
        Reduces exactly to ``r_arm = fairlead_body`` at ``theta = 0``,
        matching the M6 PR5 hand-wired path.
@@ -578,6 +581,17 @@ def make_catenary_state_force(
         ``0 <= body_index < n_dof // 6``.
     n_dof
         Global DOF count ``6 * N`` for the system being integrated.
+    body_reference_points
+        Optional ``(n_dof // 6, 3)`` array: each body's deck
+        ``reference_point`` in m, the origin of its displacement
+        coordinates ``xi[6b:6b+3]``. The fairlead is then placed at the
+        ABSOLUTE point ``reference_point + xi[0:3] + r_arm`` and measured
+        against the TRUE inertial ``anchor_global``. ``None`` (default)
+        places it at ``xi[0:3] + r_arm``: exact only for bodies whose
+        reference point is the origin (the deck convention before
+        flume-mooring Phase C2, when non-origin callers had to pass
+        ``anchor - reference_point`` as the anchor). Same pattern as
+        :func:`floatsim.hydro.morison.make_morison_state_force`.
 
     Returns
     -------
@@ -592,7 +606,8 @@ def make_catenary_state_force(
     ValueError
         If ``n_dof`` is not a positive multiple of 6, any
         attachment's ``body_index`` is outside ``[0, n_dof // 6)``,
-        or ``solve_catenary`` cannot find a solution at runtime
+        ``body_reference_points`` is not a finite ``(n_dof // 6, 3)``
+        array, or ``solve_catenary`` cannot find a solution at runtime
         (degenerate geometry, vertical line, etc.).
     """
     if n_dof <= 0 or n_dof % 6 != 0:
@@ -603,6 +618,15 @@ def make_catenary_state_force(
             raise ValueError(
                 f"attachment {k}: body_index {a.body_index} outside valid range "
                 f"[0, {n_bodies}) for n_dof = {n_dof}"
+            )
+
+    ref_points: NDArray[np.float64] | None = None
+    if body_reference_points is not None:
+        ref_points = np.asarray(body_reference_points, dtype=np.float64)
+        if ref_points.shape != (n_bodies, 3) or not np.all(np.isfinite(ref_points)):
+            raise ValueError(
+                f"body_reference_points must have shape ({n_bodies}, 3) and be finite; "
+                f"got shape {ref_points.shape}"
             )
 
     att_list = list(attachments)
@@ -622,6 +646,9 @@ def make_catenary_state_force(
             # Small-angle linear rotated arm: r_arm = fairlead_body + theta x fairlead_body.
             r_arm = a.fairlead_body + _skew_3(theta) @ a.fairlead_body
             r_fairlead_inertial = xi_body[0:3] + r_arm
+            if ref_points is not None:
+                # Absolute fairlead: xi is the displacement from the reference point (C2).
+                r_fairlead_inertial = ref_points[a.body_index] + r_fairlead_inertial
 
             # 3D vector from fairlead to anchor; horizontal projection.
             dxy = a.anchor_global[:2] - r_fairlead_inertial[:2]
