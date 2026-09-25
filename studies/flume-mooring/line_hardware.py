@@ -82,8 +82,13 @@ def design_opts(article: str, t0_scale: float = 1.0) -> dict:
     return opts
 
 
-def _setup(article: str, opts: dict | None = None, t0_scale: float = 1.0):  # type: ignore[no-untyped-def]
+def _setup(article: str, opts: dict | None = None, t0_scale: float = 1.0,  # type: ignore[no-untyped-def]
+           tag: str | None = None):
     """(deck, calm equilibrium, per-line closures, lines) of the moored design.
+
+    With ``opts`` and ``tag`` (an articulated article), the calm equilibrium is FloatSim's settle
+    of THOSE lines, cached under ``tag`` (attachment_sweep.py: submerged attachments tilt the
+    articles, so the pin-level settle does not apply).
 
     With ``t0_scale`` the lines carry a scaled pretension (same k). The articulated articles then
     reuse the cached settle of the unscaled design: pin-level lines act through the pins, so
@@ -94,6 +99,8 @@ def _setup(article: str, opts: dict | None = None, t0_scale: float = 1.0):  # ty
     if article == "buoy":
         s = fd.build_single(dk, fd.hdbs("buoy")["bem_databases"]["buoy"], True)
         xi_eq = np.asarray(s.xi0)
+    elif tag is not None:
+        xi_eq = fd.moored_equilibrium(article, tag=tag, **opts)
     else:
         xi_eq = fd.moored_equilibrium(
             article, tag=f"{article}:pin_level_w{rb.W_AIR:g}", **rb.mooring_opts(article)
@@ -151,17 +158,22 @@ def _pull_offset(article: str, F_total: float) -> float:
 
 def extreme_run(args: tuple) -> dict:
     """One extreme case. ``drift=False`` is D0: no applied drift, from the calm equilibrium --
-    the mean offset is then FloatSim's own (wave-relative drag on the moving body)."""
+    the mean offset is then FloatSim's own (wave-relative drag on the moving body).
+
+    Optional 6th element ``design``: {"opts", "tag", "K_surge"} -- another mooring (the
+    attachment-height design): its lines, its settle, and a start offset F / K_surge."""
     article, H, T, drift = args[:4]
     t0_scale = args[4] if len(args) > 4 else 1.0
+    design = args[5] if len(args) > 5 else None
     t0 = time.perf_counter()
-    dk, xi_eq, _lf, _lines = _setup(article, t0_scale=t0_scale)
+    if design is None:
+        dk, xi_eq, _lf, _lines = _setup(article, t0_scale=t0_scale)
+    else:
+        dk, xi_eq, _lf, _lines = _setup(article, opts=design["opts"], tag=design["tag"])
     F_spar = _drift(H, T) if drift else 0.0
-    xi_start = (
-        tp.rigid(dk, xi_eq, "surge", _pull_offset(article, N_SPAR[article] * F_spar))
-        if drift
-        else xi_eq
-    )
+    off = (N_SPAR[article] * F_spar / design["K_surge"] if design is not None
+           else _pull_offset(article, N_SPAR[article] * F_spar))
+    xi_start = tp.rigid(dk, xi_eq, "surge", off) if drift else xi_eq
     dt = DT_ART[article]
     s, hd, wave, ramp = fd.wave_setup(dk, article, T, H, xi_eq=xi_start, dt=dt)
     r = fd.run_case(
@@ -178,25 +190,18 @@ def extreme_run(args: tuple) -> dict:
     keep = r.t >= r.t[-1] - AVG - 4 * T
     idx = np.flatnonzero(keep)[::5]
     T0 = [ln["T"] for ln in line_states(dk, xi_eq)]
-    tens, clr = [], []
+    tens, clr, emerge = [], [], []
     for i in idx:  # criterion 5: every line point above the LOCAL incident surface
         ls = line_states(dk, r.xi[i], n_pts=21)
         tens.append([ln["T"] for ln in ls])
         eta = ramp.value(float(r.t[i]))
-        clr.append(
-            min(
-                float(
-                    np.min(
-                        ln["pts"][:, 2]
-                        - eta
-                        * np.asarray(
-                            wave.elevation(float(r.t[i]), ln["pts"][:, 0], ln["pts"][:, 1])
-                        )
-                    )
-                )
-                for ln in ls
-            )
-        )
+        above = [
+            ln["pts"][:, 2]
+            - eta * np.asarray(wave.elevation(float(r.t[i]), ln["pts"][:, 0], ln["pts"][:, 1]))
+            for ln in ls
+        ]
+        clr.append(min(float(np.min(a)) for a in above))
+        emerge.append(max(float(np.max(a)) for a in above))  # > 0: a submerged line breaks surface
     tens = np.asarray(tens)
     k = np.array([ln["k"] for ln in line_states(dk, xi_eq)])
     surge = np.mean([r.xi[keep, 6 * b] - xi_eq[6 * b] for b in range(len(dk.bodies))], axis=0)
@@ -226,6 +231,8 @@ def extreme_run(args: tuple) -> dict:
         "surge_min_m": float(surge.min()),
         "surge_max_m": float(surge.max()),
         "clearance_local_surface_min_m": float(min(clr)),
+        "line_above_local_surface_max_m": float(max(emerge)),
+        "tag": design["tag"] if design is not None else None,
         "antisymmetric_max": anti,
         "wall_min": (time.perf_counter() - t0) / 60,
     }

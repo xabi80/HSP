@@ -1,9 +1,11 @@
-"""Statics for MOORING-SPEC.md (2026-09-25): the final design of each article, from FloatSim.
+"""Statics for MOORING-SPEC.md (2026-09-25, rev B): the design of each article, from FloatSim.
 
-Design: pin-level soft lines (0.3 N/m), anchors at the walls in the pin plane; the single buoy at
-T0 = 4.0 N per line on its r = 0.2 m radial collar; the cluster and platform with their
-pretension raised 20 % over the Phase C design (line stiffness k kept; line_hardware
-.design_opts). Per article:
+Design (rev B): the attachment-height design chosen by attachment_sweep.py's decision rule --
+submerged soft lines (0.02 N/m in water), each anchor on the wall at its attachment's depth, the
+pretension and stiffness of the chosen row (attachment_sweep.json "choice"), the calm
+equilibrium from FloatSim's settle of those lines (articulated) or the checked static solve (the
+single buoy on its r = 0.2 m radial collar). Rev A's pin-plane lines with T0 x1.6 are REVERTED.
+Per article:
   * every line: anchor and attachment point (TRUE flume frame: origin at the article centre on
     the flume centreline at still water, x down-flume with the waves, z up), unstretched length
     L0, stiffness k and its -13 % / +30 % acceptance band, nominal and FloatSim at-rest tension,
@@ -13,8 +15,8 @@ pretension raised 20 % over the Phase C design (line stiffness k kept; line_hard
   * surge / sway / yaw periods: the round-1 FloatSim decays (tank_rows/decay_*) scaled by
     sqrt(K_decay / K_now), i.e. the same effective mass; the buoy's yaw from its FloatSim inertia
     and collar stiffness (its decay cannot be run: STATE-FORCE-LAG-NEGATIVE-DAMPING).
-Peak tensions and stretches come from the targeted FloatSim runs (spec_extremes.json,
-spec_extreme_buoy.json) and are merged by the report.
+Peak tensions and stretches come from the targeted FloatSim runs (attachment_design.json,
+buoy_stability_check.json) and are merged by the report.
 
 Writes spec_statics.json.  Run: python mooring_spec.py
 """
@@ -32,20 +34,19 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 warnings.simplefilter("ignore")
 
+import attachment_sweep as asw
 import line_hardware as lh
 import tank_predictions as tp
 
 OUT = HERE / "spec_statics.json"
-# pretension over the Phase C design, set by the targeted worst-case runs (slack pass:
-# T_min >= 0.15 T0 at H = 0.5 m, T = 2.35 and 2.65 s, drift sum); +20 % failed
-T0_SCALE = {"buoy": 1.0, "cluster": 1.6, "platform": 1.6}
 BAND = (0.87, 1.30)
 I_ZZ_BUOY = 0.063                                  # FloatSim deck (articulated_wall.IZZ)
 
 
 def article(art: str) -> dict:
-    sc = T0_SCALE[art]
-    dk, xi_eq, lf, lines = lh._setup(art, t0_scale=sc)
+    des = asw.chosen(art)
+    dk, xi_eq, lf, lines = lh._setup(art, opts=des["opts"], tag=des["tag"])
+    sc = des["row"]["t0_scale"]
     ref = np.array([b.reference_point for b in dk.bodies], dtype=float)
     st = lh.line_states(dk, xi_eq)
     rows = []
@@ -80,8 +81,11 @@ def article(art: str) -> dict:
         dec = json.loads((HERE / "tank_rows" / f"decay_{art}_{mode}.json").read_text())
         K_dec = json.loads((HERE / "tank_rows" / f"pull_{art}.json").read_text())[mode]["K0"]
         periods[mode] = float(dec["T_s"] * np.sqrt(K_dec / pull[mode]["K0"]))
+    buoys = [k for k, b in enumerate(dk.bodies) if b.hydro_body_label or b.hydro_database]
+    tilt = max(float(np.degrees(np.hypot(xi_eq[6 * k + 3], xi_eq[6 * k + 4]))) for k in buoys)
     out = {"article": art, "t0_scale": sc, "n_lines": len(lines), "lines": rows, "pull": pull,
-           "periods_s": periods}
+           "periods_s": periods, "design": des["row"], "tag": des["tag"],
+           "static_tilt_settle_deg": tilt}
     print(f"{art:8s} T0 x{sc}: {len(lines)} lines, T0 {rows[0]['T0_nominal_N']:.2f} N "
           f"(at rest {rows[0]['T_at_rest_N']:.2f}), L0 {min(r['L0_m'] for r in rows):.3f}-"
           f"{max(r['L0_m'] for r in rows):.3f} m, k {rows[0]['k_N_per_m']:.3f}, at-rest stretch "

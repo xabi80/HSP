@@ -1,4 +1,6 @@
-"""Targeted worst-case runs for MOORING-SPEC.md (2026-09-25): cluster and platform with their
+"""REV A (WITHDRAWN 2026-09-25; rev B's runs are attachment_sweep.py extremes). Kept as the record.
+
+Targeted worst-case runs for MOORING-SPEC.md (2026-09-25): cluster and platform with their
 pretension raised over the Phase C design (line stiffness k kept), H = 0.5 m at T = 2.35 and
 2.65 s, the CONSERVATIVE drift sum (the full recorded bound applied in-run + FloatSim's own mean
 force), via line_hardware.extreme_run.

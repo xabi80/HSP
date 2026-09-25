@@ -1,6 +1,6 @@
 # Flume mooring design: basis, confirmed criteria and Phase C results
 
-**Status (2026-09-24): Phases A–C done, including Phase C round 2 (Xabier's decisions 1–7 on `6c93a80`, §C5–C9); Phase D (verification runs) NOT run.** It waits for Xabier on the BEM regeneration (§C8), the line element and the drift double counting (§C7), and the other open decisions at the end of Phase D.
+**Status (2026-09-25): the mooring specification is at REV B (Phase F: the attachment-height design; `MOORING-SPEC.md`). Rev A (Phase E, pin plane, T0 +60 %) is withdrawn.** Earlier status: Phases A–C done, including Phase C round 2 (Xabier's decisions 1–7 on `6c93a80`, §C5–C9); Phase D (verification runs) NOT run.** It waits for Xabier on the BEM regeneration (§C8), the line element and the drift double counting (§C7), and the other open decisions at the end of Phase D.
 
 **Goal:** design the station-keeping mooring for the actual OSU Large Wave Flume (HWRL) test. It
 is not an OrcaFlex comparison.
@@ -17,13 +17,13 @@ must list them on its first page.**
 
 | # | Assumption | Value the design uses | If it proves false |
 |---|---|---|---|
-| F1 | **Anchors can be fixed at the pin plane, 0.72 m above still water**, at the walls ±5.0 m up/downstream, y = ±1.83 m | anchor z = +0.717 m | The pin-level design depends on it. With lower anchors the pin-level lines slope down (0.72 m over the ~5.3 m chord, ~8°), into the splash zone near the walls (criterion 5 fails: the dry-weight line is wave-loaded), and pull down on the pins. The attachment then has to drop towards the waterline, and **the pretension moment about the pins returns: calm-water tilt 4.9° (cluster) and 9.1° (platform)** at the old SWL attachment (FloatSim, `attachment_options.json`, `static:*:swl_spar`), against criterion 1's 0.1°. |
-| F2 | Anchor load rating | design-state load per anchor, before the safety factor: 4.1 N (buoy line, record; the redesign changes it, §C2), 16.5 N (cluster), **66.1 N per platform anchor** (2-leg bridle, 33 N per leg). WLL ≥ 3× that: **≥ 200 N per platform anchor** | Lighter anchors need a softer or lower-pretension mooring (longer surge period, more offset). Phase D replaces these record values with FloatSim maxima. The round-2 extreme runs (§C7) reach 41.8 N per platform leg, so ~84 N per anchor and WLL ≥ 250 N (indicative). |
+| F1 | **Anchors can be fixed on the flume walls UNDER WATER, at each article's attachment depth** (rev B, Phase F), at ±5.0 m up/downstream, y = ±1.83 m | anchor z = the attachment depth: −0.50 m (buoy), −0.15 m (cluster, platform) | A higher or lower anchor slopes the line; its vertical pull at the attachment adds calm tilt and tilt coupling, so the sweep (`attachment_sweep.py`) must be re-run for the real anchor depth. *Superseded question (rev A): anchors at the pin plane, 0.72 m above still water. It no longer arises.* |
+| F2 | Anchor load rating | **Rev B values: `MOORING-SPEC.md` headline (they supersede the ones here).** Record before rev B: design-state load per anchor, before the safety factor: 4.1 N (buoy line, record; the redesign changes it, §C2), 16.5 N (cluster), **66.1 N per platform anchor** (2-leg bridle, 33 N per leg). WLL ≥ 3× that: **≥ 200 N per platform anchor** | Lighter anchors need a softer or lower-pretension mooring (longer surge period, more offset). Phase D replaces these record values with FloatSim maxima. The round-2 extreme runs (§C7) reach 41.8 N per platform leg, so ~84 N per anchor and WLL ≥ 250 N (indicative). |
 | F3 | Maximum wave height per period, and the steepness limit | **H/λ ≤ 0.08** (finite depth 2.7 m): H = 0.5 m needs T ≥ 2.01 s, 0.35 m needs T ≥ 1.675 s, 0.2 m needs T ≥ 1.266 s. The wavemaker's own H(T) envelope is unknown | Cases above the wavemaker's envelope drop out of the matrix; the drift bound and loads fall with them. |
 | F4 | Water depth | 2.7 m ("storm-wave max"; `mooring_sizing.H_FLUME`) | The drift bound uses coth(kh); a deeper flume lowers it at long periods. (FloatSim's runs are deep-water throughout: BEM and wave kinematics.) |
 | F5 | Test-section position relative to the wavemaker and the beach | Not in the record. The FloatSim cases settle for 60–135 s of regular waves; the tank needs a clean incident-wave window at least that long before beach reflections arrive, with the article on the flume centreline (the sidewall analysis assumes it) | Shorter clean windows shorten the settle, which matters most near the lightly damped tilt resonance (§C3). |
 | F6 | Tracking field of view | Surge from about −0.3 m (upstream) to **+1.0 m** (downstream; criterion 4: mean offset + dynamic ≤ 1.0 m), sway ±0.1 m, plus the article's footprint (platform 2.06 m wide at 45°) | A smaller field of view needs a stiffer mooring (shorter surge period) or a lower H in the extreme band. |
-| F7 | **Standard soft-mooring hardware available at HWRL** | Elastic cord (§C7):<br>• secant stiffness within −13 / +30 % of 2.0 / 8.3 / 16.6 N/m over the working strain;<br>• rated elongation ≥ 131 % / 85 % / 100 % if the cord is the whole unstretched line (3.1 / 3.9 / 3.1–3.3 m);<br>• ~0.3 N/m dry weight.<br>Wall anchors and fittings for 7 / 22 / 84 N design loads (platform: per 2-leg anchor, extreme runs). | Without such a cord, the lines need farther anchors (longer lines, lower strain) or a different stiffness element; the design changes. |
+| F7 | **Standard soft-mooring hardware available at HWRL** | **Rev B values: `MOORING-SPEC.md` headline (they supersede the ones here).** Record before rev B: Elastic cord (§C7):<br>• secant stiffness within −13 / +30 % of 2.0 / 8.3 / 16.6 N/m over the working strain;<br>• rated elongation ≥ 131 % / 85 % / 100 % if the cord is the whole unstretched line (3.1 / 3.9 / 3.1–3.3 m);<br>• ~0.3 N/m dry weight.<br>Wall anchors and fittings for 7 / 22 / 84 N design loads (platform: per 2-leg anchor, extreme runs). | Without such a cord, the lines need farther anchors (longer lines, lower strain) or a different stiffness element; the design changes. |
 
 Also assumed (hardware, not facility): line dry weight 0.3 N/m; linear springs with a working
 stroke ≥ 1.25 × the maximum stretch.
@@ -724,6 +724,8 @@ The platform dominates. Run it first, 17 at a time; the buoy and cluster fit aro
 
 ## Phase E (2026-09-25): conservative mooring specification issued — `MOORING-SPEC.md` / `.pdf`
 
+**WITHDRAWN, same day: superseded by Phase F (rev B).** Its +60 % pretension is REVERTED: the pin-plane lines shift the buoys' tilt resonance 6.5–8.6 × more than the resonance tolerates (Phase F). Kept below as the record.
+
 Xabier's priority change: a CONSERVATIVE specification today. Full verification (BEM
 regeneration, Phase D, LEVEL2, drift mechanism) follows before the test and is listed in the
 spec's follow-ups. What was used:
@@ -753,6 +755,177 @@ The spec itself is generated by `build_spec.py`.
     tracking limit**. The lines are not stiffened for it; the tank procedure runs the extremes in
     increasing H with live offset monitoring.
   - Every worst case is at 20–30° of tilt, so the results are indicative (LEVEL1).
+
+## Phase F (2026-09-25): attachment height — the rev B specification (`attachment_sweep.py`, `buoy_stability_check.py`)
+
+Xabier approved the attachment-height comparison, with a decision rule so that it ends in a
+specification. Rev A (Phase E) is withdrawn and its +60 % pretension REVERTED
+(`mooring_spec.T0_SCALE` removed). `MOORING-SPEC.md` / `.pdf` are regenerated as rev B.
+
+### F1. The reason for the change (recorded as instructed)
+
+- The pin plane was chosen to remove calm-water tilt (criterion 1). **Its ~9 % tilt stiffening
+  was accepted without comparing it to the resonance bandwidth.**
+- The comparison, now made: at the pin plane with the design T0 and k, the tilt period shifts
+  −9.19 / −8.83 / −9.04 % (buoy / cluster / platform). The tolerance is ζ/3 = 1.42 / 1.19 /
+  1.05 %, so the pin plane is **6.5–8.6 × over**.
+- The static pretension moment acts about the PIN. The dynamic coupling (≈ k·h², h = the
+  attachment's height above the tilt mode's rotation centre) acts about that centre, near the
+  CoG (M11a F1). No single height satisfies both unless the pretension is low.
+
+### F2. Xabier's numbers, re-derived (standing rule)
+
+- **ζ at H = 0.04 m** (`resonance_bandwidth.json`, tilt): 4.25 / 3.56 / 3.15 %. Xabier's
+  4.2 / 3.6 / 3.2 % is confirmed. The sweep uses the unrounded values: limits 1.416 / 1.188 /
+  1.050 %.
+- **δ ≤ ζ/3 → response within 5 %:** 1/√(1 + 1/9) = 0.949. ✓
+- ⚠ **"Tilt-period shift ≤ ~1 %":** the limits are 1.05–1.42 %. The buoy's is 1.42 %, not ~1 %.
+- **Expectation "passing designs attach ~0.1–0.4 m below SWL with much lower pretension":**
+  - the cluster and platform confirm it: −0.15 m, with T0 at 17 % and 8.5 % of the design;
+  - ⚠ **the buoy does not:** it attaches at −0.50 m (F4).
+
+### F3. Method
+
+- The sweep grid, the modal and static evaluation and the kinematic slack estimate are as
+  documented in `attachment_sweep.py` and the spec's *Design rule* section.
+- **The tie-breaks:**
+  - The rule selects the most pretension, then the attachment closest to the waterline.
+  - A third tie-break was added: **the stiffest surge**, i.e. the least excursion, from the
+    confirmed criterion 4. It decides only the buoy (F4).
+  - An intermediate version used "least tilt shift" instead. It picked the buoy's k ×0.5. Its
+    FloatSim battery is kept as `buoy_stability_check_k0p5.json`: 5 of 18 cases grow yaw
+    (up to 0.3°) and 3 diverge, and its predicted H = 0.5 m offsets reach 1.95 m.
+  - k ×1 halves the offsets (≤ 0.68 m, inside the field of view) and the cord strain. Its
+    stability is not better: 6 cases grow yaw (all < 0.002° at 210 s) and 3 diverge, in
+    different cases.
+- **Static tilt:**
+  - The per-buoy tilt stiffness estimate (75.36 / 81.45 N·m/rad) under-predicts FloatSim's
+    settle at z = −0.15 m, by 1.4 % (cluster: 1.014°) and 6.4 % (platform: 1.064°).
+  - **The settle wins:** T0 was trimmed by the settled ratio, then re-settled (step `trim`).
+  - Result: 0.999° (cluster) and 1.0001° (platform). The platform's 1e-4° excess is inside the
+    settle's averaging resolution; the next trim (0.01 % of T0) is immaterial and was not run.
+- ⚠ **The drift sum's sign at the tilt resonance.**
+  - FloatSim's own mean force is up-wave there. The restrained H = 0.12 m runs give −0.04 /
+    −0.14 / −0.26 N (buoy / cluster / platform) at resonance, against +0.07 / +0.14 / +0.11 N
+    at 1.4 s.
+  - So at resonance the "sum" is smaller than the bound alone.
+  - Kinematic operational T_min/T0 with the negative term dropped: cluster 0.539, platform
+    0.157, against 0.565 / 0.179 with it. Both pass; the platform's margin is thin either way.
+    The buoy's margin is large (≥ 0.93 in its moored runs).
+
+### F4. The chosen designs
+
+| | buoy | cluster | platform |
+|---|---|---|---|
+| attachment z | -0.50 m | -0.15 m | -0.15 m |
+| k (×design) | 2.01 N/m (×1) | 4.15 N/m (×0.5) | 8.32 N/m (×0.5) |
+| T0 per line/leg (×design) | 2.400 N (×0.6000) | 1.494 N (×0.1658) | 1.540 N (×0.0854) |
+| tilt period free → moored (shift; limit ζ/3) | 2.761 → 2.723 s (-1.37 %; 1.42 %) | 2.856 → 2.835 s (-0.73 %; 1.19 %) | 2.924 → 2.902 s (-0.72 %; 1.05 %) |
+| heave period free → moored (shift) | 2.561 → 2.548 s (-0.50 %) | 2.586 → 2.584 s (-0.08 %) | 2.606 → 2.606 s (-0.03 %) |
+| calm static tilt: estimate / FloatSim settle | 0.000° / 0.000° | 0.985° / 0.999° | 0.939° / 1.000° |
+| surge / sway / yaw (sweep) | 16.6 / 26.4 / 1.12 s | 23.1 / 51.2 / 25.12 s | 23.0 / 58.2 / 32.95 s |
+| surge / sway / yaw (spec statics) | 16.6 / 26.4 / 1.12 s | 23.1 / 51.6 / 24.78 s | 23.0 / 59.0 / 33.40 s |
+| op. T_min/T0 kinematic (≥ 0.15) | 0.940 | 0.565 | 0.179 |
+| op. T_min/T0 moored FloatSim (≥ 0.15) | 0.930 (5 runs) | 0.562 (2 runs) | 0.189 (2 runs) |
+| at-rest stretch / L0 | 1.195 / 3.930 m | 0.346 / 4.589 m | 0.171 / 4.038 m |
+| pull K surge | 7.31 N/m | 15.05 N/m | 60.63 N/m |
+
+**The single buoy.**
+- Its pretension is capped by the collar, not by static tilt. The collar balances the lines, so
+  the static tilt is 0.
+- The collar's pretension stiffens pitch in proportion to T0·r, at any depth. The attachment
+  depth only sets the k·h² part.
+- **The conflict:** yaw stiffness is ∝ T0·r too. Every buoy design passing ζ/3 has yaw
+  ≤ ~2.0 N·m/rad, a period ≥ 1.12 s: the zone where §C5 found the r = 0.12 m collar
+  parametrically unstable at H = 0.5 m. FloatSim, the chosen design (18 cases, the drift sum):
+
+| H | T | FloatSim | max tilt | max yaw | T_min / T0 | max tension | slack lines: peak re-tension | surge range |
+|---|---|---|---|---|---|---|---|---|
+| 0.04 m | 2.75 s | stable | 9.4° | 3.6e-11° | 0.97 | 2.46 N | none | -0.04–0.04 m |
+| 0.12 m | 2.45 s | stable | 9.5° | 2.9e-11° | 0.94 | 2.55 N | none | -0.01–0.01 m |
+| 0.12 m | 2.55 s | stable | 12.7° | 1.1e-09° | 0.93 | 2.57 N | none | -0.01–0.02 m |
+| 0.12 m | 2.65 s | stable | 15.8° | 1.5e-10° | 0.93 | 2.57 N | none | -0.04–0.05 m |
+| 0.12 m | 2.75 s | stable | 16.8° | 1.1e-09° | 0.95 | 2.53 N | none | -0.07–0.07 m |
+| 0.2 m | 2.35 s | stable | 11.9° | 4.3e-11° | 0.88 | 2.69 N | none | 0.02–0.07 m |
+| 0.2 m | 2.65 s | **yaw grows** | 20.9° | 8.2e-05° | 0.88 | 2.71 N | none | -0.01–0.10 m |
+| 0.2 m | 2.75 s | **yaw grows** | 22.0° | 2.0e-03° | 0.91 | 2.62 N | none | -0.07–0.11 m |
+| 0.2 m | 3.5 s | stable | 5.2° | 1.2e-11° | 0.93 | 2.57 N | none | -0.08–0.13 m |
+| 0.35 m | 2.0 s | **yaw grows** | 10.9° | 2.2e-05° | 0.53 | 3.54 N | none | 0.40–0.52 m |
+| 0.35 m | 2.35 s | **yaw grows** | 18.0° | 1.3e-05° | 0.60 | 3.38 N | none | 0.29–0.39 m |
+| 0.35 m | 2.65 s | **diverges: no prediction** | — | — | — | — | — | — |
+| 0.35 m | 3.0 s | **yaw grows** | 23.4° | 2.0e-06° | 0.85 | 2.76 N | none | -0.08–0.30 m |
+| 0.35 m | 3.5 s | stable | 9.4° | 4.7e-11° | 0.80 | 2.88 N | none | -0.05–0.31 m |
+| 0.5 m | 2.35 s | **diverges: no prediction** | — | — | — | — | — | — |
+| 0.5 m | 2.65 s | **diverges: no prediction** | — | — | — | — | — | — |
+| 0.5 m | 3.0 s | **yaw grows** | 29.5° | 2.5e-06° | 0.56 | 3.50 N | none | 0.22–0.68 m |
+| 0.5 m | 3.5 s | stable | 14.0° | 4.8e-11° | 0.55 | 3.49 N | none | 0.15–0.65 m |
+
+- The operational band is stable, with no slack.
+- "Stable" means yaw at round-off (≤ 1e-8 rad). The buoy is mirror-symmetric to round-off
+  (§C6), so any larger yaw is the model's own parametric growth.
+- Of the extreme band:
+  - **3 diverge:** H = 0.35 m at 2.65 s and H = 0.5 m at 2.35 / 2.65 s. Rev A's buoy (yaw 0.86 s)
+    was stable at H = 0.5 m, 2.65 s and diverged near 2.35 s (§C5).
+  - **6 grow yaw slowly**, all < 0.002° at 210 s: H = 0.2 m at 2.65 / 2.75 s, H = 0.35 m at
+    2.0 / 2.35 / 3.0 s, H = 0.5 m at 3.0 s.
+  - The rest is stable.
+  - Every predicted case is inside the field of view (surge ≤ 0.68 m).
+- All are beyond LEVEL1: LEVEL2 decides whether the divergence is physical.
+- Remedy (not designed): a pitch-neutral collar, e.g. a cross-flume bar, which gives yaw
+  stiffness without the pitch term.
+
+**The submerged collar** (z = −0.50 m, r = 0.2 m) is a hydrodynamic appendage the model does not
+include:
+- slender cross, 2 × 0.4 m bars ≈ 25 mm in diameter: added mass ≈ ρπ(D/2)²L ≈ 0.4 kg, drag area
+  ≈ 0.02 m²;
+- a solid disk would add (8/3)ρr³ ≈ 21 kg (the heave plate's is ≈ 7.9 kg), so it must not be a
+  disk.
+
+### F5. Step 5 — the targeted extremes and the moored operational checks (cluster, platform)
+
+All on the chosen design, with the conservative drift sum:
+
+| article | case (drift sum) | min / max line tension | T_min / T0 | slack lines: peak re-tension | mean offset (range) | max tilt | max yaw | line above the local surface | validity |
+|---|---|---|---|---|---|---|---|---|---|
+| cluster | extreme: H 0.5 m, T 2.35 s | 0.04 / 15.23 N | 0.03 slack (allowed) | stay slack (≤ 0.05 N, their hanging weight): no re-tension in the wave train | 3.27 m (3.15–3.39) **> +1 m** | 15.3° | 7.0e-01° | breaks the surface by 0.19 m | indicative (tilt > 5.7°) |
+| cluster | extreme: H 0.5 m, T 2.65 s | 0.05 / 12.01 N | 0.03 slack (allowed) | stay slack (≤ 0.05 N, their hanging weight): no re-tension in the wave train | 2.53 m (2.46–2.61) **> +1 m** | 12.9° | 4.7e-01° | breaks the surface by 0.18 m | indicative (tilt > 5.7°) |
+| cluster | operational: H 0.12 m, T 1.4 s | 1.04 / 1.83 N | 0.73 PASS | none | 0.07 m (0.05–0.09) | 2.5° | 7.9e-04° | submerged (-0.09 m) | LEVEL1 valid |
+| cluster | operational: H 0.12 m, T 2.84 s | 0.81 / 2.09 N | 0.56 PASS | none | -0.00 m (-0.04–0.04) | 17.6° | 2.1e-02° | submerged (-0.09 m) | indicative (tilt > 5.7°) |
+| platform | extreme: H 0.5 m, T 2.35 s | 0.04 / 29.43 N | 0.03 slack (allowed) | stay slack (≤ 0.04 N, their hanging weight): no re-tension in the wave train | 3.41 m (3.30–3.53) **> +1 m** | 22.7° | 1.8e+00° | breaks the surface by 0.18 m | indicative (tilt > 5.7°) |
+| platform | extreme: H 0.5 m, T 2.65 s | 0.04 / 24.70 N | 0.03 slack (allowed) | stay slack (≤ 0.05 N, their hanging weight): no re-tension in the wave train | 2.85 m (2.78–2.93) **> +1 m** | 19.4° | 1.4e+00° | breaks the surface by 0.17 m | indicative (tilt > 5.7°) |
+| platform | operational: H 0.12 m, T 1.4 s | 0.87 / 1.99 N | 0.61 PASS | none | 0.06 m (0.05–0.07) | 2.2° | 3.2e-03° | submerged (-0.09 m) | LEVEL1 valid |
+| platform | operational: H 0.12 m, T 2.9 s | 0.27 / 2.81 N | 0.19 PASS | none | 0.00 m (-0.05–0.06) | 17.5° | 3.6e-02° | submerged (-0.09 m) | indicative (tilt > 5.7°) |
+
+- **Operational band:** no slack, confirmed directly in FloatSim. This supersedes the kinematic
+  estimate.
+- **Extremes:**
+  - The down-flume lines go slack (allowed) and **stay slack through the wave train**: the mean
+    offset (2.5–3.4 m) far exceeds their pre-stretch (0.35 / 0.17 m). Their peak is ≤ 0.05 N,
+    their hanging weight.
+  - So FloatSim shows **no re-tension load** in the steady state. They re-tension only as the
+    article drifts back after the waves stop (not run). FloatSim's line is quasi-static, so
+    snap dynamics are not modelled either way.
+  - Peak line tension (the up-flume lines): 15.2 N (cluster), 29.4 N (platform, per leg).
+  - ⚠ **Yaw 0.47–1.8°** (rev A: 0.04–0.23°).
+    - It is forced by the coupled-kernel asymmetry (§C6), and rev B's yaw is 8–11 × softer.
+    - Steady or growing is not established (only the peak was kept).
+    - Three of the four exceed Phase D's proposed 0.5° flag.
+  - ⚠ **The offsets are far beyond the +1.0 m field of view**, 2–3 × rev A's. The k ×0.5 lines
+    are soft and the slack side stops pulling.
+  - The rule has no excursion criterion. The cluster's k ×1 alternative (−0.30 m, T0 ≈ 1.3 N)
+    has about 2 × the surge stiffness; the platform has no passing k ×1 design. **Xabier to
+    decide whether excursion joins the rule.**
+- The submerged lines break the local surface in the H = 0.5 m troughs (column "line above
+  local surface"). Line drag is not modelled.
+
+### F6. Open for Xabier (rev B)
+
+1. **Static tilt ≤ 1°:** proposed; confirm. It sets the cluster and platform pretension.
+2. **Excursion in the rule** (F5): the rule's pick puts the H = 0.5 m extremes 2.5–3.3 m
+   down-flume.
+3. **The buoy's yaw vs tilt conflict** (F4): accept the diverging extremes, or design a
+   pitch-neutral collar.
+4. **Underwater wall anchors** (F1 of the spec) to HWRL.
 
 ## Open decisions for Xabier (after Phase C round 2; STOP before Phase D)
 
