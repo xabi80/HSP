@@ -152,6 +152,8 @@ period). Where the lines attach matters more than how stiff they are:
 | Mean offset, H = 0.5 m / 0.3 m | 0.74 / 0.27 m | 0.71 / 0.27 m | 0.75 / 0.28 m |
 | Mean trim / largest buoy tilt, H = 0.5 m | 0° / — | 0° / 0.0° | 0° / 3.0° |
 
+*Offsets:* `mooring_verify.csv`'s coupled static solve for this SWL design. `mooring_design_table.csv` gives the sizing value drift/Kx instead (platform 0.71 m, against 0.75 m here). The confirmed pin-plane design's offsets are in `DESIGN-BASIS.md` §C4.
+
 - **The platform's 3.0° buoy tilt** (1.1° at H = 0.3 m) is **not caused by the mooring**. The
   drift acts at each spar's SWL, 0.72 m below its pin, so every unmoored inner buoy leans by that
   amount whatever holds the deck.

@@ -146,13 +146,19 @@ def line_design(article: str, n_spar: int, H_design: float = 0.5) -> dict:
 
 
 def mooring_lines(dk: Deck, article: str, *, fairlead: np.ndarray = WL_B, anchor_z: float = 0.0,
-                  H_design: float = 0.5, balanced: bool = False) -> list[dict]:
+                  H_design: float = 0.5, balanced: bool = False, T0: float | None = None,
+                  collar_r: float = 0.0, collar: str = "radial") -> list[dict]:
     """The FloatSim lines: body, fairlead (body frame), true anchor, stiffness k and pretension.
 
     Defaults = the documented design (fairlead at the spar SWL, anchors at the SWL, T0 for
     H = 0.5 m). ``balanced``: every moored spar gets the line to the anchor at the other end of
     the flume on its side too, with k and T0 halved, so the axial pretension cancels on the spar
-    (the single-buoy collar, generalized); total Kx is unchanged."""
+    (the single-buoy collar, generalized); total Kx is unchanged.
+
+    ``T0``: per-line pretension override (the single-buoy redesign, Phase C item 2); k is kept.
+    ``collar_r``: each line's fairlead moves ``collar_r`` from ``fairlead`` in plan -- towards
+    its anchor (``collar="radial"``), or at right angles to it (``"pinwheel"``: the line leaves
+    tangentially, the two diagonals turning opposite ways so the pretension moments cancel)."""
     B = dk.bodies
     buoys = [k for k, b in enumerate(B) if (b.hydro_body_label or b.hydro_database)]
     des = line_design(article, len(buoys), H_design)
@@ -169,13 +175,20 @@ def mooring_lines(dk: Deck, article: str, *, fairlead: np.ndarray = WL_B, anchor
                 xr = max(abs(B[k].reference_point[0]) for k in buoys)
                 legs = [k for k in buoys if np.isclose(B[k].reference_point[0], sx * xr)
                         and np.sign(B[k].reference_point[1]) == sy]; share = 1.0 / len(legs)
+            t0 = des["T0"] if T0 is None else T0
             for k in legs:
                 ends = [anchor, anchor * np.array([-1.0, 1.0, 1.0])] if balanced else [anchor]
                 for an in ends:
-                    out.append({"body": k, "name": B[k].name,
-                                "fairlead": np.asarray(fairlead, dtype=float).copy(),
+                    fl = np.asarray(fairlead, dtype=float).copy()
+                    if collar_r:
+                        u = an[:2] - np.asarray(B[k].reference_point, dtype=float)[:2]
+                        u /= np.linalg.norm(u)
+                        if collar == "pinwheel":
+                            u = sx * sy * np.array([-u[1], u[0]])
+                        fl[:2] += collar_r * u
+                    out.append({"body": k, "name": B[k].name, "fairlead": fl,
                                 "anchor": an, "k": des["k_line"] * share / len(ends),
-                                "T0": des["T0"] * share / len(ends), "group": len(out)})
+                                "T0": t0 * share / len(ends), "group": len(out)})
     return out
 
 
@@ -216,8 +229,10 @@ def hdbs(article: str) -> dict:
             "asymptote_check_override": OVR, "kernel_decay_floor_override": OVR}
 
 
-def build_single(dk: Deck, hdb, solve_equilibrium: bool):  # type: ignore[no-untyped-def]
-    """build_system's per-body branch for the one-buoy deck (see the module note)."""
+def build_single(dk: Deck, hdb, solve_equilibrium: bool, wave: RegularWave | None = None,  # type: ignore[no-untyped-def]
+                 ramp: HalfCosineRamp | None = None):
+    """build_system's per-body branch for the one-buoy deck (see the module note). ``wave`` /
+    ``ramp``: wave-relative Morison drag, as build_system(drag_wave=, drag_wave_ramp=)."""
     name_to_index = fsd._validate_body_names(dk)
     body = dk.bodies[0]
     lhs = fsd.assemble_global_lhs([fsd._per_body_lhs(body, hdb, gravity=dk.environment.gravity)])
@@ -229,7 +244,8 @@ def build_single(dk: Deck, hdb, solve_equilibrium: bool):  # type: ignore[no-unt
     refs = np.array([b.reference_point for b in dk.bodies], dtype=np.float64)
     cat_force = (fsd.make_catenary_state_force(cats, n_dof=n, body_reference_points=refs)
                  if cats else None)
-    drag_force = fsd._build_drag_state_force(dk, n, rho=dk.environment.water_density)
+    drag_force = fsd._build_drag_state_force(dk, n, rho=dk.environment.water_density,
+                                             wave=wave, ramp=ramp)
     state = fsd._compose_state_force(None, cat_force, drag_force, n)
     xi0 = fsd.pack_state([np.asarray(b.initial_conditions.position, float) for b in dk.bodies])
     xd0 = fsd.pack_state([np.asarray(b.initial_conditions.velocity, float) for b in dk.bodies])
@@ -332,6 +348,68 @@ def hydro_dof(dk: Deck) -> np.ndarray:
         if b.hydro_body_label is not None or b.hydro_database is not None:
             idx.extend(range(6 * k, 6 * k + 6))
     return np.asarray(idx, dtype=int)
+
+
+RAMP_S = 15.0
+
+
+def wave_setup(dk: Deck, article: str, T: float, H: float, *, xi_eq: np.ndarray | None = None,  # type: ignore[no-untyped-def]
+               hd: dict | None = None):
+    """FloatSim setup for a regular wave (heading 0) with WAVE-RELATIVE Morison drag (STEP 5
+    PR1): the drag samples the same wave and ramp as the excitation. ``xi_eq``: the start state
+    (the moored settle for an articulated article); None solves FloatSim's static equilibrium.
+    Returns (setup, hd, wave, ramp)."""
+    hd = hd or hdbs(article)
+    wave = RegularWave(amplitude=0.5 * H, omega=2 * np.pi / T, heading_deg=0.0)
+    ramp = HalfCosineRamp(duration=RAMP_S)
+    d = dk if xi_eq is None else with_positions(dk, xi_eq)
+    if article == "buoy":
+        s = build_single(d, hd["bem_databases"]["buoy"], xi_eq is None, wave=wave, ramp=ramp)
+    else:
+        s = build_system(d, dt=DT, t_max_kernel=T_KERNEL, solve_equilibrium=xi_eq is None,
+                         drag_wave=wave, drag_wave_ramp=ramp, **hd)
+    return s, hd, wave, ramp
+
+
+def drift_force(dk: Deck, F_spar: float, ramp: HalfCosineRamp | None = None):  # type: ignore[no-untyped-def]
+    """The recorded drift bound APPLIED IN-RUN: a steady +x force ``F_spar`` at each spar's calm
+    waterline (body point WL_B, small-angle arm), times the excitation ramp when given."""
+    n = 6 * len(dk.bodies)
+    spars = [k for k, b in enumerate(dk.bodies) if b.hydro_body_label or b.hydro_database]
+    arm = np.asarray(WL_B, dtype=float)
+    F3 = np.array([F_spar, 0.0, 0.0])
+
+    def f(t: float, xi: np.ndarray, _xd: np.ndarray) -> np.ndarray:
+        out = np.zeros(n)
+        s = 1.0 if ramp is None else ramp.value(t)
+        for k in spars:
+            out[6 * k] = s * F_spar
+            out[6 * k + 3:6 * k + 6] = s * np.cross(arm + np.cross(xi[6 * k + 3:6 * k + 6], arm),
+                                                    F3)
+        return out
+
+    return f
+
+
+def run_case(setup, hd: dict, dk: Deck, wave: RegularWave, ramp: HalfCosineRamp,  # type: ignore[no-untyped-def]
+             n_settle: float, n_keep: int, extra_force=None):
+    """Excitation + FloatSim state force (+ ``extra_force``: applied drift, restraint) through
+    the Cummins integrator; lasts ramp + n_settle + n_keep periods."""
+    hdb = hd.get("shared_hydro_database") or hd["bem_databases"]["buoy"]
+    f_wave = make_regular_wave_force(hdb=hdb, wave=wave, body_position=(0.0, 0.0, 0.0),
+                                     ramp=ramp)
+    idx = hydro_dof(dk); n = setup.lhs.M_plus_Ainf.shape[0]
+
+    def ext(t):
+        f = np.zeros(n); f[idx] = f_wave(t); return f
+
+    sf = setup.state_force if extra_force is None else (
+        lambda t, x, v: setup.state_force(t, x, v) + extra_force(t, x, v))
+    return integrate_cummins(lhs=setup.lhs, kernel=setup.kernel, xi0=setup.xi0,
+                             xi_dot0=setup.xi_dot0,
+                             duration=RAMP_S + n_settle + n_keep * wave.period,
+                             dt=DT, rho_inf=0.8, constraints=setup.constraints,
+                             external_force=ext, state_force=sf, projection_interval=1)
 
 
 def run_wave(setup, hd: dict, dk: Deck, T: float, H: float, n_settle: float, n_keep: int):  # type: ignore[no-untyped-def]

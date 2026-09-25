@@ -45,15 +45,22 @@ RHO, G = 998.0, 9.806
 H_FLUME, W_FLUME = 2.7, 3.66                 # OSU LWF water depth (storm-wave max) and width
 SPAR_D, CD_SPAR, PLATE_R = 0.1593, 1.2, 0.1437
 M_BUOY = 21.52                               # OSU buoy, unloaded floating mass (osu_buoy_common)
-C33_BUOY = 194.5                             # N/m, single-buoy heave waterplane stiffness
+# N/m, single-buoy heave waterplane stiffness, analytic (rho g pi D^2/4). NB FloatSim's flume
+# BEM (single_osu_open_psd.nc) has 186.26 N/m: its 12-sided waterline (NT = 12) holds 0.9549 of
+# the circle's area (Phase C item 1). Used only by the superseded trim printout below.
+C33_BUOY = 194.5
 A11_BUOY = 18.87                             # kg, single-buoy low-freq surge added mass (BEM)
 A11_ARRAY_PER_BUOY = 310.6 / 16              # kg, per buoy inside the 16-buoy array (coupled BEM)
 A11_CLUSTER = 78.81                          # kg, 4-buoy cluster rigid surge (bem_cluster.py)
-C55_BUOY = (10.2 + 5.03) * (2 * np.pi / 2.11) ** 2   # N m/rad, from the validated 2.11 s pitch
+# N m/rad, single-buoy pitch restoring about the CoG: FloatSim's C[4, 4] from the flume BEM
+# (single_osu_open_psd.nc). Replaces (10.2 + 5.03)(2 pi/2.11)^2, built from the INVALID 2.11 s
+# pitch period (FloatSim: 2.76 s). Phase C item 1.
+C55_BUOY = 70.771
 T_WAVE = np.linspace(1.4, 4.0, 53)           # regular-wave sweep band (s)
 T_WAVE_MAX = float(T_WAVE.max())
 H_LIST = [0.2, 0.3, 0.4, 0.5]                # wave heights (m); moderate matrix, max 0.5 m
 STEEP = 1 / 15                               # practical non-breaking cap on regular-wave H/L
+STEEP_MATRIX = 0.08                          # the CONFIRMED Phase D matrix cap on H/lambda
 S = 1.25 / 1.5                               # Phase-3 layout scale (2.5 m to buoy centres)
 LAT_DIST = 0.10                              # nominal lateral disturbance = 10 % of surge drift
 
@@ -65,10 +72,11 @@ def k_fin(T: float, h: float = H_FLUME) -> float:
     return k
 
 
-def drift_per_spar(H: float, T: float) -> tuple[float, float, float]:
-    """(F_drag, F_potential, H_used): mean drift force on one fixed surface-piercing spar."""
+def drift_per_spar(H: float, T: float, steep: float = STEEP) -> tuple[float, float, float]:
+    """(F_drag, F_potential, H_used): mean drift force on one fixed surface-piercing spar, with H
+    capped at steep * lambda."""
     k = k_fin(T); L = 2 * np.pi / k
-    Hu = min(H, STEEP * L)
+    Hu = min(H, steep * L)
     A = Hu / 2; w = 2 * np.pi / T
     U = A * w / np.tanh(k * H_FLUME)
     Fd = (2 / (3 * np.pi)) * RHO * CD_SPAR * SPAR_D * A * U * U

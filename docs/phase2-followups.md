@@ -106,6 +106,13 @@ Q5 threshold `max|θ| ≥ 0.1 rad` (5.73°):
   body with
   Izz = 0.063 kg·m². It is **not a patch target**: the fix is this
   item.
+- **Moored evidence (2026-09-24, flume Phase C3,
+  `studies/flume-mooring/bandwidth_rows/diverged/`).** The moored lone buoy (lines on the spar
+  axis, T0 = 4 N) diverges at H = 0.12 m near its 2.55 s pitch resonance: roll and yaw blow
+  up, pitch reads 50–200°, and two cases crashed on the flipped geometry.
+  - A 60 s numerical yaw spring does not stop it.
+  - A stiff yaw collar (1.12 s) does: pitch 16.6°, roll and yaw exactly 0.
+  - At H = 0.04 m (pitch 9.6°) it is stable.
 
 ---
 
@@ -2205,6 +2212,112 @@ single-buoy RAO record.
 
 **Status.** Open. Surfaced 2026-09-23. OSU study fixed (2026-09-23); spar-fin pitch block
 fixed (2026-09-24); its RAO reruns are in the post-PR1 cycle. The check awaits approval.
+
+---
+
+### STATIC-SOLVE-FALSE-CONVERGENCE — `solve_static_equilibrium` can report success with a large residual
+
+**Mechanism.** `floatsim/solver/equilibrium.py` sets
+`converged = bool(sol.success) or residual_norm <= tol`. scipy's hybr can report `success`
+through its xtol criterion WITHOUT moving from the start point: its trust region collapses when
+the start is an exact equilibrium with most components exactly 0. The function then returns
+`converged=True` with a residual far above `tol`, and raises nothing even with
+`allow_failure=False`.
+- Seen in the flume single-buoy redesign (`studies/flume-mooring/single_buoy_redesign.py`):
+  0.214 N residual under an applied drift, state returned unchanged.
+- The default Tikhonov term (1e-8 · max diag C) also stalls hybr on the same problem (the
+  lone buoy's near-empty yaw row couples to roll through the small-angle arm), while
+  `regularization=0` converges.
+
+**Why latent / visibility.** Callers trust `converged`. A false success returns the START
+state, which looks like a plausible equilibrium. Visible only through an explicit residual
+check, which no caller makes.
+
+**Scope.**
+- A failing unit test.
+- Gate `converged` on `residual_norm <= tol`.
+- A retry from a perturbed or linear-predictor start before raising.
+- Audit the callers' recorded equilibria (`build_system(solve_equilibrium=True)`, study
+  `build_single`).
+
+**Estimated effort.** ~1 small PR plus the audit.
+
+**Blocks.** Trust in any static equilibrium that is not residual-checked.
+
+**Status.** Open. Surfaced 2026-09-24 (flume Phase C2). The study works around it (linear
+predictor + explicit residual check ≤ 1e-4 N). Task chip raised.
+
+---
+
+### STATE-FORCE-LAG-NEGATIVE-DAMPING — the one-step-lagged state force adds −ω·dt/2 of damping
+
+**Mechanism.** `integrate_cummins` evaluates the state force (connectors, catenaries, drag) at
+the PREVIOUS step's state: the explicit-mu convention. For a stiff state-force spring the lag
+acts as negative damping of about ζ = −ω·dt/2. Physical damping normally dwarfs it.
+
+**Why latent / visibility.** A mode whose restoring comes from a state force, and which has no
+physical damping, grows. The lone flume buoy's yaw on a stiff radial collar is one:
+- K = 1.97 N·m/rad, Izz = 0.063 kg·m², so ω = 5.6 rad/s;
+- the spar's Morison yaw drag is ≈ 0.
+
+From 0.1° the yaw grows at exactly ζ = −0.028 per cycle (= −ω·dt/2 at dt = 0.01 s) until the
+catenary geometry fails (`studies/flume-mooring/tank_rows/decay_buoy_yaw_radial0.12_a0.00175.json`).
+Surge, sway and the articulated yaw modes (ζ_num ≤ 0.3 %, physical 3–8 %) are unaffected.
+
+**Scope.**
+- Quantify it against dt.
+- Consider an implicit or predictor-corrector treatment of stiff state forces, or a documented
+  stability limit (ω·dt/2 below the physical ζ) checked at setup.
+
+**Estimated effort.** ~1 PR for the check; longer for an implicit treatment.
+
+**Blocks.** Free decays of lightly damped, state-force-restored modes (stiff mooring springs on
+small inertias).
+
+**Status.** Open. Surfaced 2026-09-24 (flume Phase C4).
+
+---
+
+### LINEARSPRING-ANCHOR-B-GLOBAL-IGNORED — the deck's `anchor_b_global` has no effect
+
+**Mechanism.** `LinearSpring.anchor_b_global` (`floatsim/io/deck.py`) is never read.
+`driver._materialise_linear_spring` builds the spring on displacement with zero rest offset, so
+an earth anchor's position never enters the force. That behaviour is correct for a zero-rest-length
+linear spring about the reference state, and unlike catenaries (fixed in C2, `109699d`) it has
+no frame defect. But a deck value the user sets is silently ignored.
+
+**Scope.** Gate it: raise, or warn, when `anchor_b_global` is set and disagrees with the
+reference-state attachment point, or document the field as informational.
+
+**Estimated effort.** Small.
+
+**Blocks.** Nothing today (examples/two_body_semisub_barge.yml sets it).
+
+**Status.** Open. Surfaced 2026-09-24 (flume Phase C2 audit).
+
+---
+
+### FLUME-BEM-12GON-WATERPLANE — the flume/OSU coupled BEM mesh's waterplane is 4.5 % small (study data)
+
+**Mechanism.** `studies/platform-12buoy/flume-wall-effect/coupled_bem_osu.py` meshes each spar
+and plate with `NT = 12` panels round ("coarse; wall ratio is mesh-robust"). The 12-sided
+waterline holds 12·sin 30°/2π = 0.9549 of the circle's area, so the databases built from it
+(flume-wall-effect, flume-mooring `single_osu_open`, cluster, platform) carry
+C33 = 186.26 N/m, against ρgπD²/4 = 195.05 N/m.
+
+**Why latent / visibility.** It was meant for the wall-effect RATIO, which is mesh-robust, but
+the same databases give the flume-mooring study absolute heave periods. Those are ~2 % long
+(√(195.05/186.26) = 1.023).
+
+**Scope.** Rebuild with a finer waterline (NT ≥ 36), or override C33 (and the waterplane part of
+C44/C55) with the analytic value, then re-derive the flume heave periods.
+
+**Estimated effort.** A BEM rebuild (hours of compute) plus reruns.
+
+**Blocks.** Absolute heave-period claims from these databases. The flume-mooring fine band
+spans the shift either way.
+
+**Status.** Open. Surfaced 2026-09-24 (flume Phase C1).
 
 ---
 
