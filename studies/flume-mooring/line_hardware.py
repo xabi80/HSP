@@ -73,9 +73,23 @@ def _drift(H: float, T: float) -> float:
     return float(sum(ms.drift_per_spar(H, T, steep=ms.STEEP_MATRIX)[:2]))
 
 
-def _setup(article: str, opts: dict | None = None):  # type: ignore[no-untyped-def]
-    """(deck, calm equilibrium, per-line closures, per-line k and body) of the moored design."""
-    opts = opts or rb.mooring_opts(article)
+def design_opts(article: str, t0_scale: float = 1.0) -> dict:
+    """The design mooring options, with every line's pretension scaled by ``t0_scale`` (k kept)."""
+    opts = rb.mooring_opts(article)
+    if t0_scale != 1.0:
+        base = opts.get("T0", fd.line_design(article, N_SPAR[article])["T0"])
+        opts["T0"] = t0_scale * base
+    return opts
+
+
+def _setup(article: str, opts: dict | None = None, t0_scale: float = 1.0):  # type: ignore[no-untyped-def]
+    """(deck, calm equilibrium, per-line closures, lines) of the moored design.
+
+    With ``t0_scale`` the lines carry a scaled pretension (same k). The articulated articles then
+    reuse the cached settle of the unscaled design: pin-level lines act through the pins, so
+    pretension makes no moment, and the settle is accepted only if FloatSim's joint-projected
+    static residual with the SCALED lines stays within its equilibrium tolerance (1 N)."""
+    opts = opts or design_opts(article, t0_scale)
     dk, lines = fd.moored(fd.deck(article), article, **opts)
     if article == "buoy":
         s = fd.build_single(dk, fd.hdbs("buoy")["bem_databases"]["buoy"], True)
@@ -84,6 +98,12 @@ def _setup(article: str, opts: dict | None = None):  # type: ignore[no-untyped-d
         xi_eq = fd.moored_equilibrium(
             article, tag=f"{article}:pin_level_w{rb.W_AIR:g}", **rb.mooring_opts(article)
         )
+        if t0_scale != 1.0:
+            s = fsd.build_system(fd.with_positions(dk, xi_eq), dt=fd.DT, t_max_kernel=fd.T_KERNEL,
+                                 solve_equilibrium=False, **fd.hdbs(article))
+            res = fd.joint_residual(s, xi_eq)
+            if res > fsd._EQUILIBRIUM_TOL_N:
+                raise RuntimeError(f"{article}: settle not valid with T0 x{t0_scale}: {res:.3f} N")
     return dk, xi_eq, tp._line_forces(dk), lines
 
 
@@ -132,9 +152,10 @@ def _pull_offset(article: str, F_total: float) -> float:
 def extreme_run(args: tuple) -> dict:
     """One extreme case. ``drift=False`` is D0: no applied drift, from the calm equilibrium --
     the mean offset is then FloatSim's own (wave-relative drag on the moving body)."""
-    article, H, T, drift = args
+    article, H, T, drift = args[:4]
+    t0_scale = args[4] if len(args) > 4 else 1.0
     t0 = time.perf_counter()
-    dk, xi_eq, _lf, _lines = _setup(article)
+    dk, xi_eq, _lf, _lines = _setup(article, t0_scale=t0_scale)
     F_spar = _drift(H, T) if drift else 0.0
     xi_start = (
         tp.rigid(dk, xi_eq, "surge", _pull_offset(article, N_SPAR[article] * F_spar))
@@ -183,11 +204,16 @@ def extreme_run(args: tuple) -> dict:
         nm: float(np.abs(r.xi[:, j::6] - xi_eq[j::6]).max())
         for nm, j in (("sway", 1), ("roll", 3), ("yaw", 5))
     }
+    spars = [b for b, bd in enumerate(dk.bodies) if bd.hydro_body_label or bd.hydro_database]
+    tilt = max(float(np.degrees(np.hypot(r.xi[keep, 6 * b + 3], r.xi[keep, 6 * b + 4])).max())
+               for b in spars)
     row = {
         "article": article,
         "H": H,
         "T": T,
         "applied_drift": drift,
+        "t0_scale": t0_scale,
+        "tilt_max_deg": tilt,
         "drift_N_per_spar": F_spar,
         "T0_N": T0,
         "k_N_per_m": k.tolist(),
@@ -208,7 +234,8 @@ def extreme_run(args: tuple) -> dict:
         f"{max(row['prestretch_m']):.2f}), T {min(row['T_min_N']):.2f}-{max(row['T_max_N']):.2f}"
         f" N (min/T0 {row['T_min_ratio']:.2f}), surge {row['surge_min_m']:.3f}.."
         f"{row['surge_max_m']:.3f} m (mean {row['mean_offset_m']:.3f}), clr "
-        f"{row['clearance_local_surface_min_m']:+.3f}, yaw {np.degrees(anti['yaw']):.1e} deg "
+        f"{row['clearance_local_surface_min_m']:+.3f}, tilt {tilt:.1f} deg, yaw "
+        f"{np.degrees(anti['yaw']):.1e} deg (T0 x{t0_scale}) "
         f"[{row['wall_min']:.1f} min]",
         flush=True,
     )
