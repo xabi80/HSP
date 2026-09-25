@@ -1,5 +1,8 @@
 # large, regeneratable BEM databases (see README reproduce steps)
 *.nc
+# ...except the one the flume-mooring design rests on (studies/flume-mooring/DESIGN-BASIS.md
+# §C8, decision 5): committed so the published tank predictions are reproducible as-is
+!coupled_osu_open_rot45_psd.nc
 
 # scratch run logs
 *.log

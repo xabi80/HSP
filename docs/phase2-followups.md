@@ -75,8 +75,10 @@ scope to M4 + part of M6.
 **Blocks.** Scenario B (12-body articulated). Any moderate-rotation
 research case.
 
-**Status.** Open. Not currently scheduled. Audit-surfaced
-2026-05-11.
+**Status.** Open. Audit-surfaced 2026-05-11. **Proposed as the next FloatSim milestone
+(2026-09-24, flume-mooring decision 7).** The flume's resonant pitch/tilt exceeds 0.1 rad even at
+the smallest operational wave (9.6° at H = 0.04 m), so LEVEL2 is REQUIRED for resonant
+predictions. Not started; it waits for Xabier.
 
 **Flume-mooring evidence (2026-09-23): the Item-2 gate is effectively
 tripping.** The flume station-keeping study
@@ -2275,6 +2277,13 @@ Surge, sway and the articulated yaw modes (ζ_num ≤ 0.3 %, physical 3–8 %) a
 small inertias).
 
 **Status.** Open. Surfaced 2026-09-24 (flume Phase C4).
+
+**Phase D consequence (2026-09-24, flume `buoy_yaw_collar.py`).** The decided r = 0.2 m collar
+(K = 3.34 N·m/rad, yaw 0.86 s) grows round-off yaw at K·dt/(2I) = 0.265 s⁻¹ at dt = 0.01 s.
+- Measured: 0.262 s⁻¹ at dt = 0.01 s and 0.131 s⁻¹ at dt = 0.005 s, halving with dt.
+- An unseeded symmetric case goes from ~1e-17 to ~5e-11 rad in 60 s and would reach ~0.4 rad in a
+  146 s case.
+- The buoy therefore runs Phase D at dt = 0.005 s (operational) and 0.0025 s (extreme).
 
 ---
 

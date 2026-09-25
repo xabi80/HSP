@@ -52,11 +52,19 @@ W_AIR = 0.3
 STEP_FRACTION = 0.33
 
 
-def mooring_opts(article: str) -> dict:
+BUOY_COLLAR = {"collar": "radial", "collar_r": 0.2}   # decided 2026-09-24 (yaw ~0.86 s)
+
+
+def mooring_opts(article: str, collar: bool = True) -> dict:
+    """The design mooring: pin level, 0.3 N/m; the single buoy at its redesigned T0 and, unless
+    ``collar=False``, on the decided r = 0.2 m radial collar. (The committed bandwidth_rows were
+    computed on the spar axis, before the collar decision; buoy_yaw_collar.py compares.)"""
     opts = {**db._pin_opts(W_AIR)}
     if article == "buoy":
         sel = json.loads((HERE / "single_buoy_redesign.json").read_text())["notes"]
         opts["T0"] = sel["T0_selected"]
+        if collar:
+            opts.update(BUOY_COLLAR)
     return opts
 
 

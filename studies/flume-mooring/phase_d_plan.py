@@ -8,8 +8,17 @@ Rules (DESIGN-BASIS.md, confirmed 2026-09-24):
   * operational H = 0.04 / 0.08 / 0.12 m at every period; extreme H = 0.2 / 0.35 / 0.5 m at a
     subset (loads), dropped where H/lambda > 0.08 (finite depth 2.7 m) or where the recorded drift
     bound tilts the articles past the 3 deg mean-tilt criterion (flagged, not run);
-  * criterion 6 reference (restrained free article, 60 s) at every operational case, the 120 s
-    insensitivity check on a subset; moored decays (heave, tilt; surge / sway / yaw are item 4).
+  * criterion 6 reference (restrained free article, 60 s) at H = 0.04 and 0.12 m only (they
+    bracket the operational band; decision 6), the 120 s insensitivity check on a subset; moored
+    decays (heave, tilt; surge / sway / yaw are item 4); D0 (FloatSim's own mean force, no
+    applied drift). Every static solve is residual-checked (floatsim_decks
+    .checked_static_equilibrium; tracker STATIC-SOLVE-FALSE-CONVERGENCE);
+  * the collared single buoy runs at dt = 0.005 s (operational) and 0.0025 s (extreme): its stiff
+    yaw grows round-off at K dt / (2 I) through FloatSim's lagged state force
+    (buoy_yaw_collar.py);
+  * SMALL-ANGLE VALIDITY (decision 7): every case in the fine band is flagged "indicative"
+    (resonant tilt > 0.1 rad at every operational H, line loads included), and each case's output
+    flags max |tilt| > 0.1 rad.
 
 Cost: FloatSim wall minutes per case measured in Phase C (bandwidth_rows/: the same harness and
 settle, 17 cases in parallel on this 32-core machine), scaled by simulated duration; the total is
@@ -34,6 +43,12 @@ import mooring_sizing as ms
 OUT = HERE / "phase_d_plan.json"
 SLOSH = (1.25, 1.53, 2.19)
 H_OP, H_EX = (0.04, 0.08, 0.12), (0.2, 0.35, 0.5)
+H_REF = (0.04, 0.12)                           # criterion-6 references (decision 6)
+LEVEL2_RAD = 0.1
+# buoy cost at its smaller time steps, measured against the dt = 0.01 s rows (item-1 runs:
+# 0.7 vs 0.3 min; line_hardware extreme runs at 0.0025 s)
+BUOY_DT_FACTOR = {"operational": 2.3, "extreme": 3.6}   # 5.0 min per 234 s at 0.0025 s vs
+#                                                         0.0059 min/s at 0.01 s
 K_TILT = {"buoy": 70.771, "cluster": 75.36, "platform": 81.45}   # N m/rad (record, §B)
 ARM_PIN = 0.717                                                  # m, spar SWL to pin
 TILT_MAX = 3.0
@@ -82,11 +97,13 @@ def main() -> None:
     cases, flagged = [], []
     for art in ARTICLES:
         for T in allp:
+            near = T in fine
             for H in H_OP:
                 cases.append({"article": art, "kind": "operational", "H": H, "T": T,
-                              "sim_s": RAMP + SETTLE_OP + KEEP * T})
-                cases.append({"article": art, "kind": "reference_60s", "H": H, "T": T,
-                              "sim_s": RAMP + SETTLE_OP + KEEP * T})
+                              "sim_s": RAMP + SETTLE_OP + KEEP * T, "indicative": near})
+                if H in H_REF:
+                    cases.append({"article": art, "kind": "reference_60s", "H": H, "T": T,
+                                  "sim_s": RAMP + SETTLE_OP + KEEP * T, "indicative": near})
         assert set(EXTREME_T) <= set(allp)
         for T in EXTREME_T:
             for H in H_EX:
@@ -98,7 +115,7 @@ def main() -> None:
                        if tilt > TILT_MAX else None)
                 row = {"article": art, "kind": "extreme", "H": H, "T": T, "H_over_lambda": s,
                        "drift_N_per_spar": F, "mean_tilt_deg": tilt,
-                       "sim_s": RAMP + SETTLE_EX + 30.0 + KEEP * T}
+                       "sim_s": RAMP + SETTLE_EX + 30.0 + KEEP * T, "indicative": T in fine}
                 (flagged if why else cases).append({**row, **({"flag": why} if why else {})})
         for T in (2.55, 3.0):                       # criterion-6 insensitivity check (120 s)
             cases.append({"article": art, "kind": "reference_120s", "H": 0.08, "T": T,
@@ -110,12 +127,18 @@ def main() -> None:
                   "sim_s": RAMP + SETTLE_OP + KEEP * 2.65})
     for c in cases:
         c["wall_min"] = c["sim_s"] * rate[c["article"]]
+        if c["article"] == "buoy":
+            c["wall_min"] *= BUOY_DT_FACTOR["extreme" if c["kind"] == "extreme" else "operational"]
+            c["dt_s"] = 0.0025 if c["kind"] == "extreme" else 0.005
     summary = {}
     for art in ARTICLES:
         cs = [c for c in cases if c["article"] == art]
         tot = sum(c["wall_min"] for c in cs)
         summary[art] = {"n": len(cs), "case_min": tot, "wall_h_at_parallel": tot / PARALLEL / 60}
+    n_ind = sum(1 for c in cases if c.get("indicative"))
+    print(f"{n_ind} of {len(cases)} cases flagged indicative (fine band, LEVEL2)")
     res = {"step_s": step, "fine_band_s": band, "periods_s": allp, "fine_periods_s": fine,
+           "level2_threshold_rad": LEVEL2_RAD, "indicative_cases": n_ind,
            "rate_min_per_sim_s": rate, "summary": summary, "cases": cases, "flagged": flagged}
     OUT.write_text(json.dumps(res, indent=1, default=float))
     print(f"step {step} s, fine band {band[0]:.3f}-{band[1]:.3f} s")

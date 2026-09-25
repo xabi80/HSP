@@ -1,9 +1,6 @@
 # Flume mooring design: basis, confirmed criteria and Phase C results
 
-**Status (2026-09-24): Phases A–C done; Phase D (verification runs) NOT run.** Xabier confirmed
-the design intent, criteria and test matrix on the Phase A/B report (`cba1921`). Phase C (FloatSim
-fixes C1 and C2, record fixes, single-buoy redesign, resonance bandwidth, tank predictions) is
-below. Phase D waits for Xabier on the case list (§D) and the single-buoy yaw option (§C2).
+**Status (2026-09-24): Phases A–C done, including Phase C round 2 (Xabier's decisions 1–7 on `6c93a80`, §C5–C9); Phase D (verification runs) NOT run.** It waits for Xabier on the BEM regeneration (§C8), the line element and the drift double counting (§C7), and the other open decisions at the end of Phase D.
 
 **Goal:** design the station-keeping mooring for the actual OSU Large Wave Flume (HWRL) test. It
 is not an OrcaFlex comparison.
@@ -21,11 +18,12 @@ must list them on its first page.**
 | # | Assumption | Value the design uses | If it proves false |
 |---|---|---|---|
 | F1 | **Anchors can be fixed at the pin plane, 0.72 m above still water**, at the walls ±5.0 m up/downstream, y = ±1.83 m | anchor z = +0.717 m | The pin-level design depends on it. With lower anchors the pin-level lines slope down (0.72 m over the ~5.3 m chord, ~8°), into the splash zone near the walls (criterion 5 fails: the dry-weight line is wave-loaded), and pull down on the pins. The attachment then has to drop towards the waterline, and **the pretension moment about the pins returns: calm-water tilt 4.9° (cluster) and 9.1° (platform)** at the old SWL attachment (FloatSim, `attachment_options.json`, `static:*:swl_spar`), against criterion 1's 0.1°. |
-| F2 | Anchor load rating | design-state load per anchor, before the safety factor: 4.1 N (buoy line, record; the redesign changes it, §C2), 16.5 N (cluster), **66.1 N per platform anchor** (2-leg bridle, 33 N per leg). WLL ≥ 3× that: **≥ 200 N per platform anchor** | Lighter anchors need a softer or lower-pretension mooring (longer surge period, more offset). Phase D replaces these record values with FloatSim maxima. |
+| F2 | Anchor load rating | design-state load per anchor, before the safety factor: 4.1 N (buoy line, record; the redesign changes it, §C2), 16.5 N (cluster), **66.1 N per platform anchor** (2-leg bridle, 33 N per leg). WLL ≥ 3× that: **≥ 200 N per platform anchor** | Lighter anchors need a softer or lower-pretension mooring (longer surge period, more offset). Phase D replaces these record values with FloatSim maxima. The round-2 extreme runs (§C7) reach 41.8 N per platform leg, so ~84 N per anchor and WLL ≥ 250 N (indicative). |
 | F3 | Maximum wave height per period, and the steepness limit | **H/λ ≤ 0.08** (finite depth 2.7 m): H = 0.5 m needs T ≥ 2.01 s, 0.35 m needs T ≥ 1.675 s, 0.2 m needs T ≥ 1.266 s. The wavemaker's own H(T) envelope is unknown | Cases above the wavemaker's envelope drop out of the matrix; the drift bound and loads fall with them. |
 | F4 | Water depth | 2.7 m ("storm-wave max"; `mooring_sizing.H_FLUME`) | The drift bound uses coth(kh); a deeper flume lowers it at long periods. (FloatSim's runs are deep-water throughout: BEM and wave kinematics.) |
 | F5 | Test-section position relative to the wavemaker and the beach | Not in the record. The FloatSim cases settle for 60–135 s of regular waves; the tank needs a clean incident-wave window at least that long before beach reflections arrive, with the article on the flume centreline (the sidewall analysis assumes it) | Shorter clean windows shorten the settle, which matters most near the lightly damped tilt resonance (§C3). |
 | F6 | Tracking field of view | Surge from about −0.3 m (upstream) to **+1.0 m** (downstream; criterion 4: mean offset + dynamic ≤ 1.0 m), sway ±0.1 m, plus the article's footprint (platform 2.06 m wide at 45°) | A smaller field of view needs a stiffer mooring (shorter surge period) or a lower H in the extreme band. |
+| F7 | **Standard soft-mooring hardware available at HWRL** | Elastic cord (§C7):<br>• secant stiffness within −13 / +30 % of 2.0 / 8.3 / 16.6 N/m over the working strain;<br>• rated elongation ≥ 131 % / 85 % / 100 % if the cord is the whole unstretched line (3.1 / 3.9 / 3.1–3.3 m);<br>• ~0.3 N/m dry weight.<br>Wall anchors and fittings for 7 / 22 / 84 N design loads (platform: per 2-leg anchor, extreme runs). | Without such a cord, the lines need farther anchors (longer lines, lower strain) or a different stiffness element; the design changes. |
 
 Also assumed (hardware, not facility): line dry weight 0.3 N/m; linear springs with a working
 stroke ≥ 1.25 × the maximum stretch.
@@ -83,6 +81,35 @@ The two height ranges in the record are two bands, not a conflict:
   T ≥ 1.266 s (the whole list).
 - Moored free decays: heave and pitch/tilt, plus surge, sway and yaw, and a static pull test (FloatSim
   predictions in §C4).
+
+---
+
+## Confirmed decisions on the Phase C report (Xabier, 2026-09-24, on `6c93a80`)
+
+1. **Single-buoy yaw: a stiff radial collar at r = 0.2 m** (yaw 0.86 s). The swivel is rejected:
+   free yaw diverges in FloatSim near resonance, and a fixed heading helps tracking and keeps
+   body-frame pitch and roll unmixed. Verified in §C5.
+2. **Cluster and platform yaw at 11.0 s and 12.5 s: accepted.** Criterion 2 is refined below.
+   Condition (a), mirror symmetry, is verified in §C6. Condition (b) is a Phase D output.
+3. **H = 0.5 m from T = 2.35 s: confirmed.** Drift is 4.87 N/spar, inside the 5.22 N sizing, and
+   the tilt is below 3°.
+4. **Line hardware** (§C7): the soft-element choice is Xabier's.
+5. **Flume BEM waterline** (§C8): regenerate if any resonance moves by more than half a fine step
+   (0.025 s), reporting the cost first. The BEM files are committed.
+6. **Phase D scope with the saving:**
+   - criterion-6 free references at H = 0.04 and 0.12 m only;
+   - D0 kept;
+   - an explicit residual check on every static solve (`floatsim_decks.checked_static_equilibrium`).
+7. **Small-angle validity** is recorded plainly (§C9). LEVEL2 is proposed as the next FloatSim
+   milestone; it is not started.
+
+**Criterion 2, refined.** The ≥ 4 × T_wave,max separation applies to the modes the waves DRIVE.
+At heading 0, an article that is mirror-symmetric about the wave axis has no first-order or mean
+wave forcing in yaw, sway-antisymmetric roll or sway. Its yaw period may then sit below 14 s,
+provided:
+- (a) the symmetry holds on FloatSim's own assembled system (§C6);
+- (b) every Phase D case reports its maximum yaw, and flags any case where it is not small. The
+  threshold is yaw > 0.5° or > 5 % of the case's maximum pitch.
 
 ---
 
@@ -329,7 +356,293 @@ makes no moment about the pins.
 
 ---
 
+## Phase C, round 2 — decisions 1–7 (`buoy_yaw_collar.py`, `symmetry_check.py`, `line_hardware.py`, `bem_waterline.py`)
+
+### C5. Single-buoy yaw collar, r = 0.12 m vs the decided r = 0.2 m (decision 1)
+
+**Statics** (FloatSim, T0 = 4 N):
+
+| | r = 0.12 m | **r = 0.2 m** |
+|---|---|---|
+| yaw stiffness / period | 1.972 N·m/rad / 1.123 s | **3.337 N·m/rad / 0.863 s** |
+| surge / sway / heave | 14.9 / 21.1 / 2.540 s | 14.9 / 21.0 / 2.539 s |
+| H = 0.5 m, conservative drift (6.37 N): clearance to 0.6H, T_min/T0, T_max, stretch | +0.164 m, 0.51, 6.15 N, 3.06 m | **+0.177 m, 0.51, 6.15 N, 3.06 m** |
+| H = 0.5 m, matrix (from 2.35 s, 4.87 N) | +0.192 m, 0.59, 5.76 N, 2.87 m | **+0.203 m, 0.59, 5.76 N, 2.87 m** |
+
+- Every static clearance holds at r = 0.2 m. The lines leave the collar outward, 0.12 m clear of
+  the spar surface.
+- Dynamically (§C7, H = 0.5 m, T = 2.65 s) the lowest line point stays **0.21 m** above the local
+  incident surface.
+
+**Yaw response near the moored pitch resonance** (T = 2.45 / 2.55 / 2.65 s; H = 0.04 and 0.12 m):
+- **Unseeded (heading 0):** yaw is never forced. Only round-off appears: ≤ 1e-13 rad at r = 0.12 m,
+  ~5e-11 rad at r = 0.2 m after 60 s.
+- **Seeded (1e-8 rad yaw and roll):** the growth rate equals FloatSim's numerical K·dt/(2I) to
+  within 3 %.
+  - The physical part is σ = −0.03 … +0.007 s⁻¹ (Richardson over dt = 0.01 / 0.005 s), an
+    equivalent |ζ| ≤ 0.1 %.
+  - So pitch does not pump yaw at either radius at H ≤ 0.12 m. The largest value is r = 0.2 m at
+    H = 0.12 m, T = 2.55 s (pitch 16.5°, already beyond LEVEL1), where any real yaw damping of
+    0.1 % cancels it.
+- **At H = 0.5 m, T = 2.65 s:**
+  - **r = 0.12 m goes unstable**: yaw reaches 7° within 120 s, growing at 0.33 s⁻¹ against its
+    numerical 0.078 s⁻¹.
+  - **r = 0.2 m does not**: after dt extrapolation, ~0.007 s⁻¹ above the numerical rate.
+  - **The decision is supported.**
+  - *Itemised note on the reasoning.* A heading-0 symmetric buoy's yaw cannot be forced by pitch at
+    any order; it can only grow parametrically. For pitch-modulated coefficients the principal
+    parametric zones are T_yaw = T_p and 2T_p (2.55 and 5.1 s); T_p/2 (≈ 1.28–1.33 s) is a
+    secondary zone. FloatSim shows that zone widening enough at H = 0.5 m to catch 1.12 s but not
+    0.86 s, so the conclusion matches Xabier's.
+- **Numerical consequence for Phase D.** The collar's yaw restoring comes through FloatSim's
+  one-step-lagged state force, and the spar's yaw drag is ≈ 0, so round-off grows at
+  K·dt/(2I) = 0.265 s⁻¹ at dt = 0.01 s. A 146 s case would reach ~0.4 rad.
+  - The buoy runs at **dt = 0.005 s** (operational; ≤ 1e-4 rad) and **0.0025 s** (extreme 234 s
+    runs); measured cost ×2.3 and ×3.6.
+  - Tracker `STATE-FORCE-LAG-NEGATIVE-DAMPING`.
+- ⚠ **At H = 0.5 m, T = 2.35 s the buoy diverges regardless of dt** (0.26–0.31 s⁻¹ at dt = 0.005 →
+  0.00125 s, converging to ~0.22 s⁻¹ of model growth), with or without drift.
+  - Its pitch there is **28°**. The growth falls with H: ~0.07 s⁻¹ at H = 0.35 m (24°), ~0.01 s⁻¹ at
+    0.2 m (18°).
+  - This is the small-angle kinematics beyond validity (§C9). Those extreme buoy cases are flagged
+    as needing LEVEL2.
+
+### C6. Mirror symmetry about the wave axis (decision 2, condition (a))
+
+These are FloatSim's own assembled operators under the mirror y → −y (body permutation; DOF signs
++, −, +, −, +, −):
+
+| relative residual | buoy (collar 0.2 m) | cluster (45°) | platform (45°) |
+|---|---|---|---|
+| M + A∞ | 9e-17 | 5e-16 | 2e-15 |
+| C | 6e-18 | 6e-18 | 6e-18 |
+| radiation kernel K(t) | 1e-13 | **1.0e-5** | **1.5e-5** |
+| heading-0 excitation | 7e-16 | 4e-16 | 1e-15 |
+| state force (catenary + wave-relative drag) | 3e-16 | 3e-15 | 1e-15 |
+| joint-projector | — | 1e-15 | 2e-15 |
+
+- **All three articles are mirror-symmetric, including the platform at its 45° rotation.** The one
+  exception is Capytaine's coupled radiation solution, which is symmetric to 1e-5.
+- **Heading-0 runs at the tilt resonance** (H = 0.04 m, 120 s after the ramp) show antisymmetric
+  motion that is **steady, not growing**. This is a forced response to that 1e-5, amplified at
+  resonance:
+
+  | | roll (per 30 s window) | sway | yaw | pitch |
+  |---|---|---|---|---|
+  | cluster | 0.041–0.042° | 1.2 mm | 0.0011° | 9.8° |
+  | platform | 0.084–0.085° | 2.3 mm | 0.021° | 9.7° |
+  | buoy | round-off only | | | |
+
+- Proposed "not small" threshold for Phase D's per-case yaw flag: yaw > 0.5° or > 5 % of the
+  case's maximum pitch. The extreme runs reach 0.08–0.40° of yaw.
+
+### C7. Soft-line hardware (decision 4; `line_hardware.py`)
+
+**Required stroke.** FloatSim extreme runs at H = 0.5 m, T = 2.35 and 2.65 s:
+- wave-relative drag;
+- the drift bound applied in-run ("drift"), or not at all (D0, FloatSim's own mean force only);
+- the buoy on its collar at dt = 0.0025 s.
+
+Clearance is the lowest line point above the LOCAL incident surface (21 points per line along
+FloatSim's catenary profile).
+
+| | unstretched L0 | pre-stretch T0/k | static design max (matrix) | **dynamic max, drift** (2.35 / 2.65 s) | dynamic max, D0 | stroke needed (× 1.25) | max strain if the cord is all of L0 |
+|---|---|---|---|---|---|---|---|
+| buoy (k 2.009, T0 4.0) | 3.13 m | 2.01 m | 2.87 m | diverged / **3.28 m** | diverged / 2.90 m | **4.1 m** | **105 %** |
+| cluster (k 8.30, T0 9.01) | 3.86 m | 1.09 m | 1.94 m | **2.63** / 2.49 m | 2.13 / 2.08 m | **3.3 m** | 68 % |
+| platform leg (k 16.6, T0 18.0) | 3.14 / 3.31 m | 1.08 m | 1.94 m | **2.52** / 2.49 m | 1.97 / 2.08 m | **3.2 m** | 80 % |
+
+"Diverged" is the buoy at T = 2.35 s: the small-angle instability of §C5.
+
+**The same runs against the other criteria.** Indicative (§C9): H = 0.5 m at resonance is far
+beyond LEVEL1.
+
+| | T_min/T0 (≥ 0.15) | mean offset (surge range) | clearance to local surface (≥ 0.10 m) | max line tension |
+|---|---|---|---|---|
+| buoy 2.65 s, drift / D0 | 0.42 / 0.58 | 0.71 m (0.57–0.86) / 0.11 m | +0.21 / +0.19 m | 6.6 / 5.8 N |
+| cluster 2.35 s, drift / D0 | **0.09** / 0.17 | **1.28 m (1.14–1.39)** / 0.45 m | **−0.13** / +0.26 m | 21.8 / 17.7 N |
+| cluster 2.65 s, drift / D0 | **0.10** / 0.19 | 0.84 m (0.72–0.95) / 0.21 m | **+0.035** / +0.26 m | 20.7 / 17.3 N |
+| platform 2.35 s, drift / D0 | **0.04** / 0.20 | **1.16 m (1.02–1.29)** / 0.33 m | **+0.06** / +0.35 m | 41.8 / 32.8 N per leg |
+| platform 2.65 s, drift / D0 | **0.04** / **0.11** | 0.84 m (0.69–0.98) / 0.22 m | +0.14 / +0.34 m | 41.4 / 34.5 N per leg |
+
+- ⚠ **D0 shows the in-run drift is double counted.** FloatSim's own mean force (wave-relative drag
+  on the MOVING body, a different mechanism from the fixed-body bound) is a large fraction of the
+  bound:
+
+  | | offset without the applied bound | as a fraction of the bound |
+  |---|---|---|
+  | buoy | 0.11 m | ~20 % |
+  | cluster | 0.21–0.45 m | 38–70 % |
+  | platform | 0.22–0.33 m | 42–53 % |
+
+  Applying the bound on top therefore roughly doubles the offset. With it, the cluster and
+  platform at H = 0.5 m, T = 2.35 s leave the field of view (surge to 1.29–1.39 m), and slack
+  (0.04–0.10 T0) and clearance fail. Without it, they pass everything but the platform's slack at
+  2.65 s (0.11). **Decision needed** (below): keep the sum as a conservative envelope, or apply
+  only the part of the bound FloatSim does not already carry.
+- ⚠ **Dynamic slack.** The static design state predicted T_min/T0 ≥ 0.22. The dynamic runs reach
+  0.04–0.19 at resonance, because the tilt moves the pins. If confirmed beyond LEVEL1, the cluster
+  and platform need more pretension, as the buoy got in §C2.
+- Anchor load: the platform leg reaches 41.8 N, so ~84 N per 2-leg anchor (record: 66 N), which
+  gives WLL ≥ 250 N (F2).
+
+**(a) Elastic shock cord.**
+- *In FloatSim:* the catenary represents it only as a linear elastic line of axial stiffness k
+  (EA = k·L0, uniform weight). FloatSim represents neither the cord's nonlinearity (stiff start, a
+  softer plateau, stiffening near the rated elongation) nor its hysteresis (the catenary is
+  quasi-static).
+- *Nonlinearity, bounded* by FloatSim runs at the secant stiffness × 0.7 / 1.0 / 1.3 at the same
+  T0:
+
+  | secant k | surge period | H = 0.5 m design offset | max stretch | T_min/T0 at H = 0.5 m | clearance at H = 0.5 m |
+  |---|---|---|---|---|---|
+  | × 0.7 | 19.1–19.4 s | **1.14–1.17 m (outside the field of view)** | 2.66–3.96 m | 0.29–0.63 | +0.24–0.36 m |
+  | × 1.0 | 16.1–16.4 s | 0.88–0.91 m | 1.94–2.87 m | 0.22–0.59 | +0.16–0.32 m |
+  | × 1.3 | 14.1–14.6 s | 0.74–0.77 m | 1.55–2.27 m | 0.17–0.56 | +0.10–0.29 m |
+
+  **The cord's secant stiffness over its working strain must stay within −13 % / +30 % of k.**
+  Below −13 % the extreme offset leaves the field of view; above +30 % surge falls to 14 s and the
+  slack and clearance margins vanish.
+- *Hysteresis* is not represented. It adds damping to the slow modes, so tank decays will settle
+  faster than predicted, and it offsets the mean position by half the loading/unloading gap, which
+  the tank pull test measures.
+
+**(b) Pulley + counterweight (constant tension W = T0).**
+- *In FloatSim: not representable.* The catenary's unstretched length L0 = chord − T0/k must stay
+  positive, so its axial stiffness cannot fall below T0/chord (the zero-length-spring limit), and
+  FloatSim has no constant-tension connector. Screened in closed form (exact for the ideal
+  element), with FloatSim's article masses:
+
+  | | surge / sway stiffness | surge / sway period | mean offset + H/2 at H = 0.04 / 0.08 / 0.12 / 0.2 / 0.35 / 0.5 m |
+  |---|---|---|---|
+  | buoy | 0.37 / 2.75 N/m | 75 / 26 s | 0.05 / 0.23 / 0.63 / **2.04** / **3.46** / **4.36** m |
+  | cluster | 0.70 / 6.58 N/m | 108 / 33 s | 0.08 / 0.43 / **1.18** / **2.92** / **4.19** / **5.10** m |
+  | platform | 2.86 / 30.6 N/m | 107 / 30 s | 0.08 / 0.42 / **1.13** / **2.69** / **3.75** / **4.47** m |
+
+  All restoring is geometric: ~20 × softer in surge than the springs. **It fails criterion 4 from
+  H = 0.12 m** (cluster, platform) or 0.2 m (buoy), and the extreme band would push the articles
+  3–5 m. Its 75–108 s surge mode would also take several minutes of clean waves to settle (F5).
+  Its merits (no slack, constant sag, no stroke) do not rescue it.
+
+**Recommendation (the hardware choice is Xabier's): elastic cord (a) for all three articles.**
+- Secant stiffness within −13 / +30 % of 2.0 / 8.3 / 16.6 N/m over the working range.
+- Rated elongation ≥ 131 % (buoy), ≥ 85 % (cluster), ≥ 100 % (platform) if the cord makes up the
+  whole unstretched line. A longer cord in series with a stiff rope lowers the strain only if the
+  total line length grows, i.e. farther anchors (F1).
+- Dry weight ~0.3 N/m (the design value).
+- Counterweight lines (b) are rejected.
+
+### C8. Flume BEM waterline: effect on the resonances, and the regeneration cost (decision 5; `bem_waterline.py`)
+
+**The mesh artefact is in pitch too, not only heave.** Capytaine hydrostatics of one buoy against
+the spar/plate panels round (NT):
+
+| NT | 12 (committed) | 24 | 36 | 48 | 96 | circle |
+|---|---|---|---|---|---|---|
+| C33 (N/m) | 186.26 | 192.83 | 194.06 | 194.49 | 194.91 | 195.05 |
+| C44 = C55 (N·m/rad) | 70.771 | 73.282 | 73.753 | 73.919 | 74.078 | ≈ 74.13 |
+| displaced volume (m³) | 0.019643 | 0.020336 | 0.020466 | 0.020512 | 0.020556 | — |
+
+C55 is dominated by ρgV(z_B − z_G). The polygon hull's volume is short by the same 0.9549, so the
+pitch and tilt restoring are 4.5 % low as well.
+
+**Resonance periods.** FloatSim modal periods: K = C + the linearised catenary; M + A(ω) iterated
+at the mode; the joints' null space. The single buoy uses single-buoy databases built at each NT
+by the same pipeline (`BEM_NT=<n> python bem_cluster.py single`). The cluster and platform use
+their NT = 12 coupled databases patched with the single-buoy change: each buoy's C block
+replaced, its self A(ω) and A_inf corrected; interaction blocks and B kept. Values are
+NT = 12 → NT = 96 (shift):
+
+| | heave | pitch / tilt | worst residual at NT 24 / 36 / 48 |
+|---|---|---|---|
+| buoy, free | 2.561 → 2.519 s (**+0.041**) | 2.761 → 2.684 s (**+0.077**) | 0.023 / 0.011 / 0.006 s |
+| buoy, moored (design, r = 0.2 m) | 2.539 → 2.499 s (+0.040) | 2.506 → 2.444 s (+0.062) | 0.019 / 0.009 / 0.005 s |
+| cluster | 2.573 → 2.532 s (+0.041) | 2.604 → 2.540 s (+0.064) | 0.020 / 0.010 / 0.006 s |
+| platform | 2.604 → 2.561 s (+0.043) | 2.659 → 2.599 s (+0.060) | 0.017 / 0.008 / 0.004 s |
+
+- **Every resonance moves 0.040–0.077 s, 1.6–3 × the 0.025 s threshold. Regenerate before
+  Phase D.**
+- **NT = 36 is enough:** worst residual 0.011 s, under half a fine step with margin. NT = 24
+  leaves 0.023 s.
+- **Corroboration:** the converged free buoy (heave 2.519 s, pitch 2.684 s) matches the separate
+  fine-mesh OSU buoy model (heave 2.52 s, pitch 2.69 s). The flume mesh artefact explains the
+  difference that model had with the flume numbers.
+
+**Regeneration cost (measured Capytaine time per frequency; 48 frequencies + ∞):**
+
+| database | panels at NT 36 | s / frequency | total | memory |
+|---|---|---|---|---|
+| single buoy | 936 | 0.3 | **done** (`single_osu_open_nt36_psd.nc`, 0.8 min) | small |
+| cluster (4 buoys) | 3 744 | ~5 (estimate: 0.5 s at NT 12, 2.1 s at NT 24) | ~5 min | < 2 GB |
+| platform (16 buoys) | 14 976 | 123.7 (NT 12: 20.9, NT 24: 49.0) | **~1.7 h** | ~11 GB of 64 |
+
+Then the FloatSim consequences, before Phase D:
+- the three moored settles (cluster ~5 min, platform ~30 min);
+- the H = 0.04 m bandwidth sweeps, to re-centre the fine band (≈ 1 h wall, platform-dominated);
+- the item-4 decays (≈ 1 h).
+
+The fine band will shift ~0.06 s shorter, to about 2.30–2.75 s. 2.30 s is already a listed
+period.
+
+**Total: ~2 h of BEM plus ~2–3 h of FloatSim, then Phase D.** Commands:
+```
+cd studies/flume-mooring
+BEM_NT=36 python bem_cluster.py single                    # done
+BEM_NT=36 python bem_cluster.py                           # cluster_osu_open_rot45_nt36(_psd).nc
+cd ../platform-12buoy/flume-wall-effect
+PLAT_ROT_DEG=45 BEM_NT=36 python coupled_bem_osu.py open full 48   # coupled_osu_open_rot45_nt36.nc
+python psd_project.py coupled_osu_open_rot45_nt36.nc
+```
+The harness then has to point at the `_nt36` files (floatsim_decks BUOY_NC / CLUSTER_NC /
+PLATFORM_NC).
+
+**The BEM files the design rests on are now committed:**
+- `single_osu_open_psd.nc` (49 KB);
+- `cluster_osu_open_rot45_psd.nc` (0.49 MB);
+- `platform-12buoy/flume-wall-effect/coupled_osu_open_rot45_psd.nc` (7.4 MB);
+- the single-buoy NT = 24/36/48/96 `_psd.nc` files used above.
+
+The raw (pre-PSD) files are reproducible by the commands above with `BEM_NT` unset (NT = 12):
+`python bem_cluster.py single`, `python bem_cluster.py`, and
+`PLAT_ROT_DEG=45 python coupled_bem_osu.py open full 48` followed by `psd_project.py`. Toolchain:
+Python 3.13.11, Capytaine 2.3.1, NumPy 2.4.0, SciPy 1.17.1. The raw databases have small negative
+B eigenvalues at high ω (single buoy −0.80 against a max of 28.5, from irregular frequencies of
+the surface-piercing spar), which `psd_project` clips; the same holds at every NT.
+
+### C9. Small-angle validity (decision 7), stated plainly
+
+- The moored buoy's pitch at resonance is **9.6° at H = 0.04 m, the SMALLEST operational wave**,
+  against LEVEL1's 0.1 rad (5.7°) validity limit. The cluster and platform tilt are 9.6° and 9.3°.
+- **Every FloatSim prediction near the pitch/tilt resonance is therefore indicative, across the
+  whole operational band.** That includes the line loads: the tilt moves the attachment point.
+- Phase D flags every fine-band case as indicative, and each case's output flags max |tilt| >
+  0.1 rad (`phase_d_plan.py`).
+- **LEVEL2 is now REQUIRED for resonant predictions.** It is proposed as the next FloatSim
+  milestone (tracker `LEVEL2-INTEGRATOR-UNWIRED`) and is not started.
+
+---
+
 ## Phase D — final case list and cost (NOT run; `phase_d_plan.py` → `phase_d_plan.json`)
+
+**Round-2 changes** (decisions 6 and 7; `phase_d_plan.py` re-run):
+- Criterion-6 references at H = 0.04 and 0.12 m only.
+- The buoy at dt = 0.005 / 0.0025 s.
+- Every fine-band case flagged indicative.
+- D0 kept.
+- Every static solve residual-checked.
+
+The new totals: **442 cases** (147 buoy, 147 cluster, 148 platform), of which **186 are flagged
+indicative**. About **10.2 h** wall at 17-way parallel (buoy 0.4 h, cluster 0.7 h, platform
+9.1 h).
+
+**Before Phase D** (all Xabier's):
+1. Regenerate the cluster and platform BEMs at NT = 36 (§C8, ~2 h), then re-settle, re-sweep the
+   bandwidth and re-centre the fine band (~2–3 h FloatSim).
+2. Choose the line element (§C7).
+3. Decide the drift double counting (§C7).
+4. Decide the cluster/platform pretension against dynamic slack (§C7).
+5. Beyond small-angle validity, the extreme buoy cases near resonance (H ≥ 0.35 m around 2.35 s)
+   diverge in FloatSim (§C5). Run them flagged, or drop them until LEVEL2.
 
 **Periods (24).** The fine band covers every article's H = 0.04 m tilt/pitch half-power band
 (2.442–2.734 s) plus one step each side, at the §C3 step. Elsewhere the spacing is ~0.1 s, hugging
@@ -367,7 +680,7 @@ H = 0.5 m therefore runs from 2.35 s. There the largest bound is 4.87 N/spar, be
 cluster and platform lines were sized for, and the platform's slack-side line keeps ≈ 0.23 T0
 (≥ 0.15) at its design state.
 
-**Totals: 514 cases** (171 buoy, 171 cluster, 172 platform).
+**Round-1 totals (superseded by the round-2 totals above): 514 cases** (171 buoy, 171 cluster, 172 platform).
 
 **Cost.** Measured FloatSim wall time per case in Phase C: same harness, wave-relative drag,
 120 s settle, 17 cases in parallel on this 32-core machine. Per simulated second:
@@ -385,7 +698,7 @@ Savings, if wanted:
 
 The platform dominates. Run it first, 17 at a time; the buoy and cluster fit around it.
 
-**Prerequisites before Phase D** (Xabier):
+**Round-1 prerequisites** (answered by decisions 1–7; the round-2 list above replaces them):
 - The single-buoy yaw option (§C2). It changes the buoy deck:
   - the swivel runs with a numerical yaw restraint;
   - the collar runs as modelled.
@@ -409,29 +722,27 @@ The platform dominates. Run it first, 17 at a time; the buoy and cluster fit aro
 
 ---
 
-## Open decisions for Xabier (after Phase C)
+## Open decisions for Xabier (after Phase C round 2; STOP before Phase D)
 
-1. **Single-buoy yaw** (§C2).
-   - Yaw ≥ 14 s is not achievable robustly: a radial collar needs r ≤ 0.8 mm, and a pinwheel goes
-     unstable under the drift offset.
-   - Choose:
-     - an axis swivel (free yaw; FloatSim diverges near resonance at H ≥ 0.12 m), or
-     - a stiff radial collar, r ≥ 0.12 m (yaw ≤ 1.12 s; stable in FloatSim head seas).
-   - **Recommendation: the stiff collar, r = 0.12–0.2 m.** It holds the heading for tracking, it
-     keeps the FloatSim predictions runnable, and yaw is unexcited at heading 0. Its only cost is
-     a stiff yaw restraint, which the soft-restraint intent did not target.
-2. **Cluster and platform yaw at 11.0 s and 12.5 s** fail the ≥ 14 s separation (ratio 3.1 and
-   3.6).
-   - Accept them, since heading 0 exerts no yaw moment on the symmetric articles.
-   - Or trade clearance and slack margin (lower T0) or attachment radius.
-3. **H = 0.5 m below 2.35 s**, dropped by the 3° mean-tilt criterion (the case at 2.05 s). Confirm.
-4. **Buoy line hardware:** a 2 N/m elastic cord pretensioned to 4 N needs ~3.8 m of linear
-   stroke over a 3.3 m unstretched length.
-5. **FloatSim limits to carry into Phase D:**
-   - all resonant tilts in the operational band exceed LEVEL2's 0.1 rad (indicative only);
-   - the flume BEM's 12-sided waterline (heave ~2 % long);
-   - the static-solver false convergence (tracker).
-6. **Facility assumptions F1–F6** (top of this document) go to HWRL before hardware is bought.
+1. **BEM regeneration at NT = 36** (§C8). Every resonance moves 0.040–0.077 s (> 0.025 s). The cost
+   is ~1.7 h for the platform BEM, ~5 min for the cluster (the single buoy is done), then ~2–3 h of
+   FloatSim re-verification. Approve before Phase D.
+2. **Line element** (§C7): elastic cord recommended for all three; counterweight lines fail the
+   field of view. The hardware choice is yours; F7 goes to HWRL.
+3. **Drift double counting** (§C7). FloatSim's own mean force is 20–70 % of the bound at
+   H = 0.5 m. Choose:
+   - keep bound + FloatSim (conservative; at T = 2.35 s the cluster and platform then fail the
+     field of view, slack and clearance); or
+   - apply only the part of the bound FloatSim does not carry.
+
+   Decision 1's D0 check is answered: there IS overlap.
+4. **Dynamic slack of the cluster/platform lines** at H = 0.5 m near resonance (0.04–0.19 T0 against
+   0.15). Indicative (LEVEL1), but it points to more pretension, as for the buoy.
+5. **Extreme buoy cases near the pitch resonance** (H ≥ 0.35 m around 2.35 s) diverge in FloatSim
+   (pitch 24–28°). Run them flagged, or drop them until LEVEL2.
+6. **The yaw "not small" threshold** for Phase D's flag: 0.5° or 5 % of max pitch (proposed).
+7. **LEVEL2 as the next FloatSim milestone** (decision 7): proposed, not started.
+8. **Facility assumptions F1–F7** to HWRL before any hardware is bought.
 
 ---
 

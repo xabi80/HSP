@@ -147,7 +147,8 @@ def line_design(article: str, n_spar: int, H_design: float = 0.5) -> dict:
 
 def mooring_lines(dk: Deck, article: str, *, fairlead: np.ndarray = WL_B, anchor_z: float = 0.0,
                   H_design: float = 0.5, balanced: bool = False, T0: float | None = None,
-                  collar_r: float = 0.0, collar: str = "radial") -> list[dict]:
+                  collar_r: float = 0.0, collar: str = "radial",
+                  k_scale: float = 1.0) -> list[dict]:
     """The FloatSim lines: body, fairlead (body frame), true anchor, stiffness k and pretension.
 
     Defaults = the documented design (fairlead at the spar SWL, anchors at the SWL, T0 for
@@ -158,7 +159,8 @@ def mooring_lines(dk: Deck, article: str, *, fairlead: np.ndarray = WL_B, anchor
     ``T0``: per-line pretension override (the single-buoy redesign, Phase C item 2); k is kept.
     ``collar_r``: each line's fairlead moves ``collar_r`` from ``fairlead`` in plan -- towards
     its anchor (``collar="radial"``), or at right angles to it (``"pinwheel"``: the line leaves
-    tangentially, the two diagonals turning opposite ways so the pretension moments cancel)."""
+    tangentially, the two diagonals turning opposite ways so the pretension moments cancel).
+    ``k_scale``: scales every line's axial stiffness at the same T0 (soft-element sensitivity)."""
     B = dk.bodies
     buoys = [k for k, b in enumerate(B) if (b.hydro_body_label or b.hydro_database)]
     des = line_design(article, len(buoys), H_design)
@@ -187,7 +189,8 @@ def mooring_lines(dk: Deck, article: str, *, fairlead: np.ndarray = WL_B, anchor
                             u = sx * sy * np.array([-u[1], u[0]])
                         fl[:2] += collar_r * u
                     out.append({"body": k, "name": B[k].name, "fairlead": fl,
-                                "anchor": an, "k": des["k_line"] * share / len(ends),
+                                "anchor": an,
+                                "k": k_scale * des["k_line"] * share / len(ends),
                                 "T0": t0 * share / len(ends), "group": len(out)})
     return out
 
@@ -229,15 +232,56 @@ def hdbs(article: str) -> dict:
             "asymptote_check_override": OVR, "kernel_decay_floor_override": OVR}
 
 
+STATIC_RESIDUAL_MAX_N = 1.0e-4   # explicit check on every static solve (Phase D decision 6)
+
+
+def _stiffness(state_force, lhs, xi: np.ndarray, h: float = 1.0e-5) -> np.ndarray:  # type: ignore[no-untyped-def]
+    """C minus the central-difference Jacobian of FloatSim's state force at xi."""
+    n = xi.size
+    z = np.zeros(n)
+    K = np.empty((n, n))
+    for j in range(n):
+        e = np.zeros(n); e[j] = h
+        K[:, j] = -(state_force(0.0, xi + e, z) - state_force(0.0, xi - e, z)) / (2 * h)
+    return np.asarray(lhs.C) + K
+
+
+def checked_static_equilibrium(lhs, state_force, xi0: np.ndarray) -> np.ndarray:  # type: ignore[no-untyped-def]
+    """FloatSim's static solve with an explicit residual check (tracker
+    STATIC-SOLVE-FALSE-CONVERGENCE: hybr can report success without moving). First FloatSim's
+    default solve; if its residual |C xi - F(xi)| exceeds STATIC_RESIDUAL_MAX_N, retry from a
+    Newton step on FloatSim's linearised stiffness, tight tolerance, no Tikhonov term; raise if
+    that fails too."""
+    z = np.zeros(xi0.size)
+
+    def res(x: np.ndarray) -> np.ndarray:
+        return np.asarray(lhs.C @ x - state_force(0.0, x, z))
+
+    x = np.asarray(fsd.solve_static_equilibrium(lhs=lhs, state_force=state_force, xi0=xi0,
+                                                tol=fsd._EQUILIBRIUM_TOL_N,
+                                                allow_failure=True).xi_eq)
+    if np.abs(res(x)).max() <= STATIC_RESIDUAL_MAX_N:
+        return x
+    x_start = x - np.linalg.lstsq(_stiffness(state_force, lhs, x), res(x), rcond=None)[0]
+    x = np.asarray(fsd.solve_static_equilibrium(lhs=lhs, state_force=state_force, xi0=x_start,
+                                                tol=1.0e-9, regularization=0.0,
+                                                allow_failure=True).xi_eq)
+    r = float(np.abs(res(x)).max())
+    if r > STATIC_RESIDUAL_MAX_N:
+        raise RuntimeError(f"static equilibrium: residual {r:.2e} N after the checked retry")
+    return x
+
+
 def build_single(dk: Deck, hdb, solve_equilibrium: bool, wave: RegularWave | None = None,  # type: ignore[no-untyped-def]
-                 ramp: HalfCosineRamp | None = None):
+                 ramp: HalfCosineRamp | None = None, dt: float | None = None):
     """build_system's per-body branch for the one-buoy deck (see the module note). ``wave`` /
-    ``ramp``: wave-relative Morison drag, as build_system(drag_wave=, drag_wave_ramp=)."""
+    ``ramp``: wave-relative Morison drag, as build_system(drag_wave=, drag_wave_ramp=). ``dt``:
+    the kernel's time step (default DT). The static solve is residual-checked."""
     name_to_index = fsd._validate_body_names(dk)
     body = dk.bodies[0]
     lhs = fsd.assemble_global_lhs([fsd._per_body_lhs(body, hdb, gravity=dk.environment.gravity)])
     kernel = fsd.assemble_global_kernel([fsd.compute_retardation_kernel(
-        hdb, t_max=T_KERNEL, dt=DT, asymptote_check_override=OVR,
+        hdb, t_max=T_KERNEL, dt=DT if dt is None else dt, asymptote_check_override=OVR,
         kernel_decay_floor_override=OVR)])
     n = lhs.n_dof
     cats = [fsd._materialise_catenary(c, name_to_index) for c in dk.connections]
@@ -250,8 +294,7 @@ def build_single(dk: Deck, hdb, solve_equilibrium: bool, wave: RegularWave | Non
     xi0 = fsd.pack_state([np.asarray(b.initial_conditions.position, float) for b in dk.bodies])
     xd0 = fsd.pack_state([np.asarray(b.initial_conditions.velocity, float) for b in dk.bodies])
     if solve_equilibrium:
-        xi0 = fsd.solve_static_equilibrium(lhs=lhs, state_force=state, xi0=xi0,
-                                           tol=fsd._EQUILIBRIUM_TOL_N).xi_eq
+        xi0 = checked_static_equilibrium(lhs, state, xi0)
     return fsd.SimulationSetup(lhs=lhs, kernel=kernel, state_force=state, xi0=xi0, xi_dot0=xd0,
                                body_name_to_index=name_to_index, constraints=None)
 
@@ -354,7 +397,7 @@ RAMP_S = 15.0
 
 
 def wave_setup(dk: Deck, article: str, T: float, H: float, *, xi_eq: np.ndarray | None = None,  # type: ignore[no-untyped-def]
-               hd: dict | None = None):
+               hd: dict | None = None, dt: float | None = None):
     """FloatSim setup for a regular wave (heading 0) with WAVE-RELATIVE Morison drag (STEP 5
     PR1): the drag samples the same wave and ramp as the excitation. ``xi_eq``: the start state
     (the moored settle for an articulated article); None solves FloatSim's static equilibrium.
@@ -364,9 +407,11 @@ def wave_setup(dk: Deck, article: str, T: float, H: float, *, xi_eq: np.ndarray 
     ramp = HalfCosineRamp(duration=RAMP_S)
     d = dk if xi_eq is None else with_positions(dk, xi_eq)
     if article == "buoy":
-        s = build_single(d, hd["bem_databases"]["buoy"], xi_eq is None, wave=wave, ramp=ramp)
+        s = build_single(d, hd["bem_databases"]["buoy"], xi_eq is None, wave=wave, ramp=ramp,
+                         dt=dt)
     else:
-        s = build_system(d, dt=DT, t_max_kernel=T_KERNEL, solve_equilibrium=xi_eq is None,
+        s = build_system(d, dt=DT if dt is None else dt, t_max_kernel=T_KERNEL,
+                         solve_equilibrium=xi_eq is None,
                          drag_wave=wave, drag_wave_ramp=ramp, **hd)
     return s, hd, wave, ramp
 
@@ -392,7 +437,7 @@ def drift_force(dk: Deck, F_spar: float, ramp: HalfCosineRamp | None = None):  #
 
 
 def run_case(setup, hd: dict, dk: Deck, wave: RegularWave, ramp: HalfCosineRamp,  # type: ignore[no-untyped-def]
-             n_settle: float, n_keep: int, extra_force=None):
+             n_settle: float, n_keep: int, extra_force=None, dt: float | None = None):
     """Excitation + FloatSim state force (+ ``extra_force``: applied drift, restraint) through
     the Cummins integrator; lasts ramp + n_settle + n_keep periods."""
     hdb = hd.get("shared_hydro_database") or hd["bem_databases"]["buoy"]
@@ -408,8 +453,9 @@ def run_case(setup, hd: dict, dk: Deck, wave: RegularWave, ramp: HalfCosineRamp,
     return integrate_cummins(lhs=setup.lhs, kernel=setup.kernel, xi0=setup.xi0,
                              xi_dot0=setup.xi_dot0,
                              duration=RAMP_S + n_settle + n_keep * wave.period,
-                             dt=DT, rho_inf=0.8, constraints=setup.constraints,
-                             external_force=ext, state_force=sf, projection_interval=1)
+                             dt=DT if dt is None else dt, rho_inf=0.8,
+                             constraints=setup.constraints, external_force=ext, state_force=sf,
+                             projection_interval=1)
 
 
 def run_wave(setup, hd: dict, dk: Deck, T: float, H: float, n_settle: float, n_keep: int):  # type: ignore[no-untyped-def]

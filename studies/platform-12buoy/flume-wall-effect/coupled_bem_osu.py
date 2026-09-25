@@ -40,13 +40,16 @@ W = 3.66                                   # flume width (walls at y = +/- W/2)
 # + near-resonance response, where the wall effect is depth-robust. See README.
 _FD = __import__("os").environ.get("FLUME_DEPTH", "inf")
 DEPTH = np.inf if _FD == "inf" else float(_FD)
-NT = 12                                    # spar/plate n_theta (coarse; wall ratio is mesh-robust)
+# spar/plate n_theta: 12 is coarse (its waterline holds 0.9549 of the circle -> C33/C55 4.5 % low;
+# fine for the wall RATIO, not for absolute periods). BEM_NT=<n> overrides it and suffixes the
+# outputs _nt<n> (flume-mooring decision 5: NT = 36 before Phase D).
+NT = int(__import__("os").environ.get("BEM_NT", "12"))
 CLUSTER_ANGLES_DEG = [0, 90, 180, 270]     # 4 clusters
 BUOY_ANGLES_DEG = [0, 90, 180, 270]        # 4 buoys/cluster (square); 12-buoy used [0,120,240]
 NB = len(CLUSTER_ANGLES_DEG) * len(BUOY_ANGLES_DEG)   # 16 buoys
 NDOF = 6 * NB                              # 96 coupled rigid DOFs
 ROT = float(__import__("os").environ.get("PLAT_ROT_DEG", "0"))  # platform yaw about +z (deg)
-SUF = "" if ROT == 0 else f"_rot{int(ROT)}"                      # output-file suffix
+SUF = ("" if ROT == 0 else f"_rot{int(ROT)}") + ("" if NT == 12 else f"_nt{NT}")  # file suffix
 DOF6 = ["Surge", "Sway", "Heave", "Roll", "Pitch", "Yaw"]
 # rigid-DOF reflection across a y=const plane: translations flip y; rotations (pseudovec)
 # flip x,z. So surge/heave/pitch keep sign under the image; sway/roll/yaw flip.

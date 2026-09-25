@@ -10,10 +10,17 @@ origin (single_osu_open.nc, label buoy1): the single-buoy article then uses the 
 omega grid and FloatSim coupled path as the cluster and platform.
 
 Run: python bem_cluster.py [single]
+
+Waterline resolution (flume-mooring decision 5): ``BEM_NT=<n>`` meshes the spar and plate with n
+panels round instead of coupled_bem_osu.NT = 12 (whose 12-sided waterline holds 0.9549 of the
+circle's area) and writes ``*_nt<n>.nc`` (+ _psd.nc), never the committed NT = 12 files.
+``BEM_TIMING_ONLY=<k>`` solves only the first k finite frequencies and prints the time per
+frequency (nothing written): the regeneration cost model.
 """
 # ruff: noqa: E402, E702  -- sys.path bootstrap precedes the study imports; compact assembly
 from __future__ import annotations
 
+import os
 import sys
 import time
 import warnings
@@ -41,6 +48,10 @@ SINGLE = len(sys.argv) > 1 and sys.argv[1] == "single"
 if SINGLE:
     CEN = [(0.0, 0.0)]
 NB = len(CEN); NDOF = 6 * NB
+BEM_NT = int(os.environ.get("BEM_NT", cb.NT))
+cb.NT = BEM_NT
+NT_SUF = "" if BEM_NT == 12 else f"_nt{BEM_NT}"
+TIMING_ONLY = int(os.environ.get("BEM_TIMING_ONLY", "0"))
 
 
 def main() -> None:
@@ -63,8 +74,16 @@ def main() -> None:
     t0 = time.perf_counter()
     A = np.zeros((len(om) + 1, NDOF, NDOF)); B = np.zeros_like(A)
     F = np.zeros((len(om) + 1, NDOF), complex)
-    for k, w in enumerate([*list(om), np.inf]):
+    freqs = [*list(om), np.inf]
+    if TIMING_ONLY:                 # spread the timed frequencies over the grid
+        freqs = [float(om[i]) for i in np.linspace(0, len(om) - 1, TIMING_ONLY).astype(int)]
+    for k, w in enumerate(freqs):
+        tf = time.perf_counter()
         res = cb.solve_freq(body, dofs, dofs, float(w), with_diff=np.isfinite(w))
+        if TIMING_ONLY:
+            print(f"NT {BEM_NT}: {body.mesh.nb_faces} panels, omega {w:.3f}: "
+                  f"{time.perf_counter() - tf:.1f} s", flush=True)
+            continue
         for a, rr in enumerate(res[:NDOF]):
             A[k, a, :] = [float(np.real(rr.added_masses[d])) for d in dofs]
             if np.isfinite(w):
@@ -91,7 +110,9 @@ def main() -> None:
         attrs=dict(rho=cb.RHO, g=cb.G, water_depth="inf",
                    body_name="osu_single_open" if SINGLE else "osu_cluster4_open"),
     )
-    out = HERE / ("single_osu_open.nc" if SINGLE else f"cluster_osu_open{SUF}.nc")
+    if TIMING_ONLY:
+        return
+    out = HERE / (("single_osu_open" if SINGLE else f"cluster_osu_open{SUF}") + f"{NT_SUF}.nc")
     ds.to_netcdf(out)
     print(f"wrote {out.name} ({(time.perf_counter() - t0) / 60:.1f} min)", flush=True)
     psd_project.project(str(out))
