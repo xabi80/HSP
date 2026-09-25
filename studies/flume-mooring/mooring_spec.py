@@ -18,7 +18,10 @@ Per article:
 Peak tensions and stretches come from the targeted FloatSim runs (attachment_design.json,
 buoy_stability_check.json) and are merged by the report.
 
-Writes spec_statics.json.  Run: python mooring_spec.py
+Rev C adds the extreme cord set (extreme_set.py): ``python mooring_spec.py extreme`` writes
+spec_statics_extreme.json (cluster and platform; the buoy has one cord set).
+
+Writes spec_statics.json.  Run: python mooring_spec.py [extreme]
 """
 # ruff: noqa: E402  -- sys.path bootstrap first
 from __future__ import annotations
@@ -39,13 +42,19 @@ import line_hardware as lh
 import tank_predictions as tp
 
 OUT = HERE / "spec_statics.json"
+OUT_EXT = HERE / "spec_statics_extreme.json"      # rev C: the extreme cord set
 BAND = (0.87, 1.30)
 I_ZZ_BUOY = 0.063                                  # FloatSim deck (articulated_wall.IZZ)
 
 
-def article(art: str) -> dict:
+def article(art: str, ext: dict | None = None) -> dict:
+    """The operational set (rev B's choice), or with ``ext`` = {"opts", "tag", "m"} the extreme
+    set (extreme_set.py: the same anchors, attachments and nominal T0, k x m; its own settle)."""
     des = asw.chosen(art)
-    dk, xi_eq, lf, lines = lh._setup(art, opts=des["opts"], tag=des["tag"])
+    if ext is not None:
+        des = {**des, "opts": ext["opts"], "tag": ext["tag"]}
+    dk, xi_eq, lf, lines = lh._setup(art, opts=des["opts"], tag=des["tag"],
+                                     reuse_eq=bool(ext and ext.get("reuse_eq")))
     sc = des["row"]["t0_scale"]
     ref = np.array([b.reference_point for b in dk.bodies], dtype=float)
     st = lh.line_states(dk, xi_eq)
@@ -98,6 +107,19 @@ def article(art: str) -> dict:
 
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
+    if sys.argv[1:] == ["extreme"]:
+        import extreme_set as es
+        ch = json.loads(es.OUT.read_text())["choice"]
+        res = {}
+        for a in es.ARTS:
+            m = ch[a]["m_criterion4"]
+            # at-rest-matched pretension: the operational settle is the calm equilibrium
+            # (accepted within FloatSim's equilibrium tolerance; extreme_set.py)
+            ext = {"opts": es.opts(a, m, rest=True), "tag": asw.chosen(a)["tag"],
+                   "reuse_eq": True}
+            res[a] = {**article(a, ext), "m": m, "rest_ratio": es.rest_ratio(a, m)}
+        OUT_EXT.write_text(json.dumps(res, indent=1, default=float))
+        return
     res = {a: article(a) for a in ("buoy", "cluster", "platform")}
     OUT.write_text(json.dumps(res, indent=1, default=float))
 

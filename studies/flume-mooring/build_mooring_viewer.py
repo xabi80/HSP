@@ -17,9 +17,17 @@ moored cluster / platform start from FloatSim's settled moored equilibrium
 catenary line force at that frame's pose (``make_catenary_state_force`` of each line). The mean
 splash-zone drift offset is not part of the model; the readout quotes its upper bound.
 
+Rev C (2026-09-25): ``static`` writes the viewer with the rev C arrangement only -- the static
+mooring of each article at FloatSim's calm equilibrium for each cord set (MOORING-SPEC rev C:
+attachments below still water, underwater wall anchors at the same depth, the operational and
+extreme cord sets). The earlier animated cases (``run`` / ``html``) used a superseded mooring
+(lines at the still-water line), so they are not shown; no rev C wave run has saved frames, so
+nothing is animated.
+
 Usage:
     python build_mooring_viewer.py run <buoy|cluster|platform> [T1,T2,...] [--H 0.1] [--free]
     python build_mooring_viewer.py html
+    python build_mooring_viewer.py static
 Writes viewer_rows/*.json (per case) and mooring_motion.html.
 """
 # ruff: noqa: E402, E702  -- sys.path bootstrap first; compact lines
@@ -210,11 +218,88 @@ def html() -> None:
           f"cases)")
 
 
+def prov(key: str, name: str, tag: str) -> str:
+    eq = ("checked static solve" if key == "buoy" else
+          f"settle {tag}" + (", shared: the same at-rest tension" if name == "extreme" else ""))
+    src = "spec_statics_extreme.json" if name == "extreme" else "spec_statics.json"
+    return f"FloatSim calm equilibrium ({eq}); lines from {src}"
+
+
+def static_html() -> None:
+    """Rev C: the static arrangement of each article and cord set at FloatSim's calm equilibrium
+    (every number from spec_statics.json / spec_statics_extreme.json, the settle cache and the
+    decks); frames are the settled displacements from the deck (unmoored) equilibrium."""
+    import attachment_sweep as asw
+    import line_hardware as lh
+
+    st = json.loads((HERE / "spec_statics.json").read_text())
+    stx_p = HERE / "spec_statics_extreme.json"
+    stx = json.loads(stx_p.read_text()) if stx_p.exists() else {}
+    arts = []
+    for key in ("buoy", "cluster", "platform"):
+        des = asw.chosen(key)
+        dk_m, lines = fd.moored(fd.deck(key), key, **des["opts"])
+        B = bodies(dk_m)
+        buoys = [i for i, b in enumerate(B) if b["type"] == "buoy"]
+        ref = next((i for i, b in enumerate(B) if b["type"] == "platform"),
+                   next((i for i, b in enumerate(B) if b["type"] == "hub"), buoys[0]))
+        up = min(buoys, key=lambda i: (B[i]["x0"], B[i]["y0"]))
+        dn = max(buoys, key=lambda i: (B[i]["x0"], B[i]["y0"]))
+        if key == "buoy":
+            free = np.asarray(fd.build_single(fd.deck(key), fd.hdbs(key)["bem_databases"]["buoy"],
+                                              True).xi0)
+        sets = [("operational", st[key], des["tag"], des["opts"])]
+        if key in stx:
+            sets.append(("extreme", stx[key], stx[key]["tag"], None))
+        cases = []
+        for name, S, tag, opts in sets:
+            if key == "buoy":
+                _dk, xi, _lf, _ln = lh._setup(key, opts=opts, tag=tag)
+                d = np.asarray(xi) - free
+            else:
+                d = np.asarray(json.loads(fd.EQ_CACHE.read_text())[tag]["xi"])
+            frame = [[round(float(v), 6) for v in d[6 * b:6 * b + 6]] for b in range(len(B))]
+            ten = [round(ln["T_at_rest_N"], 3) for ln in S["lines"]]
+            tilt = max(float(np.degrees(np.hypot(d[6 * b + 3], d[6 * b + 4]))) for b in buoys)
+            zeros = [[0.0, 0.0, 0.0]] * 2
+            sig = {k: {q: zeros for q in ("disp", "vel", "acc")} for k in ("ref", "up", "dn")}
+            k_line = max(ln["k_N_per_m"] for ln in S["lines"]) * (2 if key == "platform" else 1)
+            T0 = max(ln["T0_nominal_N"] for ln in S["lines"]) * (2 if key == "platform" else 1)
+            cases.append({
+                "static": True, "set": name, "label": f"calm · {name} set" if key != "buoy"
+                else "calm · the cord set", "T": 1.0, "H": 0.0, "omega": 0.0, "amp_m": 0.0,
+                "n_frames": 2, "dt_frame_s": 0.5, "frames": [frame, frame], "sig": sig,
+                "tension": [ten, ten], "moored": True, "rao_ref": 0.0,
+                "max_tilt_deg": round(tilt, 2), "static_tilt_deg": round(tilt, 2),
+                "max_tension_N": max(ten), "min_tension_N": min(ten), "offset_bound_m": 0.0,
+                "k_line": round(k_line, 3), "T0": round(T0, 3),
+                "provenance": prov(key, name, tag)})
+        arts.append({"key": key, "name": fd.NAMES[key], "bodies": B, "ref": ref, "up": up,
+                     "dn": dn, "siglabels": SIGLAB[key], "cases": cases,
+                     "lines": [{"anchor": ln["anchor"].tolist(), "legs": [ln["body"]],
+                                "ring": None, "T0": round(ln["T0"], 3), "k": round(ln["k"], 3),
+                                "fl": [round(float(v), 5) for v in ln["fairlead"]]}
+                               for ln in lines],
+                     "k_line": cases[0]["k_line"], "T0": cases[0]["T0"],
+                     "att_z": round(float(lines[0]["fairlead"][2] + dk_m.bodies[lines[0]["body"]]
+                                          .reference_point[2]), 3)})
+    data = {"geom": {"z_top": Z_TOP, "z_wl": Z_WL, "z_bot": Z_BOT, "z_plate": Z_PLATE,
+                     "plate_r": ms.PLATE_R, "spar_d": ms.SPAR_D, "flume_w": ms.W_FLUME,
+                     "flume_h": ms.H_FLUME, "flume_x": 6.2, "t_surge": mv.T_SURGE},
+            "articles": arts}
+    h = TEMPLATE.read_text(encoding="utf-8")
+    img = base64.b64encode((HERE / "figs" / "layout.png").read_bytes()).decode()
+    h = h.replace("__LAYOUT_PNG__", "data:image/png;base64," + img)
+    h = h.replace("__DATA__", json.dumps(data, separators=(",", ":")))
+    OUT_HTML.write_text(h, encoding="utf-8")
+    print(f"wrote {OUT_HTML.name} ({len(h) / 1e6:.2f} MB, rev C static arrangement)")
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     warnings.simplefilter("ignore")
     ap = argparse.ArgumentParser()
-    ap.add_argument("step", choices=["run", "html"])
+    ap.add_argument("step", choices=["run", "html", "static"])
     ap.add_argument("article", nargs="?", choices=["buoy", "cluster", "platform"])
     ap.add_argument("periods", nargs="?", default="2.2,2.9,3.5")
     ap.add_argument("--H", type=float, default=0.1)
@@ -222,6 +307,8 @@ def main() -> None:
     a = ap.parse_args()
     if a.step == "run":
         run(a.article, [float(x) for x in a.periods.split(",")], a.H, a.free)
+    elif a.step == "static":
+        static_html()
     else:
         html()
 

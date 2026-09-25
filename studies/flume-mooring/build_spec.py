@@ -1,18 +1,24 @@
 """Build MOORING-SPEC.md (and MOORING-SPEC.pdf via headless Edge, if present) from the FloatSim
-results. Rev B (2026-09-25): the attachment-height design.
+results. Rev C (2026-09-25): two cord sets on the same anchors and attachment points -- the
+operational set (rev B's attachment-height design, response tests H <= 0.12 m) and a stiffer
+extreme set (load / survival tests H = 0.2-0.5 m) -- with the figures of mooring_figures.py.
 
 Sources (every number in the tables comes from them):
-- spec_statics.json (mooring_spec.py): the lines, pull stiffness and periods;
-- attachment_sweep.json (attachment_sweep.py kin/sweep/choose/trim): the sweep and selection;
-- attachment_design.json (attachment_sweep.py settle/extremes): settles, worst cases and the
-  moored operational checks of the cluster and platform;
-- buoy_stability_check.json: the single buoy's moored runs.
+- spec_statics.json / spec_statics_extreme.json (mooring_spec.py [extreme]): the lines, pull
+  stiffness and periods of each set;
+- attachment_sweep.json (attachment_sweep.py): the sweep and the operational selection;
+- attachment_design.json (attachment_sweep.py settle/extremes): the operational set's settles,
+  its moored operational checks and its H = 0.5 m runs (rev B);
+- extreme_set.json (extreme_set.py): the extreme set's k scan, choice, settle, declared periods;
+- buoy_stability_check.json: the single buoy's moored runs (one cord set).
+- figs/*.png (mooring_figures.py), embedded in the PDF.
 
 Run: python build_spec.py
 """
 # ruff: noqa: E501, RUF001  -- Markdown table rows are long; tables print the multiplication sign
 from __future__ import annotations
 
+import base64
 import html
 import json
 import re
@@ -22,15 +28,30 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 EDGE = Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
-ST = json.loads((HERE / "spec_statics.json").read_text())
-AS = json.loads((HERE / "attachment_sweep.json").read_text())
-AD = json.loads((HERE / "attachment_design.json").read_text())
+
+
+def _load(name: str) -> dict:
+    p = HERE / name
+    return json.loads(p.read_text()) if p.exists() else {}
+
+
+ST = _load("spec_statics.json")
+STX = _load("spec_statics_extreme.json")
+AS = _load("attachment_sweep.json")
+AD = _load("attachment_design.json")
+EX = _load("extreme_set.json")
 BS = json.loads((HERE / "buoy_stability_check.json").read_text())
 ARTS = ("buoy", "cluster", "platform")
+ART2 = ("cluster", "platform")
 SAFETY, STROKE, SLACK = 3.0, 1.25, 0.15
 NAMES = {"buoy": "Single buoy", "cluster": "Cluster (4 buoys, 45°)",
          "platform": "4×4 platform (16 buoys, 45°)"}
 FOV_MAX = 1.0
+H_OP = 0.12
+RHO = 998.0                     # articulated_wall.RHO, the decks' water density
+COLLAR_R, COLLAR_ARMS = 0.2, 4  # attachment_sweep.COLLAR, one arm per line
+ADDED_MASS_BUDGET_KG = 0.4      # Xabier (rev C decisions): the slender collar's budget
+HEAVE_PLATE_AM_KG = 7.9         # record (DESIGN-BASIS Phase F, F4)
 
 
 def f(x: float, n: int = 2) -> str:
@@ -49,12 +70,21 @@ def design(art: str) -> dict:
     return AS["choice"][art]["design"]
 
 
-def runs(art: str) -> list[dict]:
-    """Every FloatSim moored run of the design that is a prediction (the buoy's diverging runs are
-    not)."""
+def m_ext(art: str) -> float:
+    return EX["choice"][art]["m_criterion4"]
+
+
+def op_runs(art: str) -> list[dict]:
+    """The operational set's predicted runs in its band (H <= 0.12 m); the buoy's single cord
+    set: every predicted run (its diverging runs are not predictions)."""
     if art == "buoy":
         return [r for r in BS if r["state"] != "diverges"]
-    return [r for r in AD["extremes"] if r["article"] == art]
+    return [r for r in AD["extremes"] if r["article"] == art and r["H"] <= H_OP + 1e-9]
+
+
+def ext_runs(art: str) -> list[dict]:
+    """The extreme set's final runs: the chosen k, at-rest-matched pretension (extreme_set.py)."""
+    return [r for r in EX["final"] if r["article"] == art]
 
 
 def fails(art: str, r: dict) -> list[str]:
@@ -72,12 +102,12 @@ def fails(art: str, r: dict) -> list[str]:
     return out
 
 
-def sweep_rows() -> str:
+def sweep_selection() -> list[dict]:
     """Per article, height and k: the passing row with the most pretension, or else the row with
     the most pretension that keeps the static tilt and the operational band (it fails on the
-    tilt shift), or else the operational-minimum row (no pretension keeps both)."""
-    out = ["| article | attachment z | k | T0 per line/leg | tilt shift (limit) | heave shift | calm static tilt | surge | op. T_min/T0 | verdict |",
-           "|---|---|---|---|---|---|---|---|---|---|"]
+    tilt shift), or else the operational-minimum row (no pretension keeps both). The sweep table
+    and the design-rationale chart (mooring_figures.py) both use this selection."""
+    out = []
     for art in ARTS:
         rows = [r for r in AS[art] if "article" in r]
         ch = design(art)
@@ -95,47 +125,23 @@ def sweep_rows() -> str:
                 verdict = ("**CHOSEN**" if chosen else "pass") if ok else \
                     "fails: " + ", ".join(fails(art, r)) + \
                     ("" if keep else " (even the least T0 that keeps the operational band taut)")
-                zl = "pin +0.717" if r["name"] == "pin" else f"{z:+.2f}" + (" (CoG)" if r["name"] == "cog" else "")
-                out.append(
-                    f"| {art} | {zl} m | ×{ks:g} | {f(r['T0_line_N'])} N | "
-                    f"{r['tilt_shift_pct']:+.2f} % ({f(lim(art))}) | {r['heave_shift_pct']:+.2f} % | "
-                    f"{f(r['static_tilt_deg'])}° | {f(r['periods_s']['surge'], 1)} s | "
-                    f"{f(r['T_min_ratio_op'])} | {verdict} |")
+                out.append({"article": art, "height": z, "k_scale": ks, "row": r,
+                            "passes": bool(ok), "chosen": chosen, "verdict": verdict})
+    return out
+
+
+def sweep_rows() -> str:
+    out = ["| article | attachment z | k | T0 per line/leg | tilt shift (limit) | heave shift | calm static tilt | surge | op. T_min/T0 | verdict |",
+           "|---|---|---|---|---|---|---|---|---|---|"]
+    for sel in sweep_selection():
+        art, z, ks, r = sel["article"], sel["height"], sel["k_scale"], sel["row"]
+        zl = "pin +0.717" if r["name"] == "pin" else f"{z:+.2f}" + (" (CoG)" if r["name"] == "cog" else "")
+        out.append(
+            f"| {art} | {zl} m | ×{ks:g} | {f(r['T0_line_N'])} N | "
+            f"{r['tilt_shift_pct']:+.2f} % ({f(lim(art))}) | {r['heave_shift_pct']:+.2f} % | "
+            f"{f(r['static_tilt_deg'])}° | {f(r['periods_s']['surge'], 1)} s | "
+            f"{f(r['T_min_ratio_op'])} | {sel['verdict']} |")
     return "\n".join(out)
-
-
-def line_table(art: str) -> tuple[str, dict]:
-    st = ST[art]
-    rr = runs(art)
-    tmax = [max(r["T_max_N"][i] for r in rr) for i in range(st["n_lines"])]
-    rows = ["| line | anchor (x, y, z) m | attachment (x, y, z) m | L0 unstretched | k target (band −13 / +30 %) | pretension T0 | at-rest stretch | peak stretch | elongation capacity ×1.25 | max tension | working load ×3 |",
-            "|---|---|---|---|---|---|---|---|---|---|---|"]
-    strain = []
-    for i, ln in enumerate(st["lines"]):
-        k = ln["k_N_per_m"]
-        ps = tmax[i] / k
-        strain.append(STROKE * ps / ln["L0_m"])
-        rows.append(
-            f"| {i + 1} ({ln['body']}) | {xyz(ln['anchor_m'])} | {xyz(ln['attachment_m'])} | "
-            f"{f(ln['L0_m'], 3)} m | {f(k, 2)} N/m ({f(ln['k_band_N_per_m'][0], 2)}–"
-            f"{f(ln['k_band_N_per_m'][1], 2)}) | {f(ln['T0_nominal_N'], 2)} N | "
-            f"{f(ln['stretch_at_rest_m'], 2)} m | {f(ps, 2)} m | {f(STROKE * ps, 2)} m "
-            f"({f(100 * strain[-1], 0)} % of L0) | {f(tmax[i], 2)} N | "
-            f"{f(SAFETY * tmax[i], 1)} N |")
-    anchors: dict[tuple, list[int]] = {}
-    for i, ln in enumerate(st["lines"]):
-        anchors.setdefault(tuple(round(c, 3) for c in ln["anchor_m"]), []).append(i)
-    arows = ["| anchor (x, y, z) m | lines | anchor design load (sum of line maxima) | anchor working-load limit ×3 |",
-             "|---|---|---|---|"]
-    wll = 0.0
-    for a, idx in anchors.items():
-        load = sum(tmax[i] for i in idx)
-        wll = max(wll, SAFETY * load)
-        arows.append(f"| {xyz(list(a))} | {', '.join(str(i + 1) for i in idx)} | {f(load, 2)} N | "
-                     f"**{f(SAFETY * load, 1)} N** |")
-    return "\n".join(rows) + "\n\n" + "\n".join(arows), {
-        "tmax": max(tmax), "peak_stretch": max(t / ln["k_N_per_m"] for t, ln in zip(tmax, st["lines"], strict=True)),
-        "wll_anchor": wll, "strain": max(strain)}
 
 
 def retension(r: dict) -> float:
@@ -152,30 +158,101 @@ def retension_cell(r: dict) -> str:
         return "none"
     if rt < SLACK * max(r["T0_N"]):
         return f"stay slack (≤ {f(rt, 2)} N, their hanging weight): no re-tension in the wave train"
-    return f"{f(rt, 2)} N"
+    return f"**{f(rt, 2)} N** (slack → taut within the wave train)"
 
 
-def envelope_rows() -> str:
-    out = ["| article | case (drift sum) | min / max line tension | T_min / T0 | slack lines: peak re-tension | mean offset (range) | max tilt | max yaw | line above the local surface | validity |",
-           "|---|---|---|---|---|---|---|---|---|---|"]
-    for art in ("cluster", "platform"):
-        for r in sorted(runs(art), key=lambda x: (-x["H"], x["T"])):
-            band = "operational" if r["H"] <= 0.12 + 1e-9 else "extreme"
-            rt = retension(r)
-            slack = retension_cell(r)
-            yaw = f"{r['antisymmetric_max']['yaw'] * 57.29578:.1e}°"
-            ok = ("PASS" if r["T_min_ratio"] >= SLACK else "**FAIL**") if band == "operational" \
-                else ("slack (allowed)" if rt else "taut")
-            fov = f" **> +{FOV_MAX:g} m**" if r["surge_max_m"] > FOV_MAX else ""
-            emerge = r.get("line_above_local_surface_max_m", float("nan"))
+def line_table(st: dict, rr: list[dict], band: tuple[float, float]) -> tuple[str, dict]:
+    """Per-line table of one cord set: peaks over the runs ``rr``; k band (fractions)."""
+    tmax = [max(r["T_max_N"][i] for r in rr) for i in range(st["n_lines"])]
+    rows = [f"| line | anchor (x, y, z) m | attachment (x, y, z) m | L0 unstretched | k target (band {100 * (band[0] - 1):+.0f} / {100 * (band[1] - 1):+.0f} %) | pretension T0 (at rest) | at-rest stretch | peak stretch | elongation capacity ×1.25 | max tension | working load ×3 |",
+            "|---|---|---|---|---|---|---|---|---|---|---|"]
+    strain = []
+    for i, ln in enumerate(st["lines"]):
+        k = ln["k_N_per_m"]
+        ps = tmax[i] / k
+        strain.append(STROKE * ps / ln["L0_m"])
+        rows.append(
+            f"| {i + 1} ({ln['body']}) | {xyz(ln['anchor_m'])} | {xyz(ln['attachment_m'])} | "
+            f"{f(ln['L0_m'], 3)} m | {f(k, 2)} N/m ({f(band[0] * k, 2)}–{f(band[1] * k, 2)}) | "
+            f"{f(ln['T0_nominal_N'], 2)} N ({f(ln['T_at_rest_N'], 2)}) | "
+            f"{f(1000 * ln['stretch_at_rest_m'], 0)} mm | {f(ps, 2)} m | {f(STROKE * ps, 2)} m "
+            f"({f(100 * strain[-1], 0)} % of L0) | {f(tmax[i], 2)} N | {f(SAFETY * tmax[i], 1)} N |")
+    anchors: dict[tuple, list[int]] = {}
+    for i, ln in enumerate(st["lines"]):
+        anchors.setdefault(tuple(round(c, 3) for c in ln["anchor_m"]), []).append(i)
+    loads = {a: sum(tmax[i] for i in idx) for a, idx in anchors.items()}
+    return "\n".join(rows), {
+        "tmax": max(tmax), "peak_stretch": max(t / ln["k_N_per_m"] for t, ln in zip(tmax, st["lines"], strict=True)),
+        "strain": max(strain), "anchor_loads": loads, "anchor_lines": anchors}
+
+
+def anchor_table(sets: list[tuple[str, dict]]) -> tuple[str, float]:
+    """Anchor design load per set and the working-load limit = 3 x the max over the sets."""
+    head = "| anchor (x, y, z) m | lines | " + " | ".join(f"design load, {n}" for n, _ in sets) + " | anchor working-load limit ×3 (max of the sets) |"
+    out = [head, "|" + "---|" * (3 + len(sets))]
+    wll = 0.0
+    first = sets[0][1]
+    for a, idx in first["anchor_lines"].items():
+        loads = [s["anchor_loads"][a] for _, s in sets]
+        w = SAFETY * max(loads)
+        wll = max(wll, w)
+        out.append(f"| {xyz(list(a))} | {', '.join(str(i + 1) for i in idx)} | "
+                   + " | ".join(f"{f(x, 2)} N" for x in loads) + f" | **{f(w, 1)} N** |")
+    return "\n".join(out), wll
+
+
+def envelope_op() -> str:
+    out = ["| article | case (drift sum) | min / max line tension | T_min / T0 (≥ 0.15) | mean offset (range) | max tilt | max yaw | validity |",
+           "|---|---|---|---|---|---|---|---|"]
+    for art in ART2:
+        for r in sorted(op_runs(art), key=lambda x: x["T"]):
+            ok = "PASS" if r["T_min_ratio"] >= SLACK else "**FAIL**"
             out.append(
-                f"| {art} | {band}: H {r['H']} m, T {r['T']} s | "
-                f"{f(min(r['T_min_N']))} / {f(max(r['T_max_N']))} N | "
-                f"{f(r['T_min_ratio'])} {ok} | {slack} | {f(r['mean_offset_m'])} m "
-                f"({f(r['surge_min_m'])}–{f(r['surge_max_m'])}){fov} | "
-                f"{f(r['tilt_max_deg'], 1)}° | {yaw} | "
-                f"{'breaks the surface by ' + f(emerge) + ' m' if emerge > 0 else 'submerged (' + f(emerge) + ' m)'} | "
+                f"| {art} | H {r['H']} m, T {r['T']} s | {f(min(r['T_min_N']))} / {f(max(r['T_max_N']))} N | "
+                f"{f(r['T_min_ratio'])} {ok} | {f(r['mean_offset_m'])} m ({f(r['surge_min_m'])}–{f(r['surge_max_m'])}) | "
+                f"{f(r['tilt_max_deg'], 1)}° | {r['antisymmetric_max']['yaw'] * 57.29578:.1e}° | "
                 f"{'indicative (tilt > 5.7°)' if r['tilt_max_deg'] > 5.7 else 'LEVEL1 valid'} |")
+    return "\n".join(out)
+
+
+def envelope_ext(rows: list[dict], label: str) -> str:
+    out = ["| article | set | case (drift sum) | min / max line tension | slack lines: peak re-tension | mean offset (range) | max tilt | max yaw | line above the local surface | validity |",
+           "|---|---|---|---|---|---|---|---|---|---|"]
+    for r in rows:
+        fov = f" **> +{FOV_MAX:g} m**" if r["surge_max_m"] > FOV_MAX else ""
+        em = r.get("line_above_local_surface_max_m", float("nan"))
+        out.append(
+            f"| {r['article']} | {label if 'm' not in r else 'extreme, k ×' + format(r['m'], 'g')} | H {r['H']} m, T {r['T']} s | "
+            f"{f(min(r['T_min_N']))} / {f(max(r['T_max_N']))} N | {retension_cell(r)} | "
+            f"{f(r['mean_offset_m'])} m ({f(r['surge_min_m'])}–{f(r['surge_max_m'])}){fov} | "
+            f"{f(r['tilt_max_deg'], 1)}° | {r['antisymmetric_max']['yaw'] * 57.29578:.2f}° | "
+            f"{'breaks the surface by ' + f(em) + ' m' if em > 0 else 'submerged (' + f(em) + ' m)'} | "
+            f"indicative (tilt > 5.7°) |")
+    return "\n".join(out)
+
+
+def kscan_rows() -> str:
+    out = ["| article | k (× operational) | T = 2.35 s: mean / max surge | T = 2.65 s: mean / max surge | peak line tension | slack lines: peak re-tension | verdict (max surge ≤ 1.0 m, both periods) |",
+           "|---|---|---|---|---|---|---|"]
+    for art in ART2:
+        scan = [r for r in EX["runs"] if r["article"] == art and r["t0x"] == 1.0]
+        for m in sorted({r["m"] for r in scan}):
+            rr = {r["T"]: r for r in scan if r["m"] == m}
+            cells = [f"{f(rr[T]['mean_offset_m'])} / {f(rr[T]['surge_max_m'])} m" if T in rr else "—"
+                     for T in (2.35, 2.65)]
+            ok = all(T in rr and rr[T]["surge_max_m"] <= FOV_MAX for T in (2.35, 2.65))
+            mean_ok = all(T in rr and rr[T]["mean_offset_m"] <= FOV_MAX for T in (2.35, 2.65))
+            ch = m == m_ext(art)
+            verdict = ("**CHOSEN**" if ch else "pass") if ok else ("fails (mean alone passes)" if mean_ok else "fails")
+            out.append(f"| {art} | ×{m:g} ({f(m * design(art)['k_line'], 2)} N/m) | {cells[0]} | {cells[1]} | "
+                       f"{f(max(max(r['T_max_N']) for r in rr.values()))} N | "
+                       f"{f(max(retension(r) for r in rr.values()), 2)} N | {verdict} |")
+        fin = {r["T"]: r for r in ext_runs(art)}
+        cells = [f"{f(fin[T]['mean_offset_m'])} / {f(fin[T]['surge_max_m'])} m" for T in (2.35, 2.65)]
+        ok = all(r["surge_max_m"] <= FOV_MAX for r in fin.values())
+        out.append(f"| {art} | **×{m_ext(art):g} FINAL** (at-rest-matched T0) | {cells[0]} | {cells[1]} | "
+                   f"{f(max(max(r['T_max_N']) for r in fin.values()))} N | "
+                   f"{f(max(retension(r) for r in fin.values()), 2)} N | {'**PASS: the spec**' if ok else '**FAIL**'} |")
     return "\n".join(out)
 
 
@@ -194,78 +271,134 @@ def buoy_rows() -> str:
     return "\n".join(out)
 
 
+def tank_rows() -> str:
+    out = ["| article | cord set | surge period | sway period | yaw period | surge pull K / F at 0.25, 0.5 m | sway pull K / F at 0.1 m | yaw pull K / M at 5° | calm static tilt (FloatSim settle) |",
+           "|---|---|---|---|---|---|---|---|---|"]
+    for art in ARTS:
+        for name, st in (("operational" if art != "buoy" else "one set", ST[art]),
+                         *((("extreme", STX[art]),) if art in STX else ())):
+            p = st["pull"]
+            out.append(
+                f"| {art} | {name} | {f(st['periods_s']['surge'], 1)} s | {f(st['periods_s']['sway'], 1)} s | "
+                f"{f(st['periods_s']['yaw'], 2)} s | {f(p['surge']['K0'], 2)} N/m / "
+                f"{f(p['surge']['points'][0]['F'], 2)}, {f(p['surge']['points'][1]['F'], 2)} N | "
+                f"{f(p['sway']['K0'], 2)} N/m / {f(p['sway']['points'][0]['F'], 3)} N | "
+                f"{f(p['yaw']['K0'], 2)} N·m/rad / {f(p['yaw']['points'][0]['F'], 3)} N·m | "
+                f"{f(st['static_tilt_settle_deg'])}° |")
+    return "\n".join(out)
+
+
+def fig(name: str, caption: str, width: int = 100) -> str:
+    return f'![{caption}](figs/{name}.png "{width}")\n\n*{caption}*'
+
+
 def main() -> None:
     tmpl = (HERE / "MOORING-SPEC.template.md").read_text(encoding="utf-8")
-    parts, summ = {}, {}
+    ops, exts, sections, wll = {}, {}, {}, {}
     for art in ARTS:
-        parts[art], summ[art] = line_table(art)
-    st = ST
-    free = {a: AS[a][0]["free"] for a in ARTS}
+        band_op = (0.87, 1.30)
+        md_op, ops[art] = line_table(ST[art], op_runs(art), band_op)
+        parts = []
+        if art == "buoy":
+            parts.append("**One cord set** (response and extreme tests; its predicted H = 0.5 m offsets stay "
+                         f"within +{FOV_MAX:g} m). Peaks over every predicted run (§5):\n\n" + md_op)
+            atab, wll[art] = anchor_table([("the cord set", ops[art])])
+        else:
+            md_x, exts[art] = line_table(STX[art], ext_runs(art), (1.0, 1.30))
+            parts.append(f"**Operational cord set** (response tests, H ≤ {H_OP} m). Peaks over its moored "
+                         "operational runs (§5):\n\n" + md_op)
+            parts.append(f"**Extreme cord set, k ×{m_ext(art):g}** (load / survival tests, H = 0.2–0.5 m). "
+                         "Same anchors, attachments and nominal T0. Its stiffness is a MINIMUM: a softer cord "
+                         f"puts H = 0.5 m past +{FOV_MAX:g} m, so the band is −0 / +30 %. Peaks over its H = 0.5 m "
+                         "runs (§5):\n\n" + md_x)
+            atab, wll[art] = anchor_table([("operational", ops[art]), ("extreme", exts[art])])
+        sections[art] = "\n\n".join([
+            fig(f"plan_{art}", f"{NAMES[art]}: plan, to scale (mooring_figures.py, from spec_statics.json)", 92),
+            fig(f"elevation_{art}", f"{NAMES[art]}: elevation looking across the flume, to scale", 92),
+            *parts, "Anchors (working-load limit = 3 × the larger design load of the cord sets):\n\n" + atab])
 
     def row(label: str, fn) -> str:  # type: ignore[no-untyped-def]
         return f"| {label} | " + " | ".join(fn(a) for a in ARTS) + " |"
 
     def attach(a: str) -> str:
         z = design(a)["height"]
-        return {"buoy": f"radial collar r = 0.2 m on the spar at **z = {z:+.2f} m** (submerged)",
-                "cluster": f"each spar at **z = {z:+.2f} m**",
-                "platform": f"the 8 up-/down-stream row spars at **z = {z:+.2f} m** (bridles)"}[a]
+        return {"buoy": f"slender radial collar r = {COLLAR_R:g} m on the spar, 4 points at z = {z:+.2f} m",
+                "cluster": f"each of the 4 spars at z = {z:+.2f} m",
+                "platform": f"the 8 up-/down-stream row spars at z = {z:+.2f} m (4 two-leg bridles)"}[a]
 
-    def op(a: str) -> str:
-        d = design(a)
-        direct = ([r["T_min_ratio"] for r in BS if r["H"] <= 0.12 + 1e-9] if a == "buoy" else
-                  [r["T_min_ratio"] for r in runs(a) if r["H"] <= 0.12 + 1e-9])
-        return (f"{f(d['T_min_ratio_op'])} (kinematic) / {f(min(direct))} (moored FloatSim)"
-                if direct else f"{f(d['T_min_ratio_op'])} (kinematic)")
+    def cord(a: str, st: dict, s: dict, band: str) -> str:
+        ln = st["lines"][0]
+        L0 = " / ".join(sorted({f(x['L0_m'], 3) for x in st['lines']}))
+        return (f"k {f(ln['k_N_per_m'], 2)} N/m ({band}), L0 {L0} m (nominal T0 "
+                f"{f(ln['T0_nominal_N'], 2)} N), pre-stretch at rest "
+                f"{f(1000 * ln['stretch_at_rest_m'], 0)} mm, elongation ≥ {f(STROKE * s['peak_stretch'], 2)} m "
+                f"({f(100 * s['strain'], 0)} % of L0)")
 
-    head = ["| | single buoy | cluster | 4×4 platform |", "|---|---|---|---|",
-            row("attachment", attach),
-            row("anchors (walls, submerged)", lambda a: f"x ±5.0, y ±1.83, z {design(a)['height']:+.2f} m"),
-            row("lines (legs)", lambda a: str(st[a]["n_lines"])),
-            row("cord stiffness k (band)", lambda a: f"{f(st[a]['lines'][0]['k_N_per_m'], 2)} N/m "
-                f"({f(st[a]['lines'][0]['k_band_N_per_m'][0], 2)}–"
-                f"{f(st[a]['lines'][0]['k_band_N_per_m'][1], 2)})"),
-            row("pretension T0 per line/leg", lambda a: f"**{f(st[a]['lines'][0]['T0_nominal_N'], 2)} N**"),
-            row("unstretched length L0", lambda a: " / ".join(sorted({f(ln['L0_m'], 3) for ln in st[a]['lines']})) + " m"),
-            row("at-rest stretch", lambda a: f"{f(st[a]['lines'][0]['stretch_at_rest_m'], 2)} m"),
-            row("peak stretch (worst predicted case)", lambda a: f"{f(summ[a]['peak_stretch'], 2)} m"),
-            row("elongation capacity ×1.25", lambda a: f"{f(1.25 * summ[a]['peak_stretch'], 2)} m "
-                f"({f(100 * summ[a]['strain'], 0)} % of L0)"),
-            row("max line tension / working load ×3", lambda a: f"{f(summ[a]['tmax'], 2)} / "
-                f"{f(3 * summ[a]['tmax'], 1)} N"),
-            row("anchor working-load limit ×3", lambda a: f"**{f(summ[a]['wll_anchor'], 1)} N**"),
-            row("calm static tilt (FloatSim; ≤ 1°, proposed)", lambda a: f"{f(st[a]['static_tilt_settle_deg'])}°"),
-            row("tilt period vs unmoored (limit ζ/3)", lambda a: f"{design(a)['tilt_shift_pct']:+.2f} % "
-                f"({f(free[a]['tilt'])} → {f(design(a)['tilt_T_s'])} s; ≤ {f(lim(a))} %)"),
-            row("heave period vs unmoored (≤ 1 %)", lambda a: f"{design(a)['heave_shift_pct']:+.2f} %"),
-            row("operational band T_min/T0 (≥ 0.15)", op),
-            row("surge / sway / yaw period", lambda a: f"{f(st[a]['periods_s']['surge'], 1)} / "
-                f"{f(st[a]['periods_s']['sway'], 1)} / {f(st[a]['periods_s']['yaw'], 2)} s"),
-            row("pull stiffness surge / sway", lambda a: f"{f(st[a]['pull']['surge']['K0'], 2)} / "
-                f"{f(st[a]['pull']['sway']['K0'], 2)} N/m"),
-            row("pull stiffness yaw", lambda a: f"{f(st[a]['pull']['yaw']['K0'], 2)} N·m/rad")]
-    tank = ["| | surge period | sway period | yaw period | surge pull K / F at 0.25, 0.5 m | sway pull K / F at 0.1 m | yaw pull K / M at 5° |",
-            "|---|---|---|---|---|---|---|"]
-    for a in ARTS:
-        p = st[a]["pull"]
-        tank.append(
-            f"| {a} | {f(st[a]['periods_s']['surge'], 1)} s | {f(st[a]['periods_s']['sway'], 1)} s | "
-            f"{f(st[a]['periods_s']['yaw'], 2)} s | {f(p['surge']['K0'], 2)} N/m / "
-            f"{f(p['surge']['points'][0]['F'], 2)}, {f(p['surge']['points'][1]['F'], 2)} N | "
-            f"{f(p['sway']['K0'], 2)} N/m / {f(p['sway']['points'][0]['F'], 3)} N | "
-            f"{f(p['yaw']['K0'], 2)} N·m/rad / {f(p['yaw']['points'][0]['F'], 3)} N·m |")
-    pin = {a: next(r for r in AS[a] if "article" in r and r["name"] == "pin"
-                   and r["k_scale"] == 1.0 and r["t0_scale"] == 1.0) for a in ARTS}
-    pins = ", ".join(f"{a} {pin[a]['tilt_shift_pct']:+.1f} % against ±{f(lim(a))} % "
-                     f"({abs(pin[a]['tilt_shift_pct']) / lim(a):.1f} ×)" for a in ARTS)
-    fill = {"HEADLINE": "\n".join(head), "BUOY": parts["buoy"], "CLUSTER": parts["cluster"],
-            "PLATFORM": parts["platform"], "ENVELOPE": envelope_rows(), "BUOYRUNS": buoy_rows(),
-            "TANK": "\n".join(tank), "SWEEP": sweep_rows(), "PINSHIFT": pins,
-            "WLL": ", ".join(f"{a} {f(summ[a]['wll_anchor'], 1)} N" for a in ARTS),
-            "ZB": f"{design('buoy')['height']:+.2f}", "ZC": f"{design('cluster')['height']:+.2f}",
-            "ZP": f"{design('platform')['height']:+.2f}",
-            "ZETA": ", ".join(f"{a} {3 * lim(a):.2f} %" for a in ARTS),
-            "LIMS": ", ".join(f"{a} {f(lim(a))} %" for a in ARTS)}
+    summary = ["| | single buoy | cluster | 4×4 platform |", "|---|---|---|---|",
+               row("anchors (under water, on the side walls)",
+                   lambda a: f"x ±{abs(ST[a]['lines'][0]['anchor_m'][0]):.1f}, y ±{abs(ST[a]['lines'][0]['anchor_m'][1]):.2f}, "
+                             f"z {ST[a]['lines'][0]['anchor_m'][2]:+.2f} m"),
+               row("attachment points", attach),
+               row("lines (legs)", lambda a: str(ST[a]["n_lines"])),
+               row("pretension at rest per line/leg, both sets (set by tension or calm tilt)",
+                   lambda a: f"**{f(ST[a]['lines'][0]['T_at_rest_N'], 2)} N**"),
+               row(f"operational cord (response tests, H ≤ {H_OP} m)",
+                   lambda a: cord(a, ST[a], ops[a], "−13 / +30 %")),
+               row("extreme cord (H = 0.2–0.5 m)",
+                   lambda a: "the same cord (one set)" if a == "buoy" else
+                   f"**k ×{m_ext(a):g}**: " + cord(a, STX[a], exts[a], "minimum; −0 / +30 %")),
+               row("max line tension: operational / extreme",
+                   lambda a: (f"{f(ops[a]['tmax'], 2)} N" if a == "buoy" else
+                              f"{f(ops[a]['tmax'], 2)} / {f(exts[a]['tmax'], 2)} N")),
+               row("anchor working load ×3 (max of both sets)", lambda a: f"**{f(wll[a], 1)} N**"),
+               row("calm static tilt, FloatSim: operational / extreme",
+                   lambda a: (f"{f(ST[a]['static_tilt_settle_deg'])}° (collar)" if a == "buoy" else
+                              f"{f(ST[a]['static_tilt_settle_deg'])}° / {f(STX[a]['static_tilt_settle_deg'])}°")),
+               row("H = 0.5 m max surge (limit +1.0 m)",
+                   lambda a: (f"{f(max(r['surge_max_m'] for r in op_runs(a) if r['H'] == 0.5))} m (predicted cases)"
+                              if a == "buoy" else
+                              f"{f(max(r['surge_max_m'] for r in ext_runs(a)))} m (extreme set; operational set "
+                              f"{f(max(r['surge_max_m'] for r in AD['extremes'] if r['article'] == a and r['H'] == 0.5))} m)")),
+               row("tilt-period shift vs unmoored: operational (limit ζ/3) / extreme (declared)",
+                   lambda a: (f"{design(a)['tilt_shift_pct']:+.2f} % (≤ {f(lim(a))} %)" if a == "buoy" else
+                              f"{design(a)['tilt_shift_pct']:+.2f} % (≤ {f(lim(a))} %) / "
+                              f"{EX['declare'][a]['tilt_shift_pct']:+.2f} %"))]
+    arms = COLLAR_ARMS * COLLAR_R
+    d_max = (4 * ADDED_MASS_BUDGET_KG / (RHO * 3.141592653589793 * arms)) ** 0.5
+    disk = 8 / 3 * RHO * COLLAR_R ** 3
+    tmax_buoy = ops["buoy"]["tmax"]
+    m_root = tmax_buoy * COLLAR_R
+    d_rod = 0.010
+    sigma = m_root / (3.141592653589793 * d_rod ** 3 / 32) / 1e6
+    fill = {
+        "SUMMARY": "\n".join(summary),
+        "BUOY": sections["buoy"], "CLUSTER": sections["cluster"], "PLATFORM": sections["platform"],
+        "SWEEP": sweep_rows(), "KSCAN": kscan_rows(), "TANK": tank_rows(),
+        "ENV_OP": envelope_op(),
+        "ENV_EXT": envelope_ext([r for a in ART2 for r in sorted(ext_runs(a), key=lambda x: x["T"])], "extreme"),
+        "ENV_REVB": envelope_ext([r for r in AD["extremes"] if r["H"] == 0.5], "operational (rev B)"),
+        "BUOYRUNS": buoy_rows(),
+        "FIG_RATIONALE": fig("rationale", "Design rationale: tilt-period shift and pretension against attachment height (the sweep table's rows)", 100),
+        "FIG_OFFSETS": fig("offsets", "H = 0.5 m mean positions of both cord sets against the tracking window (FloatSim, drift sum)", 78),
+        "PINSHIFT": ", ".join(f"{a} {next(s['row'] for s in sweep_selection() if s['article'] == a and s['row']['name'] == 'pin' and s['k_scale'] == 1.0)['tilt_shift_pct']:+.1f} % against ±{f(lim(a))} %" for a in ARTS),
+        "ZB": f"{design('buoy')['height']:+.2f}", "ZC": f"{design('cluster')['height']:+.2f}",
+        "ZP": f"{design('platform')['height']:+.2f}",
+        "WLL": ", ".join(f"{a} {f(wll[a], 1)} N" for a in ARTS),
+        "MC": f"{m_ext('cluster'):g}", "MP": f"{m_ext('platform'):g}",
+        "MC_MEAN": f"{EX['choice']['cluster']['m_mean_only']:g}", "MP_MEAN": f"{EX['choice']['platform']['m_mean_only']:g}",
+        "DMAX": f"{1000 * d_max:.0f}", "ARMS": f"{arms:g}", "DISK": f"{disk:.0f}", "BUDGET": f"{ADDED_MASS_BUDGET_KG:g}",
+        "ROD": f"{1000 * d_rod:.0f}", "ROD_AM": f"{RHO * 3.141592653589793 * d_rod ** 2 / 4 * arms:.2f}",
+        "SIGMA": f"{sigma:.0f}", "TMAXB": f(tmax_buoy, 2), "PLATE_AM": f"{HEAVE_PLATE_AM_KG:g}",
+        "TILT_OP": " / ".join(f"{f(ST[a]['static_tilt_settle_deg'])}°" for a in ART2),
+        "TILT_EXT": " / ".join(f"{f(STX[a]['static_tilt_settle_deg'])}°" for a in ART2),
+        "SENS": " / ".join(f"{ST[a]['static_tilt_settle_deg'] / ST[a]['lines'][0]['T_at_rest_N']:.2f}°/N" for a in ART2),
+        "PRE_EXT": " / ".join(f"{1000 * STX[a]['lines'][0]['stretch_at_rest_m']:.0f} mm" for a in ART2),
+        "DECL": ", ".join(f"{a} tilt {EX['declare'][a]['tilt_shift_pct']:+.2f} %, heave {EX['declare'][a]['heave_shift_pct']:+.2f} %, surge {f(EX['declare'][a]['periods_s']['surge'], 1)} s" for a in ART2),
+        "T0RAISE": t0_raise_text(),
+        "SURGE_AMP": " / ".join(f"{a} +{100 * (1 / (1 - (3.5 / STX[a]['periods_s']['surge']) ** 2) - 1):.0f} % "
+                                f"(T_surge {f(STX[a]['periods_s']['surge'], 1)} s)" for a in ART2),
+        "RESID": resid_text(),
+    }
     md = tmpl
     for k, v in fill.items():
         md = md.replace("{{" + k + "}}", v)
@@ -278,10 +411,10 @@ def main() -> None:
         pdf = HERE / "MOORING-SPEC.pdf"
         pdf.unlink(missing_ok=True)
         subprocess.run([str(EDGE), "--headless=new", "--disable-gpu", "--no-pdf-header-footer",
-                        f"--print-to-pdf={pdf}", htm.as_uri()], check=False, timeout=120,
+                        f"--print-to-pdf={pdf}", htm.as_uri()], check=False, timeout=180,
                        capture_output=True)
         last = -1                    # Edge may finish printing after it returns: wait for a
-        for _ in range(120):         # stable file before removing the HTML it reads
+        for _ in range(180):         # stable file before removing the HTML it reads
             size = pdf.stat().st_size if pdf.exists() else -1
             if size > 0 and size == last:
                 break
@@ -289,6 +422,45 @@ def main() -> None:
             time.sleep(1.0)
         htm.unlink(missing_ok=True)
         print("wrote MOORING-SPEC.pdf" if pdf.exists() else "PDF not produced")
+
+
+def resid_text() -> str:
+    r = _load("extreme_set_residuals.json")
+    if not r:
+        return ""
+    return ("FloatSim's joint-projected static residual at the operational settle: "
+            + "; ".join(f"{a} {r[a]['operational']:.4f} N with the operational lines, "
+                        f"{r[a]['extreme at-rest matched']:.4f} N with the extreme lines "
+                        f"(nominal T0 instead: {r[a]['extreme nominal T0']:.2f} N)" for a in ART2)
+            + " (extreme_set_residuals.json).")
+
+
+def t0_raise_text() -> str:
+    t = EX.get("t0_raise")
+    if not t:
+        none = all(retension(r) < SLACK * max(r["T0_N"]) for a in ART2 for r in ext_runs(a))
+        if not none:
+            return "Not run: the slack lines re-tension, but the check was not run (see *Follow-ups*)."
+        cap = []
+        for a in ART2:
+            ln = STX[a]["lines"][0]
+            pre3 = ln["T_at_rest_N"] * 3.0 / ST[a]["static_tilt_settle_deg"] / ln["k_N_per_m"]
+            off = min(r["mean_offset_m"] for r in ext_runs(a))
+            cap.append(f"{a} {1000 * pre3:.0f} mm against a mean offset ≥ {f(off)} m")
+        return ("Not run, because there is nothing to cut. In the final runs the down-flume lines "
+                "go slack and **stay slack through the wave train** (their peak is their hanging "
+                "weight). Their pre-stretch is far below the mean offset, and it stays so even at "
+                "the 3° calm-tilt cap (T0 ≈ 3× the at-rest tension: pre-stretch "
+                + "; ".join(cap) + "). Raising T0 would only add to the up-flume peak.")
+    base = {r["T"]: r for r in ext_runs(t["article"])}
+    cells = []
+    for r in t["runs"]:
+        b = base[r["T"]]
+        cells.append(f"T = {r['T']} s: peak re-tension {f(retension(b), 2)} → {f(retension(r), 2)} N, "
+                     f"max tension {f(max(b['T_max_N']))} → {f(max(r['T_max_N']))} N, max surge "
+                     f"{f(b['surge_max_m'])} → {f(r['surge_max_m'])} m")
+    return (f"Checked on the cluster (cheap): T0 ×{t['t0x']:.2f} on the extreme set (calm tilt "
+            f"{f(t['calm_tilt_deg'])}°, FloatSim settle). " + "; ".join(cells) + ".")
 
 
 def _inline(t: str) -> str:
@@ -299,12 +471,22 @@ def _inline(t: str) -> str:
     return t
 
 
+def _img(m: re.Match) -> str:
+    alt, path, width = m.group(1), HERE / m.group(2), m.group(3) or "100"
+    data = base64.b64encode(path.read_bytes()).decode()
+    return (f'<img alt="{html.escape(alt)}" src="data:image/png;base64,{data}" '
+            f'style="width:{width}%;display:block;margin:4px auto">')
+
+
 def to_html(md: str) -> str:
-    """Minimal Markdown (headings, tables, lists, paragraphs, bold, code) for the PDF print."""
+    """Minimal Markdown (headings, tables, lists, paragraphs, bold, code, images) for the PDF."""
     out, lines, i = [], md.splitlines(), 0
+    img = re.compile(r'!\[(.*?)\]\((\S+?)(?: "(\d+)")?\)')
     while i < len(lines):
         ln = lines[i]
-        if ln.startswith("|"):
+        if img.fullmatch(ln.strip()):
+            out.append(img.sub(_img, ln.strip()))
+        elif ln.startswith("|"):
             tbl = []
             while i < len(lines) and lines[i].startswith("|"):
                 tbl.append([c.strip() for c in lines[i].strip("|").split("|")])
@@ -314,10 +496,9 @@ def to_html(md: str) -> str:
                 out.append("<tr>" + "".join(f"<td>{_inline(c)}</td>" for c in r) + "</tr>")
             out.append("</table>")
             continue
-        m = re.match(r"(#+) (.*)", ln)
-        if m:
+        elif m := re.match(r"(#+) (.*)", ln):
             n = len(m.group(1))
-            # page one = title + the facility assumptions; each later section on a new page
+            # page one = title + the summary; each later section on a new page
             brk = (' style="page-break-before:always"'
                    if ln.startswith("## ") and any(o.startswith("<h2") for o in out) else "")
             out.append(f"<h{n}{brk}>{_inline(m.group(2))}</h{n}>")
@@ -350,11 +531,12 @@ def to_html(md: str) -> str:
         elif ln.strip():
             out.append(f"<p>{_inline(ln)}</p>")
         i += 1
-    css = ("body{font-family:Segoe UI,Arial,sans-serif;font-size:9.5pt;margin:14mm;color:#1b2430}"
-           "h1{font-size:16pt}h2{font-size:12.5pt;border-bottom:1px solid #9aa5b1}h3{font-size:10.5pt}"
-           "table{border-collapse:collapse;margin:6px 0;font-size:8pt}"
+    css = ("body{font-family:Segoe UI,Arial,sans-serif;font-size:9pt;margin:0;color:#1b2430}"
+           "h1{font-size:15pt;margin:0 0 4px}h2{font-size:12pt;border-bottom:1px solid #9aa5b1}"
+           "h3{font-size:10pt}table{border-collapse:collapse;margin:5px 0;font-size:7.5pt}"
            "td,th{border:1px solid #9aa5b1;padding:2px 4px;vertical-align:top}th{background:#e8edf2}"
-           "code{font-size:8pt}@page{size:A4 landscape;margin:10mm}")
+           "code{font-size:7.5pt}p{margin:4px 0}img{page-break-inside:avoid}"
+           "@page{size:A4 landscape;margin:9mm}")
     return f"<!doctype html><html><head><meta charset='utf-8'><style>{css}</style></head><body>" + \
         "\n".join(out) + "</body></html>"
 

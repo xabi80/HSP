@@ -83,12 +83,15 @@ def design_opts(article: str, t0_scale: float = 1.0) -> dict:
 
 
 def _setup(article: str, opts: dict | None = None, t0_scale: float = 1.0,  # type: ignore[no-untyped-def]
-           tag: str | None = None):
+           tag: str | None = None, reuse_eq: bool = False):
     """(deck, calm equilibrium, per-line closures, lines) of the moored design.
 
     With ``opts`` and ``tag`` (an articulated article), the calm equilibrium is FloatSim's settle
     of THOSE lines, cached under ``tag`` (attachment_sweep.py: submerged attachments tilt the
-    articles, so the pin-level settle does not apply).
+    articles, so the pin-level settle does not apply). With ``reuse_eq`` the cached settle under
+    ``tag`` (another line set: same geometry and T0, other k) is reused as it stands and accepted
+    only if FloatSim's joint-projected static residual with THESE lines stays within its
+    equilibrium tolerance (1 N).
 
     With ``t0_scale`` the lines carry a scaled pretension (same k). The articulated articles then
     reuse the cached settle of the unscaled design: pin-level lines act through the pins, so
@@ -99,6 +102,13 @@ def _setup(article: str, opts: dict | None = None, t0_scale: float = 1.0,  # typ
     if article == "buoy":
         s = fd.build_single(dk, fd.hdbs("buoy")["bem_databases"]["buoy"], True)
         xi_eq = np.asarray(s.xi0)
+    elif tag is not None and reuse_eq:
+        xi_eq = np.asarray(json.loads(fd.EQ_CACHE.read_text())[tag]["xi"])
+        s = fsd.build_system(fd.with_positions(dk, xi_eq), dt=fd.DT, t_max_kernel=fd.T_KERNEL,
+                             solve_equilibrium=False, **fd.hdbs(article))
+        res = fd.joint_residual(s, xi_eq)
+        if res > fsd._EQUILIBRIUM_TOL_N:
+            raise RuntimeError(f"{article}: settle {tag} not valid for these lines: {res:.3f} N")
     elif tag is not None:
         xi_eq = fd.moored_equilibrium(article, tag=tag, **opts)
     else:
@@ -169,7 +179,8 @@ def extreme_run(args: tuple) -> dict:
     if design is None:
         dk, xi_eq, _lf, _lines = _setup(article, t0_scale=t0_scale)
     else:
-        dk, xi_eq, _lf, _lines = _setup(article, opts=design["opts"], tag=design["tag"])
+        dk, xi_eq, _lf, _lines = _setup(article, opts=design["opts"], tag=design["tag"],
+                                        reuse_eq=design.get("reuse_eq", False))
     F_spar = _drift(H, T) if drift else 0.0
     off = (N_SPAR[article] * F_spar / design["K_surge"] if design is not None
            else _pull_offset(article, N_SPAR[article] * F_spar))

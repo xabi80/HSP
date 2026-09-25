@@ -1,6 +1,6 @@
 # Flume mooring design: basis, confirmed criteria and Phase C results
 
-**Status (2026-09-25): the mooring specification is at REV B (Phase F: the attachment-height design; `MOORING-SPEC.md`). Rev A (Phase E, pin plane, T0 +60 %) is withdrawn.** Earlier status: Phases A–C done, including Phase C round 2 (Xabier's decisions 1–7 on `6c93a80`, §C5–C9); Phase D (verification runs) NOT run.** It waits for Xabier on the BEM regeneration (§C8), the line element and the drift double counting (§C7), and the other open decisions at the end of Phase D.
+**Status (2026-09-25): the mooring specification is at REV C (Phase G: two cord sets on the same anchors and attachment points, with figures; `MOORING-SPEC.md`). Rev B (Phase F) is its operational set, unchanged; rev A (Phase E, pin plane, T0 +60 %) is withdrawn.** Earlier status: Phases A–C done, including Phase C round 2 (Xabier's decisions 1–7 on `6c93a80`, §C5–C9); Phase D (verification runs) NOT run.** It waits for Xabier on the BEM regeneration (§C8), the line element and the drift double counting (§C7), and the other open decisions at the end of Phase D.
 
 **Goal:** design the station-keeping mooring for the actual OSU Large Wave Flume (HWRL) test. It
 is not an OrcaFlex comparison.
@@ -18,12 +18,12 @@ must list them on its first page.**
 | # | Assumption | Value the design uses | If it proves false |
 |---|---|---|---|
 | F1 | **Anchors can be fixed on the flume walls UNDER WATER, at each article's attachment depth** (rev B, Phase F), at ±5.0 m up/downstream, y = ±1.83 m | anchor z = the attachment depth: −0.50 m (buoy), −0.15 m (cluster, platform) | A higher or lower anchor slopes the line; its vertical pull at the attachment adds calm tilt and tilt coupling, so the sweep (`attachment_sweep.py`) must be re-run for the real anchor depth. *Superseded question (rev A): anchors at the pin plane, 0.72 m above still water. It no longer arises.* |
-| F2 | Anchor load rating | **Rev B values: `MOORING-SPEC.md` headline (they supersede the ones here).** Record before rev B: design-state load per anchor, before the safety factor: 4.1 N (buoy line, record; the redesign changes it, §C2), 16.5 N (cluster), **66.1 N per platform anchor** (2-leg bridle, 33 N per leg). WLL ≥ 3× that: **≥ 200 N per platform anchor** | Lighter anchors need a softer or lower-pretension mooring (longer surge period, more offset). Phase D replaces these record values with FloatSim maxima. The round-2 extreme runs (§C7) reach 41.8 N per platform leg, so ~84 N per anchor and WLL ≥ 250 N (indicative). |
+| F2 | Anchor load rating | **Rev C values: `MOORING-SPEC.md` summary and line tables (they supersede the ones here).** Record before rev B: design-state load per anchor, before the safety factor: 4.1 N (buoy line, record; the redesign changes it, §C2), 16.5 N (cluster), **66.1 N per platform anchor** (2-leg bridle, 33 N per leg). WLL ≥ 3× that: **≥ 200 N per platform anchor** | Lighter anchors need a softer or lower-pretension mooring (longer surge period, more offset). Phase D replaces these record values with FloatSim maxima. The round-2 extreme runs (§C7) reach 41.8 N per platform leg, so ~84 N per anchor and WLL ≥ 250 N (indicative). |
 | F3 | Maximum wave height per period, and the steepness limit | **H/λ ≤ 0.08** (finite depth 2.7 m): H = 0.5 m needs T ≥ 2.01 s, 0.35 m needs T ≥ 1.675 s, 0.2 m needs T ≥ 1.266 s. The wavemaker's own H(T) envelope is unknown | Cases above the wavemaker's envelope drop out of the matrix; the drift bound and loads fall with them. |
 | F4 | Water depth | 2.7 m ("storm-wave max"; `mooring_sizing.H_FLUME`) | The drift bound uses coth(kh); a deeper flume lowers it at long periods. (FloatSim's runs are deep-water throughout: BEM and wave kinematics.) |
 | F5 | Test-section position relative to the wavemaker and the beach | Not in the record. The FloatSim cases settle for 60–135 s of regular waves; the tank needs a clean incident-wave window at least that long before beach reflections arrive, with the article on the flume centreline (the sidewall analysis assumes it) | Shorter clean windows shorten the settle, which matters most near the lightly damped tilt resonance (§C3). |
 | F6 | Tracking field of view | Surge from about −0.3 m (upstream) to **+1.0 m** (downstream; criterion 4: mean offset + dynamic ≤ 1.0 m), sway ±0.1 m, plus the article's footprint (platform 2.06 m wide at 45°) | A smaller field of view needs a stiffer mooring (shorter surge period) or a lower H in the extreme band. |
-| F7 | **Standard soft-mooring hardware available at HWRL** | **Rev B values: `MOORING-SPEC.md` headline (they supersede the ones here).** Record before rev B: Elastic cord (§C7):<br>• secant stiffness within −13 / +30 % of 2.0 / 8.3 / 16.6 N/m over the working strain;<br>• rated elongation ≥ 131 % / 85 % / 100 % if the cord is the whole unstretched line (3.1 / 3.9 / 3.1–3.3 m);<br>• ~0.3 N/m dry weight.<br>Wall anchors and fittings for 7 / 22 / 84 N design loads (platform: per 2-leg anchor, extreme runs). | Without such a cord, the lines need farther anchors (longer lines, lower strain) or a different stiffness element; the design changes. |
+| F7 | **Standard soft-mooring hardware available at HWRL** | **Rev C values: `MOORING-SPEC.md` summary and line tables (they supersede the ones here).** Record before rev B: Elastic cord (§C7):<br>• secant stiffness within −13 / +30 % of 2.0 / 8.3 / 16.6 N/m over the working strain;<br>• rated elongation ≥ 131 % / 85 % / 100 % if the cord is the whole unstretched line (3.1 / 3.9 / 3.1–3.3 m);<br>• ~0.3 N/m dry weight.<br>Wall anchors and fittings for 7 / 22 / 84 N design loads (platform: per 2-leg anchor, extreme runs). | Without such a cord, the lines need farther anchors (longer lines, lower strain) or a different stiffness element; the design changes. |
 
 Also assumed (hardware, not facility): line dry weight 0.3 N/m; linear springs with a working
 stroke ≥ 1.25 × the maximum stretch.
@@ -926,6 +926,116 @@ All on the chosen design, with the conservative drift sum:
 3. **The buoy's yaw vs tilt conflict** (F4): accept the diverging extremes, or design a
    pitch-neutral collar.
 4. **Underwater wall anchors** (F1 of the spec) to HWRL.
+
+## Phase G (2026-09-25): two cord sets and the figures — the rev C specification (`extreme_set.py`, `mooring_figures.py`)
+
+Xabier's decisions on rev B (`fb6ba5b`):
+- The operational design stands, and calm static tilt ≤ 1° is **CONFIRMED**.
+- Add an extreme cord set on the same anchors and attachment points.
+- Add figures generated from the committed geometry.
+
+**Context for the record** (Xabier): the rev B decision rule omitted the confirmed excursion
+criterion (Phase B criterion 4). That was the advisor's error; the third tie-break partly
+compensated. The conflict is real: minimal interference needs soft lines, and station-keeping in
+extreme waves needs stiff ones. It is resolved with TWO cord sets, not by compromising one
+design.
+
+### G1. Xabier's reasoning, re-derived (standing rule)
+
+1. **"Calm equilibrium depends on T0, not k; no new settle is needed" — TRUE for the at-rest
+   tension, FALSE for the code's nominal T0.**
+   - The nominal T0 is the tension at the design (untilted) chord. The calm 1° tilt moves each
+     attachment δ ≈ 15 mm towards its anchor, so the at-rest tension is T0 − k·δ.
+   - With the same nominal T0, the extreme cords sit at 1.21 N (cluster) and 0.87 N (platform)
+     at rest instead of 1.44 / 1.42 N: a different, less tilted equilibrium.
+     FloatSim's settle of the cluster's extreme set at the nominal T0 (cache `cluster:ext_k5`)
+     lands at 0.88° calm tilt, against 1.00°.
+   - With the at-rest tension matched (nominal T0 = T_rest + m·(T0 − T_rest)), the line forces at
+     the calm geometry are identical, so the operational settle IS the extreme set's calm
+     equilibrium (the same 1° tilt) and no new settle is needed. FloatSim's joint-projected static residual at the operational settle: cluster 0.0077 N with the operational lines, 0.0073 N with the extreme lines (nominal T0 instead: 0.13 N); platform 0.0024 N with the operational lines, 0.0022 N with the extreme lines (nominal T0 instead: 0.24 N) (extreme_set_residuals.json).
+   - The spec specifies the at-rest tension; the tank sets it by tension or calm tilt anyway.
+   - The k scan used the nominal T0 (offsets differ by ~1 cm). The final runs of the chosen k use
+     the at-rest-matched pretension.
+2. **"Offset scales ~1/k, so ~3× the rev B k" — not borne out: cluster ×5 (criterion 4) / ×4.5 (mean only), platform ×6 (criterion 4) / ×5 (mean only).**
+   - The pretension (geometric) stiffness does not scale with k.
+   - The down-flume lines go slack under the drift, so only half the lines restore.
+   - The buoys' tilt carries the attachments further down-flume.
+   - A quasi-static rigid-pull estimate put it at ~×3.5–4 (`extreme_set.py predict`). FloatSim
+     needs ~20 % more.
+3. **"Choose the SMALLEST k whose MEAN offset ≤ 1.0 m" — itemised.**
+   - The confirmed criterion 4 is mean + dynamic amplitude ≤ 1.0 m. The record wins, so the
+     spec selects on the run's maximum surge.
+   - The mean-only multiples are reported alongside: cluster ×4.5, platform
+     ×5.
+4. **"Run the buoy's extreme set if its rev B offsets exceed 1.0 m" — they do not.**
+   - The predicted H = 0.5 m cases reach 0.68 m of surge at most (mean ≤ 0.46 m).
+   - For the 3 diverging cases, the drift bound alone gives 0.19–0.67 m of static offset. The
+     FloatSim own-force share there is unknown.
+   - The buoy keeps one cord set.
+5. **The extreme set breaks the confirmed criterion 2 (surge ≥ 14 s)** — not in Xabier's list,
+   itemised: cluster +13 % (T_surge 10.5 s) / platform +15 % (T_surge 9.6 s) of wave-frequency surge amplification at T = 3.5 s.
+   - Criteria 2 and 4 cannot both hold at H = 0.5 m (≥ 14 s caps k at ~×2.8, leaving ≳ 1.5 m of offset, extrapolated from the k scan).
+   - It is declared with the tilt shift; Xabier to accept.
+6. **"Raising T0, keeping calm tilt ≤ 3°, the confirmed mean-tilt allowance" — itemised.**
+   - The confirmed criterion 1 is the MEAN tilt ≤ 3° at the maximum H under waves, and it
+     already contains the drift-induced tilt.
+   - So a 3° calm tilt plus the drift tilt would exceed it. It is not a calm-tilt allowance.
+   - Result: Not run, because there is nothing to cut. In the final runs the down-flume lines go slack and **stay slack through the wave train** (their peak is their hanging weight). Their pre-stretch is far below the mean offset, and it stays so even at the 3° calm-tilt cap (T0 ≈ 3× the at-rest tension: pre-stretch cluster 208 mm against a mean offset ≥ 0.61 m; platform 85 mm against a mean offset ≥ 0.62 m). Raising T0 would only add to the up-flume peak.
+
+### G2. The extreme set
+
+| article | k (× operational) | T = 2.35 s: mean / max surge | T = 2.65 s: mean / max surge | peak line tension | slack lines: peak re-tension | verdict (max surge ≤ 1.0 m, both periods) |
+|---|---|---|---|---|---|---|
+| cluster | ×3.5 (14.53 N/m) | 1.18 / 1.30 m | 0.87 / 1.02 m | 20.02 N | 0.07 N | fails |
+| cluster | ×4 (16.60 N/m) | 1.04 / 1.17 m | 0.77 / 0.92 m | 20.80 N | 0.08 N | fails |
+| cluster | ×4.5 (18.68 N/m) | 0.93 / 1.07 m | 0.69 / 0.84 m | 21.48 N | 0.09 N | fails (mean alone passes) |
+| cluster | ×5 (20.75 N/m) | 0.83 / 0.98 m | 0.62 / 0.78 m | 22.12 N | 0.09 N | **CHOSEN** |
+| cluster | ×5.5 (22.83 N/m) | 0.76 / 0.91 m | 0.57 / 0.73 m | 22.76 N | 0.10 N | pass |
+| cluster | ×6 (24.90 N/m) | 0.69 / 0.85 m | 0.53 / 0.68 m | 23.44 N | 0.12 N | pass |
+| cluster | **×5 FINAL** (at-rest-matched T0) | 0.82 / 0.97 m | 0.61 / 0.77 m | 22.12 N | 0.10 N | **PASS: the spec** |
+| platform | ×3.5 (29.11 N/m) | 1.30 / 1.41 m | 1.00 / 1.15 m | 38.60 N | 0.05 N | fails |
+| platform | ×4 (33.27 N/m) | 1.16 / 1.29 m | 0.89 / 1.05 m | 40.09 N | 0.06 N | fails |
+| platform | ×4.5 (37.43 N/m) | 1.05 / 1.18 m | 0.80 / 0.97 m | 41.44 N | 0.06 N | fails |
+| platform | ×5 (41.59 N/m) | 0.95 / 1.09 m | 0.74 / 0.90 m | 42.72 N | 0.07 N | fails (mean alone passes) |
+| platform | ×5.5 (45.75 N/m) | 0.88 / 1.02 m | 0.68 / 0.85 m | 43.99 N | 0.07 N | fails (mean alone passes) |
+| platform | ×6 (49.91 N/m) | 0.81 / 0.96 m | 0.63 / 0.81 m | 45.28 N | 0.07 N | **CHOSEN** |
+| platform | **×6 FINAL** (at-rest-matched T0) | 0.80 / 0.95 m | 0.62 / 0.79 m | 45.27 N | 0.08 N | **PASS: the spec** |
+
+- **Chosen** (criterion 4, max surge ≤ 1.0 m at T = 2.35 and 2.65 s): cluster ×5,
+  platform ×6.
+- **Declared** (not a criterion): cluster tilt -3.77 %, heave -0.09 %, surge 10.4 s, platform tilt -4.65 %, heave -0.03 %, surge 9.4 s.
+- **Stiffness band:** −0 / +30 %. A softer cord moves H = 0.5 m out of the window.
+- **Pre-stretch:** only 69 mm / 28 mm. Set T0 by tension or by the calm tilt, not by length.
+
+| article | set | case (drift sum) | min / max line tension | slack lines: peak re-tension | mean offset (range) | max tilt | max yaw | line above the local surface | validity |
+|---|---|---|---|---|---|---|---|---|---|
+| cluster | extreme, k ×5 | H 0.5 m, T 2.35 s | 0.06 / 22.12 N | stay slack (≤ 0.07 N, their hanging weight): no re-tension in the wave train | 0.82 m (0.66–0.97) | 21.6° | 0.92° | breaks the surface by 0.18 m | indicative (tilt > 5.7°) |
+| cluster | extreme, k ×5 | H 0.5 m, T 2.65 s | 0.06 / 20.28 N | stay slack (≤ 0.10 N, their hanging weight): no re-tension in the wave train | 0.61 m (0.45–0.77) | 30.5° | 0.81° | breaks the surface by 0.17 m | indicative (tilt > 5.7°) |
+| platform | extreme, k ×6 | H 0.5 m, T 2.35 s | 0.05 / 45.27 N | stay slack (≤ 0.06 N, their hanging weight): no re-tension in the wave train | 0.80 m (0.64–0.95) | 27.9° | 2.55° | breaks the surface by 0.17 m | indicative (tilt > 5.7°) |
+| platform | extreme, k ×6 | H 0.5 m, T 2.65 s | 0.05 / 44.69 N | stay slack (≤ 0.08 N, their hanging weight): no re-tension in the wave train | 0.62 m (0.44–0.79) | 32.9° | 2.32° | breaks the surface by 0.16 m | indicative (tilt > 5.7°) |
+
+### G3. Figures (`mooring_figures.py`) and their spot-check
+
+- Every figure is generated from committed data:
+  - the decks, for the geometry;
+  - `spec_statics*.json`, for anchors, attachments and T0;
+  - the FloatSim settle and `line_hardware.line_states`, for the line profiles;
+  - `build_spec.sweep_selection`, the same rows as the spec's sweep table, for the rationale;
+  - the run JSON, for the offsets.
+- The spot-check reads back from the drawn figures one anchor coordinate and the attachment
+  depth per article, and compares them with the spec's line tables:
+
+- buoy: table line 1 anchor (-5.000, +1.830, -0.500), attachment z -0.501 m | plan label found True, plan marker at it True; elevation markers [-0.501], depth label 'attachment z = -0.50 m: 0.50 m bel…' -> MATCH
+- cluster: table line 1 anchor (-5.000, +1.830, -0.150), attachment z -0.150 m | plan label found True, plan marker at it True; elevation markers [-0.15], depth label 'attachment z = -0.15 m: 0.15 m bel…' -> MATCH
+- platform: table line 1 anchor (-5.000, +1.830, -0.150), attachment z -0.150 m | plan label found True, plan marker at it True; elevation markers [-0.15], depth label 'attachment z = -0.15 m: 0.15 m bel…' -> MATCH
+
+### G4. The 3D viewer
+
+- The "Flume Mooring Motion" artifact is republished with the rev C arrangement: a static calm
+  equilibrium per article and cord set, with provenance labels.
+- Its earlier animations used a superseded mooring (lines at the still-water line). They are
+  withdrawn. No rev C wave run has saved frames, so nothing is animated. The 0.1 rad validity
+  gate stays.
 
 ## Open decisions for Xabier (after Phase C round 2; STOP before Phase D)
 

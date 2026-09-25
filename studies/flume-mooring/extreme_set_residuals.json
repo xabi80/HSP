@@ -1,0 +1,12 @@
+{
+ "cluster": {
+  "operational": 0.007727275881086758,
+  "extreme at-rest matched": 0.007270858756905871,
+  "extreme nominal T0": 0.13121310000913122
+ },
+ "platform": {
+  "operational": 0.0024158586801751305,
+  "extreme at-rest matched": 0.002238779519216302,
+  "extreme nominal T0": 0.23885442984437583
+ }
+}
