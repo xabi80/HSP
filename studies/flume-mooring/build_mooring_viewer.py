@@ -113,8 +113,8 @@ def run(article: str, periods: list[float], H: float, free: bool = False) -> Non
         try:
             r = fd.run_wave(setup, hd, dk, T, H, N_SETTLE, LOOP_PERIODS)
         except RuntimeError as exc:
-            # FloatSim's catenary solver (cold-start hybr from H = V_A = 1 N) can miss on these
-            # very elastic lines; record the failed case instead of inventing its motion
+            # a catenary solve that fails from every start (cold, warm, taut-elastic; Phase C1)
+            # is recorded as a failed case instead of inventing the motion
             if free or "catenary" not in str(exc):
                 raise
             jp.write_text(json.dumps({"T": T, "H": H, "moored": True, "failed": str(exc)}))

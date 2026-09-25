@@ -261,12 +261,52 @@ def _solve_system(
     return np.asarray(sol.x, dtype=np.float64), bool(sol.success)
 
 
+def _suspended_fallback_guesses(
+    initial_guess: tuple[float, float] | None,
+    *,
+    L: float,
+    w: float,
+    EA: float,
+    dx: float,
+    dz: float,
+) -> list[NDArray[np.float64]]:
+    """Starting points tried, in order, only after the cold start has failed (no convergence,
+    or convergence onto the non-physical ``H <= 0`` root).
+
+    1. ``initial_guess`` -- the caller's warm start (the state force passes the line's
+       previous converged ``(H, V_A)``);
+    2. for a slack line (chord < L), a hanging-chain estimate: the parabolic sag ``s`` with
+       ``L = dx + 8 s^2 / (3 dx)``, ``H = w dx^2 / (8 s)``, and half the weight at the anchor;
+    3. a taut-elastic estimate from the chord: tension ``EA * max(chord/L - 1, 1e-6)``
+       along the chord, less half the line weight at the anchor.
+    """
+    guesses: list[NDArray[np.float64]] = []
+    if initial_guess is not None:
+        h0, va0 = float(initial_guess[0]), float(initial_guess[1])
+        if np.isfinite(h0) and np.isfinite(va0) and h0 > 0.0:
+            guesses.append(np.array([h0, va0], dtype=np.float64))
+    chord = float(np.hypot(dx, dz))
+    if chord < L:
+        sag = float(np.sqrt(3.0 * dx * (L - chord) / 8.0))
+        h_hang = w * dx * dx / (8.0 * sag)
+        guesses.append(np.array([h_hang, h_hang * dz / dx - 0.5 * w * L], dtype=np.float64))
+    tension = EA * max(chord / L - 1.0, 1.0e-6)
+    guesses.append(
+        np.array(
+            [max(tension * dx / chord, 1.0e-6), tension * dz / chord - 0.5 * w * L],
+            dtype=np.float64,
+        )
+    )
+    return guesses
+
+
 def solve_catenary(
     *,
     line: CatenaryLine,
     anchor_pos: NDArray[np.floating],
     fairlead_pos: NDArray[np.floating],
     seabed_depth: float | None = None,
+    initial_guess: tuple[float, float] | None = None,
 ) -> CatenarySolution:
     """Solve the elastic catenary equilibrium between ``anchor_pos`` and ``fairlead_pos``.
 
@@ -284,6 +324,12 @@ def solve_catenary(
         If not ``None``, seabed contact at ``z = -seabed_depth`` is
         permitted. Must be positive. Without this the suspended regime
         is forced.
+    initial_guess
+        Optional ``(H, V_A)`` for the suspended solve, used ONLY if the
+        cold start fails (typically the line's previous converged
+        solution: a warm start). The cold start always runs first, so a
+        geometry it solves returns bit-identical results with or without
+        a guess.
 
     Returns
     -------
@@ -299,9 +345,16 @@ def solve_catenary(
     -----
     No root-finding initial-condition sensitivity has been observed for
     offshore-typical parameter ranges (`L / span = 1.05 ... 10`,
-    `EA / (w L) = 1e3 ... 1e7`). For extreme edge cases the caller can
-    bisect the solve by stepping `L` from a large value down to the
-    target.
+    `EA / (w L) = 1e3 ... 1e7`). Very elastic, nearly weightless lines
+    are sensitive: the flume spring lines (EA ~ 55 N at ~16 N tension,
+    w = 0.02 N/m) failed from the cold start on one geometry while its
+    mirror image, equal to 1e-10 m, converged; and on a very slack line
+    (span half its length) the cold start converged onto the
+    non-physical ``H < 0`` root. The suspended solve therefore falls
+    back, only after the cold start fails or lands on ``H <= 0``, to
+    ``initial_guess`` (warm start), a hanging-chain estimate (slack
+    lines) and a taut-elastic estimate from the chord (flume-mooring
+    Phase C1).
     """
     # Scipy is imported at module level — the caller benefits from its
     # availability implicitly.
@@ -375,11 +428,20 @@ def solve_catenary(
         return _suspended_jacobian(u, L=L, w=w, EA=EA, dx=dx, dz=dz)
 
     x, ok = _solve_system(_sus_residual, _sus_jacobian, x0)
-    if not ok:
-        raise RuntimeError(
-            f"catenary solver failed to converge (suspended regime): "
-            f"initial guess H={H_0:.3e}, V_A={V_A_0:.3e}"
-        )
+    if not ok or x[0] <= 0.0:
+        # Cold start failed, or landed on the non-physical H <= 0 root: warm start, then the
+        # hanging-chain and taut-elastic estimates (Phase C1).
+        tried = [x0]
+        for guess in _suspended_fallback_guesses(initial_guess, L=L, w=w, EA=EA, dx=dx, dz=dz):
+            tried.append(guess)
+            x, ok = _solve_system(_sus_residual, _sus_jacobian, guess)
+            if ok and x[0] > 0.0:
+                break
+        if not ok:
+            raise RuntimeError(
+                "catenary solver failed to converge (suspended regime) from every starting "
+                "point: " + "; ".join(f"H={g[0]:.3e}, V_A={g[1]:.3e}" for g in tried)
+            )
     H, V_A = float(x[0]), float(x[1])
     if H <= 0.0:
         raise RuntimeError(
@@ -452,26 +514,18 @@ class CatenaryAttachment:
                 f"docs/m7-foundation-plan.md Q4."
             )
         if self.fairlead_body.shape != (3,):
-            raise ValueError(
-                f"fairlead_body must have shape (3,); got {self.fairlead_body.shape}"
-            )
+            raise ValueError(f"fairlead_body must have shape (3,); got {self.fairlead_body.shape}")
         if self.anchor_global.shape != (3,):
-            raise ValueError(
-                f"anchor_global must have shape (3,); got {self.anchor_global.shape}"
-            )
+            raise ValueError(f"anchor_global must have shape (3,); got {self.anchor_global.shape}")
         if not (np.isfinite(self.seabed_depth) and self.seabed_depth > 0.0):
-            raise ValueError(
-                f"seabed_depth must be finite and positive; got {self.seabed_depth}"
-            )
+            raise ValueError(f"seabed_depth must be finite and positive; got {self.seabed_depth}")
 
 
 def _skew_3(r: NDArray[np.floating]) -> NDArray[np.float64]:
     """3x3 skew-symmetric cross-product matrix of ``r``. ``_skew_3(r) @ x == r x x``."""
     r3 = np.asarray(r, dtype=np.float64)
     rx, ry, rz = float(r3[0]), float(r3[1]), float(r3[2])
-    return np.array(
-        [[0.0, -rz, ry], [rz, 0.0, -rx], [-ry, rx, 0.0]], dtype=np.float64
-    )
+    return np.array([[0.0, -rz, ry], [rz, 0.0, -rx], [-ry, rx, 0.0]], dtype=np.float64)
 
 
 def make_catenary_state_force(
@@ -552,6 +606,8 @@ def make_catenary_state_force(
             )
 
     att_list = list(attachments)
+    # Last converged (H, V_A) per line: the warm start used if a cold solve fails (C1).
+    last_solution: dict[int, tuple[float, float]] = {}
 
     def _state_force(
         _t: float,
@@ -559,7 +615,7 @@ def make_catenary_state_force(
         _xi_dot: NDArray[np.float64],
     ) -> NDArray[np.float64]:
         F_global = np.zeros(n_dof, dtype=np.float64)
-        for a in att_list:
+        for i_att, a in enumerate(att_list):
             slc = slice(6 * a.body_index, 6 * a.body_index + 6)
             xi_body = xi[slc]
             theta = xi_body[3:6]
@@ -588,7 +644,9 @@ def make_catenary_state_force(
                 anchor_pos=anchor_2d,
                 fairlead_pos=fairlead_2d,
                 seabed_depth=a.seabed_depth,
+                initial_guess=last_solution.get(i_att),
             )
+            last_solution[i_att] = (sol.H, sol.V_anchor)
 
             # 3D force at fairlead, inertial frame.
             cos_az = float(np.cos(azimuth_rad))
