@@ -1,6 +1,6 @@
 # Flume mooring design: basis, confirmed criteria and Phase C results
 
-**Status (2026-09-25): the mooring specification is at REV C (Phase G: two cord sets on the same anchors and attachment points, with figures; `MOORING-SPEC.md`). Rev B (Phase F) is its operational set, unchanged; rev A (Phase E, pin plane, T0 +60 %) is withdrawn.** Earlier status: Phases A–C done, including Phase C round 2 (Xabier's decisions 1–7 on `6c93a80`, §C5–C9); Phase D (verification runs) NOT run.** It waits for Xabier on the BEM regeneration (§C8), the line element and the drift double counting (§C7), and the other open decisions at the end of Phase D.
+**Status (2026-09-25): the mooring specification is at REV C, ACCEPTED (record items G5) (Phase G: two cord sets on the same anchors and attachment points, with figures; `MOORING-SPEC.md`). Rev B (Phase F) is its operational set, unchanged; rev A (Phase E, pin plane, T0 +60 %) is withdrawn.** Earlier status: Phases A–C done, including Phase C round 2 (Xabier's decisions 1–7 on `6c93a80`, §C5–C9); Phase D (verification runs) NOT run.** It waits for Xabier on the BEM regeneration (§C8), the line element and the drift double counting (§C7), and the other open decisions at the end of Phase D.
 
 **Goal:** design the station-keeping mooring for the actual OSU Large Wave Flume (HWRL) test. It
 is not an OrcaFlex comparison.
@@ -975,7 +975,7 @@ design.
 5. **The extreme set breaks the confirmed criterion 2 (surge ≥ 14 s)** — not in Xabier's list,
    itemised: cluster +13 % (T_surge 10.5 s) / platform +15 % (T_surge 9.6 s) of wave-frequency surge amplification at T = 3.5 s.
    - Criteria 2 and 4 cannot both hold at H = 0.5 m (≥ 14 s caps k at ~×2.8, leaving ≳ 1.5 m of offset, extrapolated from the k scan).
-   - It is declared with the tilt shift; Xabier to accept.
+   - **ACCEPTED as declared** (Xabier, 2026-09-25; G5).
 6. **"Raising T0, keeping calm tilt ≤ 3°, the confirmed mean-tilt allowance" — itemised.**
    - The confirmed criterion 1 is the MEAN tilt ≤ 3° at the maximum H under waves, and it
      already contains the drift-induced tilt.
@@ -1036,6 +1036,31 @@ design.
 - Its earlier animations used a superseded mooring (lines at the still-water line). They are
   withdrawn. No rev C wave run has saved frames, so nothing is animated. The 0.1 rad validity
   gate stays.
+
+### G5. Rev C accepted: record items (Xabier, 2026-09-25)
+
+1. **Criterion 2 for the extreme set: ACCEPTED as DECLARED**, on the same basis as the tilt shift.
+   - The criterion limits how much the mooring changes the wave-driven response. For the extreme
+     set that change is declared, not a criterion: those tests measure loads and survival, and
+     the tank and FloatSim see the same mooring.
+   - Recorded: surge periods cluster 10.5 s / platform 9.6 s;
+     wave-frequency surge amplification cluster +13 % / platform +15 %
+     at T = 3.5 s.
+   - Reason: criteria 2 and 4 cannot both hold at H = 0.5 m, and criterion 4 (the tracking
+     window) governs for this set.
+2. **Cord-set identification** (the installation checks and the summary procedure).
+   - Both sets share the same at-rest tension and the same 1° calm tilt, so the calm tilt CANNOT
+     tell which set is installed.
+   - A static pull CAN: cluster 15.0 → 73.2 N/m (×4.9; threshold 33 N/m), platform 60.6 → 349.3 N/m (×5.8; threshold 146 N/m).
+   - The pull is a REQUIRED check before every extreme series, with the expected stiffness of
+     each set tabulated in the spec §5. Verified: the ratio is 4.9–5.8×, consistent with
+     Xabier's 5–6×.
+   - The consequence of getting it wrong, from the rev B runs: extreme waves (H = 0.5 m) on the
+     operational cords drift the cluster / platform 3.39 m (mean 3.27 m) / 3.53 m (mean 3.41 m).
+   - The same runs show a further consequence, added to the spec: cluster peak tension 15.2 N against their working load 6.3 N, stretch 3.67 m against their elongation capacity 0.63 m; platform peak tension 29.4 N against their working load 8.4 N, stretch 3.54 m against their elongation capacity 0.42 m.
+3. **Anchor rating: every wall anchor rated ≥ 300 N** (the platform's working load is
+   267.4 N). F2 is updated in the spec; the build asserts that no working load
+   exceeds the rating.
 
 ## Open decisions for Xabier (after Phase C round 2; STOP before Phase D)
 

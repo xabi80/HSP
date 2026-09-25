@@ -52,6 +52,7 @@ RHO = 998.0                     # articulated_wall.RHO, the decks' water density
 COLLAR_R, COLLAR_ARMS = 0.2, 4  # attachment_sweep.COLLAR, one arm per line
 ADDED_MASS_BUDGET_KG = 0.4      # Xabier (rev C decisions): the slender collar's budget
 HEAVE_PLATE_AM_KG = 7.9         # record (DESIGN-BASIS Phase F, F4)
+ANCHOR_RATING_N = 300.0         # Xabier (rev C record): every wall anchor rated >= 300 N
 
 
 def f(x: float, n: int = 2) -> str:
@@ -288,6 +289,36 @@ def tank_rows() -> str:
     return "\n".join(out)
 
 
+def id_threshold(art: str) -> float:
+    """Pull-stiffness threshold between the two cord sets: their geometric mean (N/m)."""
+    return float((ST[art]["pull"]["surge"]["K0"] * STX[art]["pull"]["surge"]["K0"]) ** 0.5)
+
+
+def id_rows() -> str:
+    out = ["| article | cord set | surge pull stiffness K | pull force at 0.25 / 0.5 m | reads as the extreme set if K ≥ |",
+           "|---|---|---|---|---|"]
+    for art in ART2:
+        for name, st in (("operational", ST[art]), ("extreme", STX[art])):
+            p = st["pull"]["surge"]
+            out.append(f"| {art} | {name} | {f(p['K0'], 1)} N/m | {f(p['points'][0]['F'], 1)} / "
+                       f"{f(p['points'][1]['F'], 1)} N | **{f(id_threshold(art), 0)} N/m** |")
+    return "\n".join(out)
+
+
+def wrong_set() -> tuple[str, str]:
+    """The operational cords at H = 0.5 m (the rev B runs): drift, and load against their spec."""
+    drift, load = [], []
+    for art in ART2:
+        rr = [r for r in AD["extremes"] if r["article"] == art and r["H"] == 0.5]
+        tmax_op = max(max(r["T_max_N"]) for r in op_runs(art))
+        k = ST[art]["lines"][0]["k_N_per_m"]
+        drift.append(f"{f(max(r['surge_max_m'] for r in rr))} m (mean {f(max(r['mean_offset_m'] for r in rr))} m)")
+        load.append(f"{art} peak tension {f(max(max(r['T_max_N']) for r in rr), 1)} N against their "
+                    f"working load {f(SAFETY * tmax_op, 1)} N, stretch {f(max(r['stretch_max_m'] for r in rr))} m "
+                    f"against their elongation capacity {f(STROKE * tmax_op / k)} m")
+    return " / ".join(drift), "; ".join(load)
+
+
 def fig(name: str, caption: str, width: int = 100) -> str:
     return f'![{caption}](figs/{name}.png "{width}")\n\n*{caption}*'
 
@@ -322,15 +353,14 @@ def main() -> None:
 
     def attach(a: str) -> str:
         z = design(a)["height"]
-        return {"buoy": f"slender radial collar r = {COLLAR_R:g} m on the spar, 4 points at z = {z:+.2f} m",
-                "cluster": f"each of the 4 spars at z = {z:+.2f} m",
-                "platform": f"the 8 up-/down-stream row spars at z = {z:+.2f} m (4 two-leg bridles)"}[a]
+        return {"buoy": f"slender radial collar r = {COLLAR_R:g} m on the spar, 4 points (4 lines) at z = {z:+.2f} m",
+                "cluster": f"each of the 4 spars (4 lines) at z = {z:+.2f} m",
+                "platform": f"the 8 up-/down-stream row spars at z = {z:+.2f} m (4 two-leg bridles, 8 legs)"}[a]
 
     def cord(a: str, st: dict, s: dict, band: str) -> str:
         ln = st["lines"][0]
         L0 = " / ".join(sorted({f(x['L0_m'], 3) for x in st['lines']}))
-        return (f"k {f(ln['k_N_per_m'], 2)} N/m ({band}), L0 {L0} m (nominal T0 "
-                f"{f(ln['T0_nominal_N'], 2)} N), pre-stretch at rest "
+        return (f"k {f(ln['k_N_per_m'], 2)} N/m ({band}), L0 {L0} m, pre-stretch at rest "
                 f"{f(1000 * ln['stretch_at_rest_m'], 0)} mm, elongation ≥ {f(STROKE * s['peak_stretch'], 2)} m "
                 f"({f(100 * s['strain'], 0)} % of L0)")
 
@@ -339,7 +369,6 @@ def main() -> None:
                    lambda a: f"x ±{abs(ST[a]['lines'][0]['anchor_m'][0]):.1f}, y ±{abs(ST[a]['lines'][0]['anchor_m'][1]):.2f}, "
                              f"z {ST[a]['lines'][0]['anchor_m'][2]:+.2f} m"),
                row("attachment points", attach),
-               row("lines (legs)", lambda a: str(ST[a]["n_lines"])),
                row("pretension at rest per line/leg, both sets (set by tension or calm tilt)",
                    lambda a: f"**{f(ST[a]['lines'][0]['T_at_rest_N'], 2)} N**"),
                row(f"operational cord (response tests, H ≤ {H_OP} m)",
@@ -347,10 +376,12 @@ def main() -> None:
                row("extreme cord (H = 0.2–0.5 m)",
                    lambda a: "the same cord (one set)" if a == "buoy" else
                    f"**k ×{m_ext(a):g}**: " + cord(a, STX[a], exts[a], "minimum; −0 / +30 %")),
-               row("max line tension: operational / extreme",
-                   lambda a: (f"{f(ops[a]['tmax'], 2)} N" if a == "buoy" else
-                              f"{f(ops[a]['tmax'], 2)} / {f(exts[a]['tmax'], 2)} N")),
-               row("anchor working load ×3 (max of both sets)", lambda a: f"**{f(wll[a], 1)} N**"),
+               row("anchor working load ×3 (max of both sets)", lambda a: f"{f(wll[a], 1)} N"),
+               row("anchor rating (specified, every anchor)", lambda a: f"**≥ {ANCHOR_RATING_N:.0f} N**"),
+               row("set identification: surge pull stiffness, operational / extreme (threshold)",
+                   lambda a: "one set" if a == "buoy" else
+                   f"{f(ST[a]['pull']['surge']['K0'], 1)} / {f(STX[a]['pull']['surge']['K0'], 1)} N/m "
+                   f"(extreme if ≥ {f(id_threshold(a), 0)} N/m)"),
                row("calm static tilt, FloatSim: operational / extreme",
                    lambda a: (f"{f(ST[a]['static_tilt_settle_deg'])}° (collar)" if a == "buoy" else
                               f"{f(ST[a]['static_tilt_settle_deg'])}° / {f(STX[a]['static_tilt_settle_deg'])}°")),
@@ -359,10 +390,7 @@ def main() -> None:
                               if a == "buoy" else
                               f"{f(max(r['surge_max_m'] for r in ext_runs(a)))} m (extreme set; operational set "
                               f"{f(max(r['surge_max_m'] for r in AD['extremes'] if r['article'] == a and r['H'] == 0.5))} m)")),
-               row("tilt-period shift vs unmoored: operational (limit ζ/3) / extreme (declared)",
-                   lambda a: (f"{design(a)['tilt_shift_pct']:+.2f} % (≤ {f(lim(a))} %)" if a == "buoy" else
-                              f"{design(a)['tilt_shift_pct']:+.2f} % (≤ {f(lim(a))} %) / "
-                              f"{EX['declare'][a]['tilt_shift_pct']:+.2f} %"))]
+                   ]
     arms = COLLAR_ARMS * COLLAR_R
     d_max = (4 * ADDED_MASS_BUDGET_KG / (RHO * 3.141592653589793 * arms)) ** 0.5
     disk = 8 / 3 * RHO * COLLAR_R ** 3
@@ -398,7 +426,14 @@ def main() -> None:
         "SURGE_AMP": " / ".join(f"{a} +{100 * (1 / (1 - (3.5 / STX[a]['periods_s']['surge']) ** 2) - 1):.0f} % "
                                 f"(T_surge {f(STX[a]['periods_s']['surge'], 1)} s)" for a in ART2),
         "RESID": resid_text(),
+        "ANCHOR_RATING": f"{ANCHOR_RATING_N:.0f}", "WLL_P": f(wll["platform"], 1),
+        "IDTABLE": id_rows(),
+        "IDK": ", ".join(f"{a} {f(ST[a]['pull']['surge']['K0'], 1)} → {f(STX[a]['pull']['surge']['K0'], 1)} N/m "
+                         f"(×{STX[a]['pull']['surge']['K0'] / ST[a]['pull']['surge']['K0']:.1f})" for a in ART2),
+        "WRONG_DRIFT": wrong_set()[0], "WRONG_LOAD": wrong_set()[1],
+        "SURGE_T": " / ".join(f"{a} {f(STX[a]['periods_s']['surge'], 1)} s" for a in ART2),
     }
+    assert max(wll.values()) <= ANCHOR_RATING_N, "an anchor working load exceeds the specified rating"
     md = tmpl
     for k, v in fill.items():
         md = md.replace("{{" + k + "}}", v)

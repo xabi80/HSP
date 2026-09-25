@@ -8,22 +8,25 @@
 
 {{SUMMARY}}
 
-- **Two cord sets, one rig.** Swap the cords between the response series (operational set,
-  H ≤ 0.12 m) and the extreme series (extreme set, H = 0.2–0.5 m). The anchors, the attachment
-  points and the AT-REST tension stay the same, so the calm geometry is the same.
-- **Installation checks, for each set** (§5):
-  - the calm static tilt, which checks the pretension (1° at the design at-rest tension on the
-    cluster and platform);
-  - a static pull against the predicted pull stiffness;
-  - surge and sway decays against the predicted periods.
-- **Extremes:**
-  - Run them in increasing H with live offset monitoring.
-  - Run the buoy's extremes LAST, with a height ramp, and watch its yaw: 3 of its cases have no
-    reliable FloatSim prediction.
-- **Buoy collar:** a SLENDER rod or wire spreader, round section ≤ {{DMAX}} mm. A disk would add
+- **Procedure:**
+  1. Response series (H ≤ 0.12 m) on the operational set.
+  2. Swap the cords to the extreme set: same anchors, attachment points and AT-REST tension, so
+     the same calm geometry.
+  3. Extreme series in increasing H with live offset monitoring.
+  4. The buoy's extremes LAST, with a height ramp, watching yaw: 3 of its cases have no reliable
+     FloatSim prediction.
+- **A static pull is REQUIRED before every extreme series to identify the set.**
+  - Both sets give the same 1° calm tilt, so the tilt cannot tell them apart.
+  - The pull stiffness can: {{IDK}}.
+  - On the operational cords, extreme waves drift the cluster / platform {{WRONG_DRIFT}} and
+    overload those cords.
+- **Installation checks, each set** (§5): calm static tilt (the pretension check), static pull
+  (which also identifies the set), surge/sway decays.
+- **Buoy collar:** a SLENDER rod or wire spreader, round section ≤ {{DMAX}} mm; a disk would add
   ≈ {{DISK}} kg.
-- **Facility assumptions F1–F7** (next page) must be confirmed with HWRL before any hardware is
-  bought. F1: underwater wall anchors.
+- **Facility assumptions F1–F7** (next page) must be confirmed with HWRL before buying hardware:
+  F1 underwater wall anchors; F2 every anchor rated ≥ {{ANCHOR_RATING}} N (platform working load
+  {{WLL_P}} N).
 
 ## Facility assumptions to CONFIRM WITH HWRL BEFORE BUYING HARDWARE
 
@@ -32,7 +35,7 @@ None of these is a confirmed facility fact. The design rests on all of them.
 | # | Assumption | Value this specification uses | If it proves false |
 |---|---|---|---|
 | F1 | Anchors can be fixed on the side walls **under water, at each article's attachment depth** | anchors at x = ±5.0 m, y = ±1.83 m, **z = {{ZB}} m (buoy), {{ZC}} m (cluster), {{ZP}} m (platform)** | A higher or lower anchor slopes the line. Its vertical pull at the attachment adds calm tilt and tilt coupling, so the attachment sweep must be re-run for the real anchor depth. |
-| F2 | Wall anchor rating | per-anchor working-load limit, the larger of the two cord sets (×3 on the FloatSim peak): **{{WLL}}** | Lower than these is unlikely to bind; confirm. |
+| F2 | Wall anchor rating | **every wall anchor rated ≥ {{ANCHOR_RATING}} N**. Working loads, the larger of the two cord sets (×3 on the FloatSim peak): {{WLL}}; the platform's governs | An anchor rated below {{WLL_P}} N cannot carry the platform's extreme set. The platform's extreme series then stops at a lower H, or needs more anchors. The cluster and buoy need far less. |
 | F3 | Wave height per period, steepness | H/λ ≤ 0.08 at 2.7 m depth: H 0.5 m only for T ≥ 2.01 s (and from 2.35 s by the 3° tilt rule), H 0.35 m for T ≥ 1.675 s | Cases outside the wavemaker envelope drop out. |
 | F4 | Water depth | 2.7 m | The drift bound falls for deeper water; periods unchanged. |
 | F5 | Test-section position vs the wavemaker and beach | a clean regular-wave window ≥ 2–3 min at the article, which sits on the flume centreline | Shorter windows do not settle the lightly damped resonances (ζ ≈ 3–4 %). |
@@ -150,11 +153,17 @@ The static tilt is the estimate, except in the chosen rows (FloatSim's settle):
 
 - **Declared, not criteria:** these tests measure loads and survival, and the tank and the model
   see the same mooring. The extreme set's modal periods against the unmoored article: {{DECL}}.
-  - ⚠ The surge period is below the confirmed criterion 2 (≥ 14 s), so the wave-frequency surge
-    is amplified by 1/(1 − (T/T_surge)²): {{SURGE_AMP}} at T = 3.5 s.
-  - The regular-wave matrix has no difference-frequency forcing.
-  - Criteria 2 and 4 cannot both hold for this set at H = 0.5 m: ≥ 14 s caps the stiffness at
-    about ×2.8, which leaves ≳ 1.5 m of offset (extrapolated from the k scan).
+  - **Criterion 2 (surge ≥ 14 s): ACCEPTED as DECLARED** for this set (Xabier, 2026-09-25), on
+    the same basis as the tilt shift.
+    - The criterion limits how much the mooring changes the wave-driven response. For the
+      extreme set that change is declared, not a criterion: these tests measure loads and
+      survival, and the tank and FloatSim see the same mooring.
+    - Recorded: surge periods {{SURGE_T}}. The wave-frequency surge is amplified by
+      1/(1 − (T/T_surge)²): {{SURGE_AMP}} at T = 3.5 s. The regular-wave matrix has no
+      difference-frequency forcing.
+    - The reason: criteria 2 and 4 cannot both hold at H = 0.5 m (≥ 14 s caps the stiffness at
+      about ×2.8, which leaves ≳ 1.5 m of offset, extrapolated from the k scan). **Criterion 4,
+      the tracking window, governs for this set.**
 - **Pretension: the same AT-REST tension, not the same nominal T0.**
   - The code's nominal T0 is the tension at the design (untilted) chord. The calm 1° tilt moves
     each attachment δ ≈ 15 mm towards its anchor, so the at-rest tension is T0 − k·δ, and a
@@ -198,6 +207,18 @@ The static tilt is the estimate, except in the chosen rows (FloatSim's settle):
   - The extreme set's pre-stretch is only {{PRE_EXT}}, so a length error of a few mm is a large
     T0 error. **Set the extreme set's T0 by tension or by the calm tilt, not by length.**
   - The buoy's collar balances the pretension (calm tilt 0): measure its line tension directly.
+- **Cord-set identification: a static pull, REQUIRED before every extreme series.**
+  - The two sets have the same at-rest tension and the same 1° calm tilt, so the calm tilt
+    cannot tell which set is installed. The surge pull stiffness differs {{IDK}}.
+  - Pull the article down-flume through its centre at the attachment depth, by 0.25–0.5 m, and
+    read force against offset. **It is the extreme set only if the stiffness is above the
+    threshold** (the geometric mean of the two sets' values):
+
+{{IDTABLE}}
+
+  - **Getting it wrong:** extreme waves (H = 0.5 m) on the operational cords drift the cluster /
+    platform **{{WRONG_DRIFT}}** (FloatSim, rev B runs), far past the +1.0 m tracking window.
+    They also **overload the operational cords**: {{WRONG_LOAD}}.
 - **Static pull and decays:**
   - the static pull is a horizontal pull through the article centre at the attachment depth,
     force against offset;
@@ -248,20 +269,22 @@ drift sum):
 3. **Swap the cords to the extreme set** at the same anchors, attachment points and at-rest
    tension. Set it by tension or calm tilt (1°), then repeat the §5 checks against the
    extreme-set rows.
-4. **Extreme series in increasing H** (0.2 → 0.35 → 0.5 m) at each period, with live offset
+4. **Before EVERY extreme series: the static pull (§5), REQUIRED.** It must read above the
+   identification threshold, which confirms the extreme cords are on. The calm tilt cannot tell
+   the sets apart.
+5. **Extreme series in increasing H** (0.2 → 0.35 → 0.5 m) at each period, with live offset
    monitoring. Stop a case if the down-flume offset approaches the tracking limit (e.g. 0.9 m of
    the +1.0 m) or a line nears its working load. Slack of the down-flume lines is allowed.
-5. **The buoy's extremes LAST** (it has one cord set), with a height ramp (0.2 → 0.35 → 0.5 m).
+6. **The buoy's extremes LAST** (it has one cord set), with a height ramp (0.2 → 0.35 → 0.5 m).
    Watch yaw and roll, and **stop on any growth of yaw**. Three cases (H = 0.35 m at 2.65 s,
    H = 0.5 m at 2.35 and 2.65 s) have no reliable FloatSim prediction.
-6. Heading 0 (waves along the flume axis) for every article. Skip cases with H/λ > 0.08, and
+7. Heading 0 (waves along the flume axis) for every article. Skip cases with H/λ > 0.08, and
    H = 0.5 m below T = 2.35 s.
 
 ## 8. Follow-ups before the test
 
 | Item | What it could change |
 |---|---|
-| **The extreme set's surge period** (below criterion 2's 14 s; declared here) | Xabier to accept the declaration. The alternative, ≤ ×2.8 stiffness, leaves the H = 0.5 m cases ≳ 1.5 m down-flume (extrapolated). |
 | **Return swing after the wave train** | The down-flume lines stay slack during the train and re-tension when the drift stops and the article swings back. Energy bounds the swing to the mean offset, so their tension stays below the up-flume peak and the same working load covers it. Not simulated. |
 | **Drift mechanism** | The sum used today adds FloatSim's own mean force to the recorded fixed-body splash-zone bound. A moving-body splash-zone model could lower the offsets and tensions, and so the extreme set's stiffness. |
 | **BEM regeneration at NT = 36** (flume databases' 12-sided waterline; ~1.7 h platform BEM) | All heave/tilt resonances ~0.04–0.08 s shorter. The ζ/3 comparison holds (it is relative to the unmoored article). |
