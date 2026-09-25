@@ -244,6 +244,8 @@ def extreme_run(args: tuple) -> dict:
         "clearance_local_surface_min_m": float(min(clr)),
         "line_above_local_surface_max_m": float(max(emerge)),
         "tag": design["tag"] if design is not None else None,
+        **({"_t": r.t[idx], "_xi": r.xi[idx]} if design is not None and design.get("history")
+           else {}),                   # the sampled window (idx) for callers' own analysis
         "antisymmetric_max": anti,
         "wall_min": (time.perf_counter() - t0) / 60,
     }

@@ -1062,6 +1062,33 @@ design.
    267.4 N). F2 is updated in the spec; the build asserts that no working load
    exceeds the rating.
 
+## Phase H (2026-09-25): does the operational mooring need pretension? (evaluation; NO spec change)
+
+Xabier's question, answered in `PRETENSION-EVAL.md` (`pretension_study.py`, `pretension_study.json`).
+Rev C stands; Xabier decides.
+
+- **V1 ("taut minimum")**: T0 = k (10 mm tolerance + ~13 %/day wet creep of the loaded stretch)
+  = 0.31 / 0.44 N per line/leg (cluster / platform).
+  - The calm tilt falls from 1.00° to 0.25 / 0.33°.
+  - The tilt shift falls from −0.73 / −0.72 % to −0.54 / −0.60 %.
+  - The wave-frequency response is unchanged: heave RAO within 1.2 %, max tilt 0.5–0.7° lower.
+  - The lines lose their stretch for 18–40 % of each resonant cycle, which FloatSim's
+    quasi-static line does not model.
+  - The H = 0.12 m drift offsets grow ×1.44–1.49.
+  - The calm-tilt gauge shrinks to 0.25–0.33°.
+  - The cluster's extreme set would leave the window (1.054 m).
+  - **Recommendation: keep V0.**
+- **Physics:**
+  - At T0 = 0, surge is 34 % and sway 26–28 % of V0, not 50 %: the weight-sagged cord's
+    catenary compliance.
+  - The tilt interference falls with T0 rather than staying unchanged.
+  - A submerged-weight cord self-tensions to ~0.2 N.
+- **Line weight:** the record already uses the submerged 0.02 N/m. No correction.
+- **Buoy:** it keeps its pretension. V1 puts its yaw at 2.48 s, in the wave band and at the
+  principal parametric zone.
+- **Flag for rev C's installation check:** wet creep relaxes V0's calm tilt from 1.00 to ~0.87°
+  over a test day.
+
 ## Open decisions for Xabier (after Phase C round 2; STOP before Phase D)
 
 1. **BEM regeneration at NT = 36** (§C8). Every resonance moves 0.040–0.077 s (> 0.025 s). The cost
