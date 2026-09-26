@@ -1,5 +1,5 @@
 """Render the leadership deck's source (deck.json + slides/*.html, the files of the online Slides
-deck) to leadership-briefing.pdf and SPEAKER-NOTES.md, with headless Edge (as build_spec.py).
+deck) to mooring-briefing.pdf and SPEAKER-NOTES.md, with headless Edge (as build_spec.py).
 
 The online deck is the master: re-read its files into this folder after editing it there, then
 run this script. The images the deck holds as uploaded assets are the project's own figures
@@ -52,7 +52,7 @@ def main() -> None:
             f"</title>{links}<style>{CSS}</style></head><body>")
     page = head + "\n".join(slides) + "</body></html>"
     (HERE / "SPEAKER-NOTES.md").write_text("\n".join(notes), encoding="utf-8")
-    htm, pdf = HERE / "_render.html", HERE / "leadership-briefing.pdf"
+    htm, pdf = HERE / "_render.html", HERE / "mooring-briefing.pdf"
     htm.write_text(page, encoding="utf-8")
     pdf.unlink(missing_ok=True)
     subprocess.run([str(EDGE), "--headless=new", "--disable-gpu", "--no-pdf-header-footer",
