@@ -1,0 +1,27 @@
+<section id="opcheck" data-transition="fade" style="background:#F4F5F2; color:#3A4852; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; letter-spacing:1px; color:#17706A">Verification · operational set, FloatSim, drift sum in-run</p>
+<h2 style="font-family:'IBM Plex Sans Condensed', Arial, sans-serif; font-size:56px; font-weight:600; line-height:1.1; color:#14232E">Operational band: every line stays taut</h2>
+</div>
+<table style="font-size:24px; color:#3A4852">
+<tr><th style="width:11%; text-align:left; color:#14232E; font-weight:600">Article</th><th style="width:22%; text-align:left; color:#14232E; font-weight:600">Case</th><th style="width:15%; text-align:left; color:#14232E; font-weight:600">Line tension min / max</th><th style="width:11%; text-align:left; color:#14232E; font-weight:600">T_min / T0</th><th style="width:18%; text-align:left; color:#14232E; font-weight:600">Surge: mean (range)</th><th style="width:10%; text-align:left; color:#14232E; font-weight:600">Max tilt</th><th style="width:13%; text-align:left; color:#14232E; font-weight:600">Validity</th></tr>
+<tr><td>Cluster</td><td>H 0.12 m, T 1.4 s</td><td>1.04 / 1.83 N</td><td>0.73</td><td>0.07 (0.05–0.09) m</td><td>2.5°</td><td>LEVEL1 valid</td></tr>
+<tr><td>Cluster</td><td>H 0.12 m, T 2.84 s</td><td>0.81 / 2.09 N</td><td>0.56</td><td>0.00 (±0.04) m</td><td>17.6°</td><td>indicative</td></tr>
+<tr><td>Platform</td><td>H 0.12 m, T 1.4 s</td><td>0.87 / 1.99 N</td><td>0.61</td><td>0.06 (0.05–0.07) m</td><td>2.2°</td><td>LEVEL1 valid</td></tr>
+<tr><td>Platform</td><td>H 0.12 m, T 2.9 s</td><td>0.27 / 2.81 N</td><td style="color:#B04329">0.19</td><td>0.00 (−0.05–0.06) m</td><td>17.5°</td><td>indicative</td></tr>
+<tr><td>Buoy</td><td>H 0.12 m, T 2.45–2.75 s</td><td>— / 2.57 N</td><td>0.93–0.95</td><td>range ±0.07 m</td><td>9.5–16.8°</td><td>indicative</td></tr>
+</table>
+<div style="display:flex; flex-direction:row; gap:24px">
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#B04329">Thin margin</p>
+<p style="font-size:24px; line-height:1.4; color:#3A4852">The platform at its tilt resonance: T_min / T0 = 0.19 against 0.15. A day's creep takes it below the margin, so it is re-tensioned before these cases.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">Drift sign at resonance</p>
+<p style="font-size:24px; line-height:1.4; color:#3A4852">FloatSim's own mean force is up-wave there (−0.14 / −0.26 N). Dropping it, the kinematic T_min / T0 is 0.539 / 0.157 (cluster / platform): both still pass.</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1200px; font-size:24px; color:#5C6A74">Mooring design study · MOORING-SPEC rev C.1</p>
+<p style="position:absolute; right:128px; bottom:64px; width:160px; font-size:24px; color:#5C6A74; text-align:right">12</p>
+<aside>The operational set was run in FloatSim at the operational band's largest height, with the drift sum applied in-run, at 1.4 s where the drift is largest and at each article's tilt resonance where the motion is largest. No line goes slack: the lowest tension ratio is 0.19 on the platform at resonance, against the 0.15 criterion. That thin margin is why the creep allowance matters for the platform. At resonance FloatSim's own mean force points up-wave, so the drift sum is smaller than the bound alone; dropping that favourable term, the kinematic estimate is 0.157, still a pass. The buoy's five operational runs keep its lines at 93 to 97 percent of pretension. The resonant cases tilt about 17 degrees, beyond LEVEL1's 5.7, so they are indicative.</aside>
+</section>

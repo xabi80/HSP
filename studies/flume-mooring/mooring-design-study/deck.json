@@ -1,0 +1,86 @@
+{
+ "v": 4,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-09-26T02:33:39Z"
+ },
+ "title": "Mooring Design Study",
+ "order": [
+  "cover",
+  "scope",
+  "criteria",
+  "method",
+  "revisions",
+  "reva",
+  "sweep",
+  "chosen",
+  "buoy",
+  "cluster",
+  "platform",
+  "opcheck",
+  "movsfree",
+  "buoystab",
+  "excursion",
+  "kscan",
+  "declared",
+  "identify",
+  "loads",
+  "hardware",
+  "pretension",
+  "creep",
+  "procedure",
+  "compliance",
+  "limits",
+  "next",
+  "records"
+ ],
+ "sections": {
+  "s1": {
+   "description": "What is moored, in what waves, against which criteria",
+   "start": "cover"
+  },
+  "s2": {
+   "description": "How the design was simulated and how it evolved",
+   "start": "method"
+  },
+  "s3": {
+   "description": "The operational set: attachment height and the chosen design",
+   "start": "reva"
+  },
+  "s4": {
+   "description": "The three configurations, to scale",
+   "start": "buoy"
+  },
+  "s5": {
+   "description": "Verification of the operational set",
+   "start": "opcheck"
+  },
+  "s6": {
+   "description": "The extreme cord set",
+   "start": "excursion"
+  },
+  "s7": {
+   "description": "Loads, hardware, pretension, creep and installation",
+   "start": "loads"
+  },
+  "s8": {
+   "description": "Compliance, limitations and next steps",
+   "start": "compliance"
+  }
+ },
+ "faces": {
+  "ibm-plex-sans-condensed": {
+   "family": "IBM Plex Sans Condensed",
+   "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&display=swap"
+  },
+  "ibm-plex-sans": {
+   "family": "IBM Plex Sans",
+   "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+  },
+  "ibm-plex-mono": {
+   "family": "IBM Plex Mono",
+   "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+  }
+ },
+ "designSystems": []
+}

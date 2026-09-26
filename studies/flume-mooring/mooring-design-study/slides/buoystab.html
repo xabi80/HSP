@@ -1,0 +1,31 @@
+<section id="buoystab" data-transition="fade" style="background:#F4F5F2; color:#3A4852; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; letter-spacing:1px; color:#17706A">Verification · single buoy, FloatSim, drift sum, dt 0.0025 s, 210 s</p>
+<h2 style="font-family:'IBM Plex Sans Condensed', Arial, sans-serif; font-size:56px; font-weight:600; line-height:1.1; color:#14232E">Single buoy: stable in operation, yaw-limited in extremes</h2>
+</div>
+<table style="font-size:24px; color:#3A4852">
+<tr><th style="width:10%; text-align:left; color:#14232E; font-weight:600"></th><th style="width:11.25%; text-align:left; color:#14232E; font-weight:600">T 2.0 s</th><th style="width:11.25%; text-align:left; color:#14232E; font-weight:600">T 2.35 s</th><th style="width:11.25%; text-align:left; color:#14232E; font-weight:600">T 2.45 s</th><th style="width:11.25%; text-align:left; color:#14232E; font-weight:600">T 2.55 s</th><th style="width:11.25%; text-align:left; color:#14232E; font-weight:600">T 2.65 s</th><th style="width:11.25%; text-align:left; color:#14232E; font-weight:600">T 2.75 s</th><th style="width:11.25%; text-align:left; color:#14232E; font-weight:600">T 3.0 s</th><th style="width:11.25%; text-align:left; color:#14232E; font-weight:600">T 3.5 s</th></tr>
+<tr><td>H 0.04 m</td><td style="color:#5C6A74">—</td><td style="color:#5C6A74">—</td><td style="color:#5C6A74">—</td><td style="color:#5C6A74">—</td><td style="color:#5C6A74">—</td><td style="color:#17706A">stable</td><td style="color:#5C6A74">—</td><td style="color:#5C6A74">—</td></tr>
+<tr><td>H 0.12 m</td><td style="color:#5C6A74">—</td><td style="color:#5C6A74">—</td><td style="color:#17706A">stable</td><td style="color:#17706A">stable</td><td style="color:#17706A">stable</td><td style="color:#17706A">stable</td><td style="color:#5C6A74">—</td><td style="color:#5C6A74">—</td></tr>
+<tr><td>H 0.2 m</td><td style="color:#5C6A74">—</td><td style="color:#17706A">stable</td><td style="color:#5C6A74">—</td><td style="color:#5C6A74">—</td><td style="color:#8A5A00">yaw grows</td><td style="color:#8A5A00">yaw grows</td><td style="color:#5C6A74">—</td><td style="color:#17706A">stable</td></tr>
+<tr><td>H 0.35 m</td><td style="color:#8A5A00">yaw grows</td><td style="color:#8A5A00">yaw grows</td><td style="color:#5C6A74">—</td><td style="color:#5C6A74">—</td><td style="color:#B04329">diverges</td><td style="color:#5C6A74">—</td><td style="color:#8A5A00">yaw grows</td><td style="color:#17706A">stable</td></tr>
+<tr><td>H 0.5 m</td><td style="color:#5C6A74">—</td><td style="color:#B04329">diverges</td><td style="color:#5C6A74">—</td><td style="color:#5C6A74">—</td><td style="color:#B04329">diverges</td><td style="color:#5C6A74">—</td><td style="color:#8A5A00">yaw grows</td><td style="color:#17706A">stable</td></tr>
+</table>
+<div style="display:flex; flex-direction:row; gap:24px">
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">Definitions</p>
+<p style="font-size:24px; line-height:1.4; color:#3A4852">stable: yaw at round-off (≤ 1e-8 rad). yaw grows: &lt; 0.002° at 210 s. diverges: no prediction. —: not run. 9 stable, 6 grow, 3 diverge.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#8A5A00">Mechanism</p>
+<p style="font-size:24px; line-height:1.4; color:#3A4852">The collar's pretension stiffens pitch and yaw together (∝ T0·r). Every design passing ζ/3 has yaw ≥ 1.12 s, near the T_p/2 parametric zone (1.36 s).</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#B04329">Handling</p>
+<p style="font-size:24px; line-height:1.4; color:#3A4852">Operational band stable, no slack. Extremes last, with a height ramp; stop on any yaw growth. LEVEL2 decides whether the divergence is physical.</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1200px; font-size:24px; color:#5C6A74">Mooring design study · MOORING-SPEC rev C.1</p>
+<p style="position:absolute; right:128px; bottom:64px; width:160px; font-size:24px; color:#5C6A74; text-align:right">14</p>
+<aside>The buoy's chosen design was run over 18 cases with the drift sum. The whole operational band is stable, with yaw at round-off: the buoy is mirror-symmetric to round-off, so any larger yaw is the model's own parametric growth. In the extreme band, six cases grow yaw slowly, all below 0.002 degrees after 210 s, and three diverge: H = 0.35 m at 2.65 s and H = 0.5 m at 2.35 and 2.65 s. The cause is structural: the collar turns pretension into pitch and yaw stiffness together, so any design that passes the zeta/3 pitch limit has a yaw period of 1.12 s or more, close to half the pitch period, the principal parametric zone. All extreme cases are also beyond LEVEL1's 5.7 degrees, so whether the divergence is physical is a LEVEL2 question. In the tank the buoy's extremes run last, ramping the height and stopping at any yaw growth. A pitch-neutral collar, such as a cross-flume bar, is the follow-up fix.</aside>
+</section>

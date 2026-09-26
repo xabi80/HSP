@@ -1,0 +1,20 @@
+<section id="limits" data-transition="fade" style="background:#F4F5F2; color:#3A4852; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; letter-spacing:1px; color:#17706A">Validity</p>
+<h2 style="font-family:'IBM Plex Sans Condensed', Arial, sans-serif; font-size:56px; font-weight:600; line-height:1.1; color:#14232E">Known limitations of the analysis</h2>
+</div>
+<table style="font-size:24px; color:#3A4852">
+<tr><th style="width:38%; text-align:left; color:#14232E; font-weight:600">Limitation</th><th style="width:62%; text-align:left; color:#14232E; font-weight:600">Consequence and handling</th></tr>
+<tr><td>LEVEL1 small-angle kinematics (≤ 5.7°)</td><td>Resonant and extreme results indicative (186 of 442 cases); LEVEL2 planned</td></tr>
+<tr><td>BEM waterline: 12-sided (NT12)</td><td>Resonances ~0.04–0.08 s long; ζ/3 holds (relative); NT36 ~1.7 h BEM</td></tr>
+<tr><td>Drift sum: fixed-body bound + own force</td><td>Conservative offsets and tensions; could lower the extreme stiffness</td></tr>
+<tr><td>Quasi-static line, no line inertia</td><td>Snap loads and the return swing not simulated; ×3 margin, load-cell pull</td></tr>
+<tr><td>Line exposure in the H = 0.5 m troughs</td><td>Uncovered by 0.16–0.19 m; line drag not modelled</td></tr>
+<tr><td>Extreme yaw, cluster and platform</td><td>0.8–2.6°, forced by the 1e-5 kernel asymmetry; growth not established</td></tr>
+<tr><td>Regular waves only</td><td>No second-order difference-frequency forcing of the slow surge modes</td></tr>
+<tr><td>Creep rate assumed, 4 %/decade</td><td>Sets the re-tension times; confirm by datasheet or a one-day hold test</td></tr>
+</table>
+<p style="position:absolute; left:128px; bottom:64px; width:1200px; font-size:24px; color:#5C6A74">Mooring design study · MOORING-SPEC rev C.1</p>
+<p style="position:absolute; right:128px; bottom:64px; width:160px; font-size:24px; color:#5C6A74; text-align:right">25</p>
+<aside>What the analysis does not cover. FloatSim is used at LEVEL1, valid to 0.1 rad; near resonance the articles tilt well beyond it, so those results, loads included, are indicative, and 186 of the 442 planned Phase D cases are flagged. The flume BEM databases use a 12-sided waterline; regenerating at 36 sides would shorten the resonances slightly, but the zeta/3 test is relative to the unmoored article on the same database. The drift sum is deliberately conservative. The line model is quasi-static, so snatch loads when a slack line re-tensions, and the return swing after the wave train, are not simulated. In the largest troughs the submerged lines are uncovered, and line drag is not modelled. The cluster and platform yaw in the extremes is forced by a tiny asymmetry in the coupled radiation kernel, and whether it is steady was not established. The matrix is regular waves; FloatSim has no second-order slow-drift forcing. And the creep rate is an assumption.</aside>
+</section>

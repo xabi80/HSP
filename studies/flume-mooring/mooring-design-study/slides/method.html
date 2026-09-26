@@ -1,0 +1,41 @@
+<section id="method" data-transition="fade" style="background:#F4F5F2; color:#3A4852; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; letter-spacing:1px; color:#17706A">Method</p>
+<h2 style="font-family:'IBM Plex Sans Condensed', Arial, sans-serif; font-size:56px; font-weight:600; line-height:1.1; color:#14232E">Every option simulated in FloatSim, chosen by a rule</h2>
+</div>
+<div style="display:flex; flex-direction:row; gap:20px">
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">1 · Decks</p>
+<p style="font-size:24px; line-height:1.4; color:#3A4852">Moored FloatSim decks per article: flume BEM databases, submerged cord 0.02 N/m as catenary lines.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">2 · Settle</p>
+<p style="font-size:24px; line-height:1.4; color:#3A4852">Static equilibrium (scipy root): calm tilt and the at-rest tension of every line.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">3 · Modes, pulls</p>
+<p style="font-size:24px; line-height:1.4; color:#3A4852">Tilt and heave shift vs the unmoored article; surge, sway, yaw periods; rigid pulls give K.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">4 · Wave runs</p>
+<p style="font-size:24px; line-height:1.4; color:#3A4852">Regular waves, wave-relative Morison drag, the drift sum applied in-run.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">5 · Rule → spec</p>
+<p style="font-size:24px; line-height:1.4; color:#3A4852">A written rule selects; the spec's tables and figures come from the same JSON.</p>
+</div>
+</div>
+<div style="display:flex; flex-direction:row; gap:24px">
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">Drift sum: conservative by construction</p>
+<p style="font-size:24px; line-height:1.4; color:#3A4852">The recorded fixed-body drift bound (splash-zone drag plus the Havelock potential term, no shielding, no credit for body motion) at each spar's waterline, plus FloatSim's own mean force on the moving body.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#B04329">Validity: LEVEL1 kinematics</p>
+<p style="font-size:24px; line-height:1.4; color:#3A4852">Small-angle, valid to 0.1 rad (5.7°). Resonant and extreme cases exceed it: their tilts, loads and offsets are indicative until the LEVEL2 rerun.</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1200px; font-size:24px; color:#5C6A74">Mooring design study · MOORING-SPEC rev C.1</p>
+<p style="position:absolute; right:128px; bottom:64px; width:160px; font-size:24px; color:#5C6A74; text-align:right">4</p>
+<aside>Every design option was built as a FloatSim deck and evaluated the same way: a static settle for the calm tilt and at-rest tensions, a modal analysis for the tilt and heave shift against the unmoored article and for the slow surge, sway and yaw periods, rigid pulls for the stiffness, and regular-wave runs with wave-relative Morison drag. The drift force is deliberately conservative: the recorded fixed-body bound is applied in-run at each spar's waterline, on top of FloatSim's own mean force on the moving body. A written rule picks the design, and the specification's tables and figures are generated from the same JSON records, so the documents cannot disagree with the analysis. One caveat runs through everything: FloatSim is used at LEVEL1, valid to 0.1 rad. Near resonance the articles tilt 10 to 30 degrees, so those predictions are indicative.</aside>
+</section>

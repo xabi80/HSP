@@ -1,0 +1,27 @@
+<section id="pretension" data-transition="fade" style="background:#F4F5F2; color:#3A4852; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; letter-spacing:1px; color:#17706A">Phase H evaluation · decision 2026-09-25: keep V0</p>
+<h2 style="font-family:'IBM Plex Sans Condensed', Arial, sans-serif; font-size:56px; font-weight:600; line-height:1.1; color:#14232E">Pretension is kept for model fidelity, not position</h2>
+</div>
+<table style="font-size:24px; color:#3A4852">
+<tr><th style="width:24%; text-align:left; color:#14232E; font-weight:600">Cluster / platform</th><th style="width:19%; text-align:left; color:#14232E; font-weight:600">V0, rev C</th><th style="width:19%; text-align:left; color:#14232E; font-weight:600">V1, taut minimum</th><th style="width:19%; text-align:left; color:#14232E; font-weight:600">T0 = 0</th><th style="width:19%; text-align:left; color:#14232E; font-weight:600">V2, 10 mm slack</th></tr>
+<tr><td>At rest per line or leg</td><td>1.44 / 1.42 N</td><td>0.36 / 0.45 N</td><td>0.21 / 0.22 N</td><td>0.20 / 0.20 N</td></tr>
+<tr><td>Calm tilt</td><td>1.00 / 1.00°</td><td>0.25 / 0.33°</td><td>0°</td><td>0°</td></tr>
+<tr><td>Tilt-period shift</td><td>−0.73 / −0.72 %</td><td>−0.54 / −0.60 %</td><td>−0.23 / −0.23 %</td><td>−0.20 / −0.18 %</td></tr>
+<tr><td>Surge pull K</td><td>15.0 / 60.6 N/m</td><td>11.1 / 49.4 N/m</td><td>5.1 / 20.5 N/m</td><td>4.5 / 16.1 N/m</td></tr>
+<tr><td>Lines at resonance</td><td>taut, min 0.27 N</td><td style="color:#B04329">stretch lost 18–40 %</td><td>statics only</td><td>statics only</td></tr>
+</table>
+<div style="display:flex; flex-direction:row; gap:24px">
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">Why V0</p>
+<p style="font-size:24px; line-height:1.4; color:#3A4852">Taut cords in every operational case, so the tank and FloatSim see the same modelled mooring. V1's slack/taut cycling at resonance is unmodelled dynamics in exactly the validation cases. The buoy keeps its pretension anyway: at V1 its yaw is 2.48 s.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#B04329">What V1 would buy, and cost</p>
+<p style="font-size:24px; line-height:1.4; color:#3A4852">Calm tilt 1.0 → 0.3° and 0.1–0.2 % less tilt shift; heave RAO within 1.2 %. Costs: cord cycling, fouling risk, drift ×1.44–1.49, and the cluster's extreme set leaves the window (1.054 m).</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1200px; font-size:24px; color:#5C6A74">Mooring design study · MOORING-SPEC rev C.1</p>
+<p style="position:absolute; right:128px; bottom:64px; width:160px; font-size:24px; color:#5C6A74; text-align:right">21</p>
+<aside>Phase H asked whether the operational cords need pretension at all. V1 is the taut minimum, pretension equal to k times the installation tolerance plus a day's creep; T0 = 0 is exactly taut; V2 is installed 10 mm slack. Note that a submerged-weight cord self-tensions to about 0.2 N, so zero nominal tension is not zero force. Removing pretension reduces the calm tilt and slightly reduces the tilt interference, and the wave-frequency response barely changes. But at V1 the lines lose their stretch for 18 to 40 percent of each resonant cycle, which FloatSim's quasi-static line does not model, the drift offsets grow by about half, the 1 degree calm-tilt gauge shrinks to a third of a degree, and the cluster's extreme set would leave the window. At T0 = 0 the surge stiffness is 34 percent of V0, not 50, because of the sagged cord's catenary compliance. The decision was to keep V0: pretension is kept for model fidelity and installation control.</aside>
+</section>

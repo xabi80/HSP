@@ -1,0 +1,29 @@
+<section id="reva" data-transition="fade" style="background:#F4F5F2; color:#3A4852; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; letter-spacing:1px; color:#17706A">Operational set · rev A → rev B</p>
+<h2 style="font-family:'IBM Plex Sans Condensed', Arial, sans-serif; font-size:56px; font-weight:600; line-height:1.1; color:#14232E">Why the pin plane failed: coupling ≈ k·h²</h2>
+</div>
+<div style="display:flex; flex-direction:row; gap:64px">
+<div style="width:820px; display:flex; flex-direction:column; gap:20px">
+<p style="font-size:28px; line-height:1.4; color:#14232E">Two effects act about different points:</p>
+<ul style="font-size:28px; line-height:1.4; color:#3A4852">
+<li>The <b>static</b> pretension moment acts about the pin (+0.717 m): attaching there gives zero calm tilt.</li>
+<li>The <b>dynamic</b> coupling, ≈ k·h², acts about the tilt mode's rotation centre, near the CoG (−0.907 m). At the pin, h is large.</li>
+<li>No single height satisfies both unless T0 is low: attach below the waterline, nearer the rotation centre, with low pretension.</li>
+</ul>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:24px">
+<table style="font-size:24px; color:#3A4852">
+<tr><th style="width:28%; text-align:left; color:#14232E; font-weight:600">Article</th><th style="width:28%; text-align:left; color:#14232E; font-weight:600">Shift at the pin</th><th style="width:22%; text-align:left; color:#14232E; font-weight:600">Limit ζ/3</th><th style="width:22%; text-align:left; color:#14232E; font-weight:600">Over by</th></tr>
+<tr><td>Buoy</td><td style="color:#B04329">−9.19 %</td><td>1.42 %</td><td>6.5 ×</td></tr>
+<tr><td>Cluster</td><td style="color:#B04329">−8.83 %</td><td>1.19 %</td><td>7.4 ×</td></tr>
+<tr><td>Platform</td><td style="color:#B04329">−9.04 %</td><td>1.05 %</td><td>8.6 ×</td></tr>
+</table>
+
+<p style="font-size:24px; line-height:1.4; color:#5C6A74">ζ: tilt damping at H = 0.04 m, the narrowest band (FloatSim sweep, half-power fit): 4.25 / 3.56 / 3.15 %.</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1200px; font-size:24px; color:#5C6A74">Mooring design study · MOORING-SPEC rev C.1</p>
+<p style="position:absolute; right:128px; bottom:64px; width:160px; font-size:24px; color:#5C6A74; text-align:right">6</p>
+<aside>This is the key physical insight of the study. The pin plane was chosen to remove the calm-water tilt: the pretension moment acts about the pins, so lines attached there make no static moment. But the dynamic coupling between the lines and the tilt mode acts about the mode's rotation centre, which is near the centre of gravity, and scales roughly with k times h squared, h being the attachment's height above that centre. At the pin, h is large, and at the design stiffness and pretension the tilt period shortened by about 9 percent for all three articles, 6.5 to 8.6 times the zeta/3 tolerance. The damping ratios come from FloatSim regular-wave sweeps at the smallest operational height, where drag damping, and so the bandwidth, is smallest. The way out is to attach below the waterline, closer to the rotation centre, and to accept a small calm tilt from the pretension.</aside>
+</section>
