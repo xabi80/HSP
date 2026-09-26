@@ -1,41 +1,32 @@
 <section id="method" data-transition="fade" style="background:#F4F5F2; color:#3A4852; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
 <div style="display:flex; flex-direction:column; gap:12px">
 <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; letter-spacing:1px; color:#17706A">Method</p>
-<h2 style="font-family:'IBM Plex Sans Condensed', Arial, sans-serif; font-size:56px; font-weight:600; line-height:1.1; color:#14232E">Every option simulated in FloatSim, chosen by a rule</h2>
+<h2 style="font-family:'IBM Plex Sans Condensed', Arial, sans-serif; font-size:56px; font-weight:600; line-height:1.1; color:#14232E">Criteria first, every option simulated in FloatSim</h2>
 </div>
-<div style="display:flex; flex-direction:row; gap:20px">
-<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
-<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">1 · Decks</p>
-<p style="font-size:24px; line-height:1.4; color:#3A4852">Moored FloatSim decks per article: flume BEM databases, submerged cord 0.02 N/m as catenary lines.</p>
+<div style="display:flex; flex-direction:column; gap:18px">
+<div style="display:flex; flex-direction:row; gap:28px; align-items:baseline">
+<p style="width:60px; font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:36px; font-weight:600; color:#17706A">1</p>
+<p style="flex:1; font-size:28px; line-height:1.4; color:#3A4852"><b>Criteria agreed before design.</b> Seven pass/fail criteria, confirmed in Phase B.</p>
 </div>
-<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
-<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">2 · Settle</p>
-<p style="font-size:24px; line-height:1.4; color:#3A4852">Static equilibrium (scipy root): calm tilt and the at-rest tension of every line.</p>
+<div style="display:flex; flex-direction:row; gap:28px; align-items:baseline">
+<p style="width:60px; font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:36px; font-weight:600; color:#17706A">2</p>
+<p style="flex:1; font-size:28px; line-height:1.4; color:#3A4852"><b>FloatSim for every option.</b> Moored decks, static settle, modal analysis, rigid pulls, and regular-wave runs with wave-relative Morison drag and the drift sum applied in-run.</p>
 </div>
-<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
-<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">3 · Modes, pulls</p>
-<p style="font-size:24px; line-height:1.4; color:#3A4852">Tilt and heave shift vs the unmoored article; surge, sway, yaw periods; rigid pulls give K.</p>
+<div style="display:flex; flex-direction:row; gap:28px; align-items:baseline">
+<p style="width:60px; font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:36px; font-weight:600; color:#17706A">3</p>
+<p style="flex:1; font-size:28px; line-height:1.4; color:#3A4852"><b>Selection by a written rule.</b> Hard criteria, then the most pretension, the attachment closest to the waterline, the stiffest surge.</p>
 </div>
-<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
-<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">4 · Wave runs</p>
-<p style="font-size:24px; line-height:1.4; color:#3A4852">Regular waves, wave-relative Morison drag, the drift sum applied in-run.</p>
+<div style="display:flex; flex-direction:row; gap:28px; align-items:baseline">
+<p style="width:60px; font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:36px; font-weight:600; color:#17706A">4</p>
+<p style="flex:1; font-size:28px; line-height:1.4; color:#3A4852"><b>Verification runs.</b> The chosen designs in FloatSim wave runs, operational band and H = 0.5 m.</p>
 </div>
-<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
-<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">5 · Rule → spec</p>
-<p style="font-size:24px; line-height:1.4; color:#3A4852">A written rule selects; the spec's tables and figures come from the same JSON.</p>
-</div>
-</div>
-<div style="display:flex; flex-direction:row; gap:24px">
-<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
-<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">Drift sum: conservative by construction</p>
-<p style="font-size:24px; line-height:1.4; color:#3A4852">The recorded fixed-body drift bound (splash-zone drag plus the Havelock potential term, no shielding, no credit for body motion) at each spar's waterline, plus FloatSim's own mean force on the moving body.</p>
-</div>
-<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FAFBF8; border:1px solid #D3DADD; border-radius:8px; padding:24px 28px">
-<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#B04329">Validity: LEVEL1 kinematics</p>
-<p style="font-size:24px; line-height:1.4; color:#3A4852">Small-angle, valid to 0.1 rad (5.7°). Resonant and extreme cases exceed it: their tilts, loads and offsets are indicative until the LEVEL2 rerun.</p>
+<div style="display:flex; flex-direction:row; gap:28px; align-items:baseline">
+<p style="width:60px; font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:36px; font-weight:600; color:#17706A">5</p>
+<p style="flex:1; font-size:28px; line-height:1.4; color:#3A4852"><b>Generated documents.</b> The specification's tables and figures are built from the same JSON records.</p>
 </div>
 </div>
+<p style="font-size:24px; line-height:1.4; color:#5C6A74">Drift sum: the recorded fixed-body bound (splash-zone drag + Havelock term) plus FloatSim's own mean force, so conservative. LEVEL1 kinematics are valid to 5.7°: resonant results are indicative.</p>
 <p style="position:absolute; left:128px; bottom:64px; width:1200px; font-size:24px; color:#5C6A74">Mooring design study · MOORING-SPEC rev C.1</p>
-<p style="position:absolute; right:128px; bottom:64px; width:160px; font-size:24px; color:#5C6A74; text-align:right">4</p>
-<aside>Every design option was built as a FloatSim deck and evaluated the same way: a static settle for the calm tilt and at-rest tensions, a modal analysis for the tilt and heave shift against the unmoored article and for the slow surge, sway and yaw periods, rigid pulls for the stiffness, and regular-wave runs with wave-relative Morison drag. The drift force is deliberately conservative: the recorded fixed-body bound is applied in-run at each spar's waterline, on top of FloatSim's own mean force on the moving body. A written rule picks the design, and the specification's tables and figures are generated from the same JSON records, so the documents cannot disagree with the analysis. One caveat runs through everything: FloatSim is used at LEVEL1, valid to 0.1 rad. Near resonance the articles tilt 10 to 30 degrees, so those predictions are indicative.</aside>
+<p style="position:absolute; right:128px; bottom:64px; width:160px; font-size:24px; color:#5C6A74; text-align:right">5</p>
+<aside>The method. The criteria were fixed first, so the design could not move the goalposts. Every option was a FloatSim deck, evaluated the same way: a static settle for the calm tilt and at-rest tensions, a modal analysis for the natural periods, rigid pulls for the stiffness, and regular-wave runs. The drift force is deliberately conservative: the recorded fixed-body bound is applied in-run at each spar's waterline, on top of FloatSim's own mean force. A written rule picked the design, the chosen designs were verified in wave runs, and the specification is generated from the same records. FloatSim runs at LEVEL1, valid to 0.1 rad; near resonance the articles tilt 10 to 30 degrees, so those predictions are indicative.</aside>
 </section>

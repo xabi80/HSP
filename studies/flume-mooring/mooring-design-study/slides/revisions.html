@@ -1,18 +1,17 @@
 <section id="revisions" data-transition="fade" style="background:#F4F5F2; color:#3A4852; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
 <div style="display:flex; flex-direction:column; gap:12px">
-<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; letter-spacing:1px; color:#17706A">How the design evolved</p>
-<h2 style="font-family:'IBM Plex Sans Condensed', Arial, sans-serif; font-size:56px; font-weight:600; line-height:1.1; color:#14232E">Four revisions and one evaluation</h2>
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; letter-spacing:1px; color:#17706A">Design history</p>
+<h2 style="font-family:'IBM Plex Sans Condensed', Arial, sans-serif; font-size:56px; font-weight:600; line-height:1.1; color:#14232E">Four revisions, each correcting the last</h2>
 </div>
 <table style="font-size:24px; color:#3A4852">
-<tr><th style="width:8%; text-align:left; color:#14232E; font-weight:600">Rev</th><th style="width:13%; text-align:left; color:#14232E; font-weight:600">Commit</th><th style="width:36%; text-align:left; color:#14232E; font-weight:600">Design</th><th style="width:43%; text-align:left; color:#14232E; font-weight:600">Finding</th></tr>
-<tr><td>A</td><td>a91e1d5</td><td>Lines at the pin plane, +0.717 m; +60 % pretension (cluster, platform)</td><td>Tilt period −9.2 / −8.8 / −9.0 % at the design T0, 6.5–8.6 × the ζ/3 limit: withdrawn</td></tr>
-<tr><td>B</td><td>fb6ba5b</td><td>Attachment sweep: z −0.50 / −0.15 / −0.15 m, low T0</td><td>Within ζ/3; but H = 0.5 m drifts 2.5–3.4 m: excursion was missing from the rule</td></tr>
-<tr style="background:#E2EEEB"><td>C</td><td>4f8a2f8</td><td>Two cord sets on the same anchors: operational + extreme (k ×5 / ×6)</td><td>Both jobs met; criterion 2 declared for the extreme set</td></tr>
-<tr><td>H</td><td>17c8e7b</td><td>Evaluation: does the operational set need pretension?</td><td>Keep V0: taut, modelled lines (no spec change)</td></tr>
-<tr style="background:#E2EEEB"><td>C.1</td><td>73a516d</td><td>Creep allowance: creep table, daily re-check, pull band</td><td>Platform margin lasts ~14 min, buoy yaw ~54 min: re-tension rules</td></tr>
+<tr><th style="width:8%; text-align:left; color:#14232E; font-weight:600">Rev</th><th style="width:40%; text-align:left; color:#14232E; font-weight:600">Design</th><th style="width:52%; text-align:left; color:#14232E; font-weight:600">Finding</th></tr>
+<tr><td>A</td><td>Lines at the pin plane (+0.717 m)</td><td>Tilt T_n −9.19 / −8.83 / −9.04 %, 6.5–8.6 × ζ/3: withdrawn</td></tr>
+<tr><td>B</td><td>Attachment sweep: z −0.50 / −0.15 / −0.15 m, low T0</td><td>Within ζ/3, but H = 0.5 m drifts 2.5–3.4 m: criterion 4 was missing from the rule</td></tr>
+<tr style="background:#E2EEEB"><td>C</td><td>Rev B as the operational set + an extreme set, k ×5 / ×6, same anchors</td><td>Max surge 0.97 / 0.95 m at H = 0.5 m; its surge periods 10.5 / 9.6 s declared</td></tr>
+<tr style="background:#E2EEEB"><td>C.1</td><td>Creep allowance, ~4 % of the stretch per decade (assumed)</td><td>Creep table, daily re-check and re-tension thresholds</td></tr>
 </table>
-<p style="font-size:28px; line-height:1.4; color:#14232E">Rev B's operational design is unchanged through C.1: it is the operational set.</p>
+<p style="font-size:28px; line-height:1.4; color:#14232E">Phase H evaluated removing the pretension and kept it (no spec change): see the decisions.</p>
 <p style="position:absolute; left:128px; bottom:64px; width:1200px; font-size:24px; color:#5C6A74">Mooring design study · MOORING-SPEC rev C.1</p>
-<p style="position:absolute; right:128px; bottom:64px; width:160px; font-size:24px; color:#5C6A74; text-align:right">5</p>
-<aside>The design changed in the open, each revision correcting the previous one. Rev A attached at the pin plane to remove calm tilt, but its tilt stiffening was accepted without comparing it to the resonance bandwidth; the comparison shows 6.5 to 8.6 times the tolerance, so it was withdrawn. Rev B swept the attachment height and chose low, submerged attachments; it meets the interference limit, but its decision rule omitted the confirmed excursion criterion, and H = 0.5 m drifts the cluster and platform 2.5 to 3.4 m. Rev C keeps rev B as the operational set and adds a stiffer extreme set on the same anchors. Phase H evaluated removing the pretension and kept it. Rev C.1 adds the cord-creep allowance. The commit hashes are in the HSP repository.</aside>
+<p style="position:absolute; right:128px; bottom:64px; width:160px; font-size:24px; color:#5C6A74; text-align:right">6</p>
+<aside>The design changed in the open. Rev A attached at the pin plane to remove calm tilt; its tilt stiffening had not been compared with the resonance bandwidth, and the comparison showed 6.5 to 8.6 times the tolerance, so it was withdrawn. Rev B swept the attachment height and chose low, submerged attachments; it meets the interference limit, but its rule omitted the confirmed excursion criterion, and H = 0.5 m drifts the cluster and platform 2.5 to 3.4 m. Rev C keeps rev B as the operational set and adds a stiffer extreme set on the same anchors. Rev C.1 adds the cord creep allowance. The commits are a91e1d5, fb6ba5b, 4f8a2f8 and 73a516d.</aside>
 </section>

@@ -7,65 +7,48 @@
  "title": "Mooring Design Study",
  "order": [
   "cover",
-  "scope",
-  "criteria",
+  "summary",
+  "articles",
+  "conflict",
   "method",
   "revisions",
-  "reva",
-  "sweep",
-  "chosen",
+  "attachment",
   "buoy",
   "cluster",
   "platform",
-  "opcheck",
-  "movsfree",
-  "buoystab",
-  "excursion",
-  "kscan",
-  "declared",
-  "identify",
-  "loads",
+  "result1",
+  "result2",
+  "twosets",
+  "decisions",
   "hardware",
-  "pretension",
-  "creep",
-  "procedure",
-  "compliance",
-  "limits",
+  "risks",
   "next",
   "records"
  ],
  "sections": {
   "s1": {
-   "description": "What is moored, in what waves, against which criteria",
+   "description": "The problem: articles, criteria and the design conflict",
    "start": "cover"
   },
   "s2": {
-   "description": "How the design was simulated and how it evolved",
+   "description": "Method and design history",
    "start": "method"
   },
   "s3": {
-   "description": "The operational set: attachment height and the chosen design",
-   "start": "reva"
+   "description": "The design: attachment height and the three configurations",
+   "start": "attachment"
   },
   "s4": {
-   "description": "The three configurations, to scale",
-   "start": "buoy"
+   "description": "Results: interference and excursion",
+   "start": "result1"
   },
   "s5": {
-   "description": "Verification of the operational set",
-   "start": "opcheck"
+   "description": "Operation: cord sets, decisions and hardware",
+   "start": "twosets"
   },
   "s6": {
-   "description": "The extreme cord set",
-   "start": "excursion"
-  },
-  "s7": {
-   "description": "Loads, hardware, pretension, creep and installation",
-   "start": "loads"
-  },
-  "s8": {
-   "description": "Compliance, limitations and next steps",
-   "start": "compliance"
+   "description": "Open items and next steps",
+   "start": "risks"
   }
  },
  "faces": {
