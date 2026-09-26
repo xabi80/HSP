@@ -60,7 +60,8 @@
   .badge{position:absolute;font-family:var(--mono);font-size:11px;color:var(--muted);
     background:color-mix(in srgb,var(--panel) 78%,transparent);padding:4px 8px;border-radius:7px;
     border:1px solid var(--line);backdrop-filter:blur(4px)}
-  .caselabel{left:12px;top:12px;color:var(--ink-2);max-width:62%}
+  .caselabel{left:12px;top:12px;color:var(--ink-2);white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;max-width:calc(100% - 110px)}
   .caselabel b{color:var(--ink);font-weight:600}
   .caselabel .warn{color:var(--warm)}
   .hud{position:absolute;left:12px;bottom:12px;display:flex;gap:14px;flex-wrap:wrap;
@@ -74,6 +75,15 @@
     background:color-mix(in srgb,var(--panel) 80%,transparent);padding:8px 10px;border-radius:9px;
     border:1px solid var(--line);backdrop-filter:blur(5px)}
   .legend .row{display:flex;align-items:center;gap:7px}
+  .stagebar{display:flex;flex-wrap:wrap;gap:10px 24px;align-items:flex-start;justify-content:space-between;
+    padding:12px 16px}
+  .stagebar .hud,.stagebar .legend{position:static;background:none;border:none;backdrop-filter:none;
+    padding:0;max-width:none}
+  .stagebar .legend{flex-direction:row;flex-wrap:wrap;gap:6px 16px;align-items:center}
+  .casenotes{flex-basis:100%;font-family:var(--mono);font-size:11.5px;color:var(--ink-2);line-height:1.6;
+    border-top:1px solid var(--line);padding-top:9px}
+  .casenotes b{color:var(--ink);font-weight:600}
+  .casenotes .warn{color:var(--warm)}
   .sw{width:22px;height:9px;border-radius:3px;flex:none}
   .cbar{width:74px;height:9px;border-radius:3px;
     background:linear-gradient(90deg,var(--down),color-mix(in srgb,var(--muted) 55%,transparent),var(--up))}
@@ -133,7 +143,7 @@
   footer{color:var(--muted);font-size:11.5px;font-family:var(--mono);line-height:1.6;padding:2px 4px 6px}
   footer b{color:var(--ink-2);font-weight:600}
   @media (max-width:640px){
-    .readouts{gap:14px}.ro .v{font-size:16px}#view{height:52vh}.hud{display:none}
+    .readouts{gap:14px}.ro .v{font-size:16px}#view{height:52vh}
   }
   @media (prefers-reduced-motion:reduce){ *{transition:none!important} }
 </style>
@@ -175,6 +185,9 @@
   <section class="card stage">
     <canvas id="view" aria-label="3D view of the moored article in the flume"></canvas>
     <div class="badge caselabel" id="caselabel"></div>
+  </section>
+
+  <section class="card stagebar" aria-label="Live values and case notes">
     <div class="hud" id="hud"></div>
     <div class="legend">
       <div class="row"><span class="cbar"></span><span>heave ↓ / ↑</span></div>
@@ -182,6 +195,7 @@
       <div class="row"><span class="sw" style="background:var(--down)"></span><span>upwave spar</span></div>
       <div class="row"><span class="sw" style="background:var(--up)"></span><span>downwave spar</span></div>
     </div>
+    <div class="casenotes" id="casenotes"></div>
   </section>
 
   <section class="card scopewrap">
@@ -225,6 +239,7 @@
       <input type="range" id="exag" min="1" max="8" value="1" step="1">
       <span class="val" id="exagval">1× true</span>
     </div>
+    <button class="btn" id="frame" type="button" aria-pressed="true" title="Frame the article, or the whole mooring out to the wall anchors">⊡&nbsp;Article view</button>
     <button class="btn" id="orbit" type="button" aria-pressed="false" title="Auto-rotate the view">↻&nbsp;Orbit</button>
   </section>
 
@@ -270,7 +285,7 @@ const DATA=__DATA__;
   // ---- state ----
   let ai=ARTS.length-1, ci=0, frame=0, playing=!reduce, speed=1, exag=1, moored=true;
   const AZ0=-1.18, EL0=0.34;   // three-quarter side view, waves running left to right
-  let az=AZ0, el=EL0, zoom=1, autorot=false, drag=null;
+  let az=AZ0, el=EL0, zoom=1, autorot=false, drag=null, frameArticle=true;
   let acc=0, last=performance.now(), HMAX=1, TDEV=1;
   const ART=()=>ARTS[ai], CASE=()=>ARTS[ai].cases[ci], BOD=()=>ARTS[ai].bodies;
   // active motion variant: the moored run, or the same wave without the mooring
@@ -285,9 +300,13 @@ const DATA=__DATA__;
     return {X:v.cx+sx*v.s, Y:v.cy-sy*v.s, d:depth};
   }
   function fitView(w,h){
-    // frame the whole mooring (anchors at +-5 m) and the flume depth; same scale for all articles
-    const gx=0, gy=0, gz=-0.75;
-    const s=Math.min(w/11.6, h/4.3)*zoom;
+    // article view: frame the article (spars, heave plates, deck); whole mooring: the anchors at
+    // +-5 m and the flume depth, the same scale for all articles
+    let gz=-0.75, sw=11.6, sh=4.3;
+    if(frameArticle){ const B=BOD(); let r=0; for(const b of B) r=Math.max(r,Math.hypot(b.x0,b.y0));
+      sw=2*(r+G.plate_r+0.55); sh=3.1; gz=-0.2; }
+    const gx=0, gy=0;
+    const s=Math.min(w/sw, h/sh)*zoom;
     const ca=Math.cos(az),sa=Math.sin(az),ce=Math.cos(el),se=Math.sin(el);
     const gsx=(-sa)*gx+(ca)*gy, gsy=(-se*ca)*gx+(-se*sa)*gy+(ce)*gz;
     return {az,el,s,cx:w*0.5-gsx*s,cy:h*0.5+gsy*s};
@@ -551,14 +570,16 @@ const DATA=__DATA__;
     document.getElementById("ro-tilt").innerHTML=(outside?'<span class="warn">':'')+vv.max_tilt_deg.toFixed(1)+'<small> °</small>'+(outside?' ⚠</span>':'')+(st>=0.05?`<small> (static ${st.toFixed(1)}°)</small>`:"");
     document.getElementById("ro-ten").innerHTML=on?cc.min_tension_N.toFixed(1)+"–"+cc.max_tension_N.toFixed(1)+'<small> N</small>':"—";
     document.getElementById("ro-off").innerHTML=cc.static?"calm":on?"≤ "+cc.offset_bound_m.toFixed(2)+'<small> m</small>':'<small>drifts away</small>';
-    const splay=st>=0.5?`<br>line pretension tilts each moored buoy ${st.toFixed(2)}° about its pin (the attachment at z = ${a.att_z.toFixed(2)} m is pulled toward its anchor): the calm-tilt pretension check`:"";
-    const warn=splay+(outside?`<br><span class="warn">⚠ peak buoy tilt ${vv.max_tilt_deg.toFixed(1)}° exceeds 0.1 rad (5.7°): outside FloatSim's small-angle kinematics (LEVEL2 not wired) — indicative only${st>TILT_VALID_DEG?"; the static pretension tilt alone exceeds it":""}</span>`:"");
+    const splay=st>=0.5?`line pretension tilts each moored buoy ${st.toFixed(2)}° about its pin (the attachment at z = ${a.att_z.toFixed(2)} m is pulled toward its anchor): the calm-tilt pretension check`:"";
+    const vwarn=outside?`<span class="warn">⚠ peak buoy tilt ${vv.max_tilt_deg.toFixed(1)}° exceeds 0.1 rad (5.7°): outside FloatSim's small-angle kinematics (LEVEL2 not wired) — indicative only${st>TILT_VALID_DEG?"; the static pretension tilt alone exceeds it":""}</span>`:"";
     const kk=cc.k_line!==undefined?cc.k_line:a.k_line, t0=cc.T0!==undefined?cc.T0:a.T0;
     const moorTxt=cc.no_moored?`<span class="warn">no moored run: ${cc.no_moored}; showing the free-floating run</span>`:on?(a.key==="platform"?`bridles k = ${kk.toFixed(1)} N/m, T₀ = ${t0.toFixed(2)} N, two legs each (tension shown per leg)`:`lines k = ${kk.toFixed(2)} N/m, T₀ = ${t0.toFixed(2)} N`):"no mooring (free-floating)";
     const prov=(!on&&cc.free&&cc.free.provenance)?cc.free.provenance:(cc.provenance||"");
-    const fnote=cc.free_note?`<br><span class="warn">free-floating run: ${cc.free_note}</span>`:"";
-    const head=cc.static?`${cc.label} · ${moorTxt}<br><small>${cc.provenance}</small>`:`T = ${cc.T.toFixed(2)} s, H = ${cc.H.toFixed(2)} m · ${moorTxt}`+(prov?`<br><small>${prov}</small>`:"")+fnote;
-    document.getElementById("caselabel").innerHTML=`<b>${a.name.replace("4x4","4×4")}</b><br>${head}`+warn;
+    const fnote=cc.free_note?`<span class="warn">free-floating run: ${cc.free_note}</span>`:"";
+    const what=cc.static?cc.label:`T ${+cc.T.toFixed(2)} s · H ${cc.H.toFixed(2)} m`;
+    document.getElementById("caselabel").innerHTML=`<b>${a.name.replace("4x4","4×4")}</b> · ${what} · ${cc.static?"calm":on?"moored":"free-floating"}`+(outside?' <span class="warn">⚠</span>':"");
+    document.getElementById("casenotes").innerHTML=[`<b>${a.name.replace("4x4","4×4")}</b> · ${what} · ${moorTxt}`,
+      prov, splay, vwarn, fnote].filter(Boolean).join("<br>");
     document.getElementById("seek").max=cc.n_frames-1;
   }
 
@@ -574,6 +595,9 @@ const DATA=__DATA__;
   function exagLabel(){document.getElementById("exagval").textContent=exag===1?"1× true":exag+"×";}
   exagEl.oninput=()=>{exag=+exagEl.value; exagLabel();};
   document.getElementById("orbit").onclick=e=>{autorot=!autorot; e.currentTarget.setAttribute("aria-pressed",autorot?"true":"false");};
+  document.getElementById("frame").onclick=e=>{frameArticle=!frameArticle; zoom=1;
+    e.currentTarget.setAttribute("aria-pressed",frameArticle?"true":"false");
+    e.currentTarget.innerHTML=frameArticle?"⊡&nbsp;Article view":"⊞&nbsp;Whole mooring";};
   document.querySelectorAll("#moor button").forEach(b=>b.onclick=()=>{ moored=b.dataset.m==="1";
     document.querySelectorAll("#moor button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
     setCase(ci); });
