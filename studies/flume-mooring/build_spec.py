@@ -53,6 +53,15 @@ COLLAR_R, COLLAR_ARMS = 0.2, 4  # attachment_sweep.COLLAR, one arm per line
 ADDED_MASS_BUDGET_KG = 0.4      # Xabier (rev C decisions): the slender collar's budget
 HEAVE_PLATE_AM_KG = 7.9         # record (DESIGN-BASIS Phase F, F4)
 ANCHOR_RATING_N = 300.0         # Xabier (rev C record): every wall anchor rated >= 300 N
+# rev C.1: cord creep / relaxation, an ASSUMPTION to confirm against the purchased cord's datasheet:
+# wet natural rubber, ~4 % of the stretch per decade of time (Gent, Engineering with Rubber
+# ch. 7; "Long-time creep in a pure-gum rubber vulcanizate", PMC6728486); pretension_study.py
+CREEP_PER_DECADE = 0.04
+T_REF_MIN = 1.0                 # the installation reading: 1 min after tensioning
+CREEP_TIMES_MIN = (1, 10, 60, 240, 480, 1440)
+MARGIN = 0.15                   # the operational no-slack criterion, T_min >= 0.15 T_rest
+YAW_ZONE_CLEAR = 0.15           # buoy yaw kept 15 % clear of the T_p/2 parametric zone
+PS = _load("pretension_study.json")
 
 
 def f(x: float, n: int = 2) -> str:
@@ -319,6 +328,97 @@ def wrong_set() -> tuple[str, str]:
     return " / ".join(drift), "; ".join(load)
 
 
+def relax(t_min: float) -> float:
+    """Fraction of the at-rest tension (and of the pull stiffness) left t_min after tensioning."""
+    import math
+    return 1.0 - CREEP_PER_DECADE * math.log10(t_min / T_REF_MIN)
+
+
+def _t_reach(frac: float) -> float:
+    """Minutes after tensioning at which the tension has relaxed to ``frac`` of its value."""
+    return T_REF_MIN * 10 ** ((1.0 - frac) / CREEP_PER_DECADE)
+
+
+def _fmt_t(t_min: float) -> str:
+    if t_min > 60 * 24 * 365:
+        return "never (> 1 year)"
+    if t_min > 60 * 24 * 2:
+        return f"~{t_min / 1440:.0f} days"
+    return f"~{t_min:.0f} min" if t_min < 90 else f"~{t_min / 60:.1f} h"
+
+
+def creep_rows() -> str:
+    out = ["| time since tensioning | tension left | calm tilt, cluster and platform (both sets) | at-rest tension: buoy / cluster / platform (per leg) | surge pull K, operational: cluster / platform | surge pull K, extreme: cluster / platform |",
+           "|---|---|---|---|---|---|"]
+    for t in CREEP_TIMES_MIN:
+        r = relax(t)
+        lab = f"{t} min" if t < 60 else f"{t / 60:g} h"
+        out.append(f"| {lab} | {100 * r:.1f} % | {ST['cluster']['static_tilt_settle_deg'] * r:.2f}° | "
+                   f"{f(ST['buoy']['lines'][0]['T_at_rest_N'] * r)} / {f(ST['cluster']['lines'][0]['T_at_rest_N'] * r)} / "
+                   f"{f(ST['platform']['lines'][0]['T_at_rest_N'] * r)} N | "
+                   f"{f(ST['cluster']['pull']['surge']['K0'] * r, 1)} / {f(ST['platform']['pull']['surge']['K0'] * r, 1)} N/m | "
+                   f"{f(STX['cluster']['pull']['surge']['K0'] * r, 1)} / {f(STX['platform']['pull']['surge']['K0'] * r, 1)} N/m |")
+    return "\n".join(out)
+
+
+def thresholds() -> list[dict]:
+    """Re-tension thresholds from the record: the operational no-slack margin (op_runs), the
+    tracking window of the extreme set (the pretension study's FloatSim pair: rev C tension and
+    V1 tension), the buoy's yaw clear of the T_p/2 parametric zone."""
+    out = []
+    for art in ART2:
+        tr = ST[art]["lines"][0]["T_at_rest_N"]
+        tilt0 = ST[art]["static_tilt_settle_deg"]
+        dT = tr - min(min(r["T_min_N"]) for r in op_runs(art))
+        req = dT / (1 - MARGIN)
+        out.append({"article": art, "set": "operational", "T_req": req, "tilt": tilt0 * req / tr,
+                    "t_reach": _t_reach(req / tr),
+                    "basis": f"operational no-slack margin (T_min ≥ {MARGIN:g} T_rest at H = 0.12 m near the tilt resonance)",
+                    "taut_tilt": tilt0 * dT / tr, "taut_t": _t_reach(dT / tr)})
+        e = PS["extreme"][art]
+        runs = {x["T"]: x for x in PS.get("extreme_runs", []) if x["article"] == art}
+        dTr = tr - e["T_rest_V1_N"]
+        slope = max(((runs[float(T)]["surge_max_m"] if float(T) in runs else v["max_V1_est_m"])
+                     - v["max_V0_m"]) / dTr for T, v in e["rows"].items())
+        margin = 1.0 - max(x["surge_max_m"] for x in ext_runs(art))
+        req_x = tr - margin / slope
+        out.append({"article": art, "set": "extreme", "T_req": max(req_x, 0.0),
+                    "tilt": tilt0 * max(req_x, 0.0) / tr,
+                    "t_reach": _t_reach(req_x / tr) if req_x > 0 else float("inf"),
+                    "basis": f"tracking window at H = 0.5 m (max surge {f(max(x['surge_max_m'] for x in ext_runs(art)), 3)} m "
+                             f"+ {slope * 1000:.0f} mm per N of lost tension, FloatSim)"})
+    tb = ST["buoy"]["lines"][0]["T_at_rest_N"]
+    ty = ST["buoy"]["periods_s"]["yaw"]
+    edge = (1 - YAW_ZONE_CLEAR) * design("buoy")["tilt_T_s"] / 2
+    req_b = tb * (ty / edge) ** 2                  # K_yaw is proportional to T0 (pretension_study)
+    out.append({"article": "buoy", "set": "one set", "T_req": req_b, "tilt": None,
+                "t_reach": _t_reach(req_b / tb),
+                "basis": f"yaw period ≤ {edge:.3f} s, {100 * YAW_ZONE_CLEAR:.0f} % clear of the T_p/2 parametric zone "
+                         f"({design('buoy')['tilt_T_s'] / 2:.2f} s); yaw {ty:.2f} s at {tb:.2f} N, ∝ 1/√T0"})
+    return out
+
+
+def threshold_rows() -> str:
+    out = ["| article | cord set | re-tension below: calm tilt / at-rest tension (per line/leg) | basis | reached, at the assumed creep, after |",
+           "|---|---|---|---|---|"]
+    for t in thresholds():
+        tl = "—" if t["tilt"] is None else ("none" if t["T_req"] <= 0 else f"**{t['tilt']:.2f}°**")
+        tn = "none (the window margin exceeds the whole tension)" if t["T_req"] <= 0 else f"**{f(t['T_req'])} N**"
+        out.append(f"| {t['article']} | {t['set']} | {tl} / {tn} | {t['basis']} | {_fmt_t(t['t_reach'])} |")
+    return "\n".join(out)
+
+
+def pullband_rows() -> str:
+    out = ["| article | cord set | surge pull K target | acceptance at 1 min / 1 h / 1 day after tensioning (low edge × tension left; high edge +30 %) |",
+           "|---|---|---|---|"]
+    for art in ART2:
+        for name, st, low in (("operational", ST[art], 0.87), ("extreme", STX[art], 1.0)):
+            K = st["pull"]["surge"]["K0"]
+            cells = " / ".join(f"{f(low * K * relax(t), 1)}–{f(1.30 * K, 1)}" for t in (1, 60, 1440))
+            out.append(f"| {art} | {name} | {f(K, 1)} N/m | {cells} N/m |")
+    return "\n".join(out)
+
+
 def fig(name: str, caption: str, width: int = 100) -> str:
     return f'![{caption}](figs/{name}.png "{width}")\n\n*{caption}*'
 
@@ -432,6 +532,13 @@ def main() -> None:
                          f"(×{STX[a]['pull']['surge']['K0'] / ST[a]['pull']['surge']['K0']:.1f})" for a in ART2),
         "WRONG_DRIFT": wrong_set()[0], "WRONG_LOAD": wrong_set()[1],
         "SURGE_T": " / ".join(f"{a} {f(STX[a]['periods_s']['surge'], 1)} s" for a in ART2),
+        "CREEP_TABLE": creep_rows(), "THRESH_TABLE": threshold_rows(), "PULLBAND_TABLE": pullband_rows(),
+        "CREEP_PCT": f"{100 * CREEP_PER_DECADE:g}", "DAY_TILT": f"{ST['cluster']['static_tilt_settle_deg'] * relax(1440):.2f}",
+        "DAY_LEFT": f"{100 * relax(1440):.0f}",
+        "PLAT_MARGIN_T": _fmt_t(next(t["t_reach"] for t in thresholds() if t["article"] == "platform" and t["set"] == "operational")),
+        "PLAT_TAUT_TILT": f"{next(t['taut_tilt'] for t in thresholds() if t['article'] == 'platform' and t['set'] == 'operational'):.2f}",
+        "PLAT_TAUT_T": _fmt_t(next(t["taut_t"] for t in thresholds() if t["article"] == "platform" and t["set"] == "operational")),
+        "BUOY_T": _fmt_t(next(t["t_reach"] for t in thresholds() if t["article"] == "buoy")),
     }
     assert max(wll.values()) <= ANCHOR_RATING_N, "an anchor working load exceeds the specified rating"
     md = tmpl

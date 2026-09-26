@@ -1,6 +1,6 @@
 # Flume mooring design: basis, confirmed criteria and Phase C results
 
-**Status (2026-09-25): the mooring specification is at REV C, ACCEPTED (record items G5) (Phase G: two cord sets on the same anchors and attachment points, with figures; `MOORING-SPEC.md`). Rev B (Phase F) is its operational set, unchanged; rev A (Phase E, pin plane, T0 +60 %) is withdrawn.** Earlier status: Phases A–C done, including Phase C round 2 (Xabier's decisions 1–7 on `6c93a80`, §C5–C9); Phase D (verification runs) NOT run.** It waits for Xabier on the BEM regeneration (§C8), the line element and the drift double counting (§C7), and the other open decisions at the end of Phase D.
+**Status (2026-09-25): the mooring specification is at REV C.1 (rev C, ACCEPTED with record items G5, plus the creep allowance H.1) (Phase G: two cord sets on the same anchors and attachment points, with figures; `MOORING-SPEC.md`). Rev B (Phase F) is its operational set, unchanged; rev A (Phase E, pin plane, T0 +60 %) is withdrawn.** Earlier status: Phases A–C done, including Phase C round 2 (Xabier's decisions 1–7 on `6c93a80`, §C5–C9); Phase D (verification runs) NOT run.** It waits for Xabier on the BEM regeneration (§C8), the line element and the drift double counting (§C7), and the other open decisions at the end of Phase D.
 
 **Goal:** design the station-keeping mooring for the actual OSU Large Wave Flume (HWRL) test. It
 is not an OrcaFlex comparison.
@@ -1088,6 +1088,44 @@ Rev C stands; Xabier decides.
   principal parametric zone.
 - **Flag for rev C's installation check:** wet creep relaxes V0's calm tilt from 1.00 to ~0.87°
   over a test day.
+
+**DECISION (Xabier, 2026-09-25): KEEP V0, rev C's operational pretension.**
+
+- **The decisive reason:** V0 keeps every operational cord taut, so the tank and FloatSim see the
+  same, modelled mooring. V1's slack/taut cycling in the resonant cases (18–40 % of each cycle)
+  is unmodelled dynamics in exactly the cases the validation depends on.
+- Pretension is not needed for wall avoidance. **It is kept for model fidelity and installation
+  control.**
+- The creep finding is carried into the spec as rev C.1: the calm-tilt check, a daily re-check
+  and the pull-test band allow for creep.
+
+### H.1 Spec amendment rev C.1 (the creep allowance; MOORING-SPEC §4, §5, §7)
+
+- **Creep assumption, recorded:** wet natural rubber, ~4 % of the stretch per decade of time (dry
+  ~2.4–4 %). Sources: Gent, *Engineering with Rubber*, ch. 7; PMC6728486. It is an assumption to
+  confirm against the purchased cord's datasheet.
+- **At the calm geometry it relaxes the at-rest tension:** 96.0 / 92.9 / 87.4 % left at 10 min /
+  1 h / 1 day. The calm tilt goes 1.00 → 0.96 / 0.93 / 0.87°.
+- **The pull-test band** moves its low edge with the tension left, for both cord sets.
+- **Daily re-check** before the first run: calm tilt (cluster, platform) or tension (buoy).
+  Re-tension below:
+
+  | Article, set | Threshold | Basis | Reached after |
+  |---|---|---|---|
+  | Cluster, operational | 0.52° | no-slack margin | never |
+  | Cluster, extreme | 0.72° | tracking window, FloatSim slope 80 mm per N | never |
+  | Platform, operational | **0.95°** | no-slack margin | **~14 min** |
+  | Platform, extreme | none | window margin exceeds the whole tension | — |
+  | Buoy | **2.23 N** | yaw 15 % clear of the T_p/2 zone | **~54 min** |
+
+- ⚠ **Found while implementing, for Xabier:**
+  - The platform's operational margin (T_min / T_rest = 0.19 at H = 0.12 m near resonance) is
+    thinner than a day's creep. The spec therefore re-tensions it before the first run AND before
+    its H = 0.12 m near-resonance cases.
+  - Its lines stay taut far longer: the taut limit is 0.81°, about 37 days of creep.
+  - The buoy is likewise re-tensioned before its extreme series.
+  - Alternative: accept a reduced margin on the platform (T_min / T_rest ≈ 0.07 at the end of a
+    day, still taut).
 
 ## Open decisions for Xabier (after Phase C round 2; STOP before Phase D)
 

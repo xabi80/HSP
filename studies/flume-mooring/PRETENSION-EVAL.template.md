@@ -5,6 +5,18 @@
   rigid pulls and moored wave runs with the drift sum applied in-run).
 - Every number below comes from `pretension_study.json`.
 
+## Decision
+
+**DECISION (Xabier, 2026-09-25): KEEP V0, rev C's operational pretension.**
+
+- **The decisive reason:** V0 keeps every operational cord taut, so the tank and FloatSim see the
+  same, modelled mooring. V1's slack/taut cycling in the resonant cases (18–40 % of each cycle)
+  is unmodelled dynamics in exactly the cases the validation depends on.
+- Pretension is not needed for wall avoidance. **It is kept for model fidelity and installation
+  control.**
+- The creep finding is carried into the spec as rev C.1: the calm-tilt check, a daily re-check
+  and the pull-test band allow for creep.
+
 ## Bottom line
 
 **Recommendation: keep rev C's operational pretension (V0).** Xabier decides.
