@@ -1,0 +1,17 @@
+{
+  "v": 4,
+  "createdOnFiles": {"v": 1, "at": "2026-09-26T01:45:00Z"},
+  "title": "Flume Mooring Design — Leadership Briefing",
+  "order": ["cover", "bottomline", "articles", "twojobs", "process", "revisions", "arrangement", "attachment", "result1", "result2", "twosets", "decisions", "hardware", "risks", "next", "material"],
+  "sections": {
+    "why": {"description": "What we are testing and what the mooring has to do", "start": "cover"},
+    "how": {"description": "How the design was reached, revision by revision", "start": "process"},
+    "results": {"description": "What the simulations show the design achieves", "start": "result1"},
+    "decide": {"description": "Decisions, hardware, open risks and next steps", "start": "decisions"}
+  },
+  "faces": {
+    "source-serif-4": {"family": "Source Serif 4", "href": "https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400..700&display=swap"},
+    "ibm-plex-sans": {"family": "IBM Plex Sans", "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&display=swap"}
+  },
+  "designSystems": []
+}
