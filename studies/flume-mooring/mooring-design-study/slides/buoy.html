@@ -8,7 +8,7 @@
 <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; letter-spacing:1px; color:#17706A">Configuration 1 of 3 · to scale</p>
 <h2 style="font-family:'IBM Plex Sans Condensed', Arial, sans-serif; font-size:56px; font-weight:600; line-height:1.1; color:#14232E">Single buoy</h2>
 </div>
-<p style="font-size:28px; line-height:1.35; color:#3A4852">Four lines from a radial collar to wall anchors at x = ±5.0 m, y = ±1.83 m, level with the attachment.</p>
+<p style="font-size:28px; line-height:1.35; color:#3A4852">Four lines from a radial collar to wall anchors at x = ±5.0 m, y = ±1.83 m. The collar balances the lines: calm tilt 0°.</p>
 <div style="display:flex; flex-direction:column; gap:14px">
 <div style="display:flex; flex-direction:column; gap:4px">
 <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">Attachment</p>
@@ -19,16 +19,16 @@
 <p style="font-size:28px; line-height:1.3; color:#14232E">k 2.01 N/m, T0 2.40 N at rest</p>
 </div>
 <div style="display:flex; flex-direction:column; gap:4px">
-<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">Heave T_n, free → moored</p>
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">Heave T_n, free → moored (flume BEM)</p>
 <p style="font-size:28px; line-height:1.3; color:#14232E">2.561 → 2.548 s (−0.50 %)</p>
 </div>
 <div style="display:flex; flex-direction:column; gap:4px">
-<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">Tilt T_n, free → moored</p>
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">Tilt T_n, free → moored (flume BEM)</p>
 <p style="font-size:28px; line-height:1.3; color:#14232E">2.761 → 2.723 s (−1.37 %)</p>
 </div>
 <div style="display:flex; flex-direction:column; gap:4px">
-<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">Calm tilt</p>
-<p style="font-size:28px; line-height:1.3; color:#14232E">0°: the collar balances the lines</p>
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#8A5A00">Converged mesh, free: heave · pitch</p>
+<p style="font-size:28px; line-height:1.3; color:#14232E">2.519 s · 2.684 s (video ≈ 2.50 s)</p>
 </div>
 <div style="display:flex; flex-direction:column; gap:4px">
 <p style="font-family:'IBM Plex Mono', 'Courier New', monospace; font-size:24px; font-weight:500; color:#17706A">H = 0.5 m max surge</p>
@@ -38,5 +38,5 @@
 </div>
 <p style="position:absolute; left:128px; bottom:64px; width:1200px; font-size:24px; color:#5C6A74">Mooring design study · MOORING-SPEC rev C.1</p>
 <p style="position:absolute; right:128px; bottom:64px; width:160px; font-size:24px; color:#5C6A74; text-align:right">8</p>
-<aside>The single buoy, to scale: plan on top, elevation looking across the flume below. Four lines run from a slender radial collar of 0.2 m radius, 0.50 m below still water, to wall anchors at the same depth, so the lines run level; the inset shows the 21 mm catenary sag. The collar balances the four lines, so there is no calm tilt, and the pretension is checked by measuring line tension. The mooring moves the heave natural period by 0.5 percent and the tilt period by 1.37 percent, just inside the 1.42 percent limit. The buoy has one cord set: its predicted H = 0.5 m offsets stay within 0.68 m. Its yaw is stiff, 1.12 s, because the collar turns pretension into yaw stiffness; that is the source of its extreme-wave stability issue.</aside>
+<aside>The single buoy, to scale: plan on top, elevation looking across the flume below. Four lines run from a slender radial collar of 0.2 m radius, 0.50 m below still water, to wall anchors at the same depth, so the lines run level; the inset shows the 21 mm catenary sag. The collar balances the four lines, so there is no calm tilt, and the pretension is checked by measuring line tension. The mooring moves the heave natural period by 0.5 percent and the tilt period by 1.37 percent, just inside the 1.42 percent limit. Those periods are from the flume BEM, whose 12-sided waterline makes them long; on a converged mesh the free buoy's heave period is 2.519 s and its pitch period 2.684 s, which matches the OSU buoy model and the field heave-decay video, about 2.50 s. The shifts are unaffected. The buoy has one cord set: its predicted H = 0.5 m offsets stay within 0.68 m. Its yaw is stiff, 1.12 s, because the collar turns pretension into yaw stiffness; that is the source of its extreme-wave stability issue.</aside>
 </section>

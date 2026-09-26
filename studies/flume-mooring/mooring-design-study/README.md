@@ -49,6 +49,14 @@ These come from the committed records and are itemised here, as the standing rul
   rows' `heave_T_s` and `heave_shift_pct`, also tabulated in DESIGN-BASIS F4. The free periods are derived from those two fields.
   - Free → moored: buoy 2.561 → 2.548 s, cluster 2.586 → 2.584 s, platform 2.606 → 2.606 s.
   - The extreme set: cluster 2.583 s, platform 2.605 s (`extreme_set.json`, `declare`).
+- **Converged buoy periods** (slides 3 and 8) come from `bem_waterline.json` (DESIGN-BASIS §C8).
+  - The flume BEM's 12-sided waterline reads C33 and C55 4.5 % low, so its periods are long.
+  - Converged mesh (96-sided), free buoy: heave 2.519 s, pitch 2.684 s. The flume BEM gives
+    2.561 s and 2.761 s.
+  - These match the fine-mesh OSU buoy model (2.52 / 2.69 s) and the unofficial field
+    heave-decay video (≈ 2.50 s).
+  - The cluster and platform periods are long by about 0.04 s (heave) and 0.06–0.08 s (tilt).
+    Their converged values need the NT36 regeneration, which is planned before Phase D.
 - **Moored vs free heave RAO** (slide 11) comes from `viewer_rows_revc/`: 48 runs, with the free
   runs unrestrained.
   - At the tilt resonance the heave RAO changes by −0.2 to +4.6 %.
