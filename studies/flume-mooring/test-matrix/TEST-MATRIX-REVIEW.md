@@ -30,6 +30,7 @@ It is a good planning tool. Its weak points are where it meets the models and th
 
 **1.1 The Directional Wave Basin is shallower than the buoy's draft.**
 - P3-E and P3-F (72 runs) are specified at the basin's maximum depth, 1.36 m.
+- **Confirmed on OSU's facility page** (engineering.oregonstate.edu/research/wave-lab/directional-wave-basin, checked 2026-09-26): max water depth 1.36 m (4.46 ft), basin height 2.1 m.
 - The OSU test buoy draws ≈ 1.40 m (CAD: the ballast frame bottom is 0.433 m below the pipe,
   which is 0.967 m deep).
 - The model cannot float there. Options:
@@ -184,8 +185,16 @@ Against that:
   - The matrix says ~2.4 m square; the spar grid is 2.06 m wide (MOORING-SPEC).
   - At 2.4 m the wall clearance is 0.65 m, against the 0.6 m criterion (0.80 m in the design).
   - Confirm what the 2.4 m includes.
-- **Flume dimensions.** Width 3.7 m (matrix) vs 3.66 m (design); depth 2.74 m vs 2.7 m. Both
-  are minor. Confirm the width with HWRL.
+- **Flume dimensions: no real discrepancy.**
+  - OSU's Large Wave Flume page (checked 2026-09-26) gives the width as 3.7 m (12 ft) and the
+    maximum depth for wind/storm waves as 2.7 m (9 ft).
+  - 12 ft is 3.658 m and 9 ft is 2.743 m, so the design's 3.66 m and the matrix's 2.74 m are
+    the exact values of the same dimensions.
+- **Wavemaker period range** (the same page): 0.8 to 12+ s.
+  - 4 s and 5 s FS (0.57 and 0.71 s model) are below it. The matrix flags only periods below
+    its assumed 0.7 s minimum.
+  - The page's maximum wave is 1.7 m at 5 s in 2.7 m of water; the matrix uses 1.8 m. That
+    does not limit any case (the largest is 0.88 m).
 - **Orientation and variants.**
   - The mooring is designed for the cluster and platform in the orientation of the rev C
     figures.
