@@ -24,9 +24,17 @@ extreme cord sets). The earlier animated cases (``run`` / ``html``) used a super
 (lines at the still-water line), so they are not shown; no rev C wave run has saved frames, so
 nothing is animated.
 
+Rev C animations (``revc``): FloatSim runs of each article with the rev C OPERATIONAL mooring
+(from its FloatSim calm settle) and free-floating, H = 0.04 / 0.12 m (the operational band) and
+T = 1.4 s, 2.2 s, the article's moored tilt resonance and 3.5 s; wave-relative Morison drag
+(floatsim_decks.wave_setup / run_case, as the spec's runs), no applied drift. A run whose yaw or
+tilt runs away (FloatSim LEVEL1, e.g. the lone free buoy near resonance) is recorded as diverged
+and not animated. ``static`` then assembles these animations with the static calm cases.
+
 Usage:
     python build_mooring_viewer.py run <buoy|cluster|platform> [T1,T2,...] [--H 0.1] [--free]
     python build_mooring_viewer.py html
+    python build_mooring_viewer.py revc
     python build_mooring_viewer.py static
 Writes viewer_rows/*.json (per case) and mooring_motion.html.
 """
@@ -218,6 +226,120 @@ def html() -> None:
           f"cases)")
 
 
+ROWS_REVC = HERE / "viewer_rows_revc"
+H_REVC = (0.04, 0.12)
+DIVERGED_YAW_DEG, DIVERGED_TILT_DEG = 5.0, 45.0
+
+
+def revc_periods(article: str) -> list[float]:
+    import attachment_sweep as asw
+    return [1.4, 2.2, round(asw.chosen(article)["row"]["tilt_T_s"], 2), 3.5]
+
+
+def run_revc(args: tuple) -> str:
+    """One rev C viewer case: FloatSim, the operational mooring (or free), regular wave."""
+    import attachment_sweep as asw
+    article, T, H, free = args
+    jp = ROWS_REVC / (f"{article}_H{H:g}_T{T:g}".replace(".", "p") + ("_free" if free else "")
+                      + ".json")
+    if jp.exists():
+        return f"{jp.name}: exists"
+    t0 = time.perf_counter()
+    des = asw.chosen(article)
+    dk0 = fd.deck(article)
+    dk_m, lines = fd.moored(dk0, article, **des["opts"])
+    B = bodies(dk_m)
+    dk = dk0 if free else dk_m
+    hd = fd.hdbs(article)
+    dt = 0.005 if article == "buoy" else None      # the collar's lagged yaw state force
+    if article == "buoy":
+        xi_ref = np.asarray(fd.build_single(dk0, hd["bem_databases"]["buoy"], True).xi0)
+        xi_eq = None
+    else:
+        xi_ref = np.zeros(6 * len(B))                 # the deck is the unmoored equilibrium
+        xi_eq = None if free else np.asarray(json.loads(fd.EQ_CACHE.read_text())[des["tag"]]["xi"])
+    setup, hd, wave, ramp = fd.wave_setup(dk, article, T, H, xi_eq=xi_eq, hd=hd, dt=dt)
+    r = fd.run_case(setup, hd, dk, wave, ramp, N_SETTLE, LOOP_PERIODS, dt=dt)
+    n = setup.lhs.n_dof
+    buoys = [i for i, b in enumerate(B) if b["type"] == "buoy"]
+    ref = next((i for i, b in enumerate(B) if b["type"] == "platform"),
+               next((i for i, b in enumerate(B) if b["type"] == "hub"), buoys[0]))
+    up = min(buoys, key=lambda i: (B[i]["x0"], B[i]["y0"]))
+    dn = max(buoys, key=lambda i: (B[i]["x0"], B[i]["y0"]))
+    keep = r.t >= r.t[-1] - LOOP_PERIODS * T
+    yaw = max(float(np.degrees(np.abs(r.xi[keep, 6 * b + 5] - r.xi[0, 6 * b + 5]).max()))
+              for b in buoys)
+    tilt_all = max(float(np.degrees(np.hypot(r.xi[keep, 6 * b + 3], r.xi[keep, 6 * b + 4]).max()))
+                   for b in buoys)
+    if not np.all(np.isfinite(r.xi)) or yaw > DIVERGED_YAW_DEG or tilt_all > DIVERGED_TILT_DEG:
+        why = (f"FloatSim run diverged (yaw {yaw:.1f} deg, tilt {tilt_all:.1f} deg): "
+               "small-angle (LEVEL1) kinematics, no prediction")
+        jp.write_text(json.dumps({"T": T, "H": H, "moored": not free, "failed": why}))
+        return f"{jp.name}: DIVERGED (yaw {yaw:.1f}, tilt {tilt_all:.1f})"
+    tf = r.t[-1] - LOOP_PERIODS * T + np.arange(LOOP_PERIODS * FPP) * T / FPP
+    idx = np.clip(np.searchsorted(r.t, tf), 0, r.t.size - 1)
+    Q, Qd, Qdd = (r.xi[idx] - xi_ref), r.xi_dot[idx], r.xi_ddot[idx]
+    frames = [[[round(float(v), 6) for v in Q[f, 6 * b:6 * b + 6]] for b in range(len(B))]
+              for f in range(Q.shape[0])]
+    wl = fd.WL_B
+    pts = ({"ref": (0, wl), "up": (0, np.array([0.0, 0.0, Z_TOP - fd.aw.ZB])),
+            "dn": (0, np.array([0.0, 0.0, Z_PLATE - fd.aw.ZB]))} if article == "buoy" else
+           {"ref": (ref, np.zeros(3)), "up": (up, wl), "dn": (dn, wl)})
+    sig = {k: {q: np.round(point(M, b, rr), 6).tolist() for q, M in
+               (("disp", Q), ("vel", Qd), ("acc", Qdd))} for k, (b, rr) in pts.items()}
+    tension = None
+    if not free:
+        refs = np.array([b.reference_point for b in dk_m.bodies], dtype=float)
+        lf = []
+        for ln, c in zip(lines, dk_m.connections, strict=True):
+            att = CatenaryAttachment(body_index=ln["body"],
+                                     fairlead_body=np.asarray(c.attach_a_body),
+                                     anchor_global=np.asarray(c.attach_b_body),
+                                     line=CatenaryLine(length=c.line.length,
+                                                       weight_per_length=c.line.weight_per_length,
+                                                       EA=c.line.EA), seabed_depth=200.0)
+            lf.append((ln["body"], make_catenary_state_force([att], n_dof=n,
+                                                             body_reference_points=refs)))
+        X = r.xi[idx]
+        zero = np.zeros(n)
+        tension = [[round(float(np.linalg.norm(fn(0.0, X[k], zero)[6 * b:6 * b + 3])), 3)
+                    for (b, fn) in lf] for k in range(X.shape[0])]
+    tilt = max(float(np.degrees(np.max(np.hypot(Q[:, 6 * b + 3], Q[:, 6 * b + 4])))) for b in buoys)
+    d0 = setup.xi0 - xi_ref
+    tilt0 = max(float(np.degrees(np.hypot(d0[6 * b + 3], d0[6 * b + 4]))) for b in buoys)
+    zref = point(Q, ref, wl if article == "buoy" else np.zeros(3))[:, 2]
+    st = json.loads((HERE / "spec_statics.json").read_text())[article]
+    F_bound = len(buoys) * sum(ms.drift_per_spar(H, T)[:2])
+    tt = np.asarray(tension) if tension is not None else None
+    surge = r.xi[keep][:, 0::6].mean(axis=1) - xi_ref[0::6].mean()
+    row = {"T": T, "H": H, "omega": round(2 * np.pi / T, 5), "amp_m": 0.5 * H,
+           "n_frames": len(frames), "dt_frame_s": round(T / FPP, 6), "frames": frames,
+           "sig": sig, "tension": tension, "moored": not free,
+           "rao_ref": round(float(0.5 * (zref.max() - zref.min()) / (0.5 * H)), 4),
+           "max_tilt_deg": round(tilt, 2), "static_tilt_deg": round(tilt0, 2),
+           "max_tension_N": None if tt is None else round(float(tt.max()), 2),
+           "min_tension_N": None if tt is None else round(float(tt.min()), 2),
+           "offset_bound_m": round(float(F_bound / st["pull"]["surge"]["K0"]), 3),
+           "mean_surge_m": round(float(surge.mean()), 4),
+           "provenance": ("FloatSim, rev C operational mooring (calm settle " + des["tag"] + ")"
+                          if not free else "FloatSim, free-floating (no mooring)")
+           + f"; regular wave H {H} m, T {T} s, wave-relative drag, no applied drift",
+           "wall_min": round((time.perf_counter() - t0) / 60, 2)}
+    jp.write_text(json.dumps(row, separators=(",", ":")))
+    return (f"{jp.name}: heave RAO {row['rao_ref']:.3f}, tilt {row['max_tilt_deg']:.1f} deg, "
+            f"{row['wall_min']:.1f} min")
+
+
+def revc_all() -> None:
+    from concurrent.futures import ProcessPoolExecutor
+    ROWS_REVC.mkdir(exist_ok=True)
+    todo = [(a, T, H, fr) for a in ("platform", "cluster", "buoy") for H in H_REVC
+            for T in revc_periods(a) for fr in (False, True)]
+    with ProcessPoolExecutor(max_workers=24) as ex:
+        for line in ex.map(run_revc, todo):
+            print(line, flush=True)
+
+
 def prov(key: str, name: str, tag: str) -> str:
     eq = ("checked static solve" if key == "buoy" else
           f"settle {tag}" + (", shared: the same at-rest tension" if name == "extreme" else ""))
@@ -274,13 +396,32 @@ def static_html() -> None:
                 "max_tension_N": max(ten), "min_tension_N": min(ten), "offset_bound_m": 0.0,
                 "k_line": round(k_line, 3), "T0": round(T0, 3),
                 "provenance": prov(key, name, tag)})
+        # the rev C animations (revc), moored with the free-floating run of the same wave
+        anim = []
+        rows = {f.stem: json.loads(f.read_text()) for f in ROWS_REVC.glob(f"{key}_H*_T*.json")}
+        for stem, c in rows.items():
+            if stem.endswith("_free"):
+                continue
+            fr = rows.get(stem + "_free")
+            if c.get("failed"):
+                if fr and not fr.get("failed"):
+                    anim.append({**fr, "no_moored": c["failed"]})
+                continue
+            if fr and not fr.get("failed"):
+                c["free"] = {k: fr[k] for k in ("frames", "sig", "rao_ref", "max_tilt_deg",
+                                                "mean_surge_m", "provenance")}
+            elif fr:
+                c["free_note"] = fr["failed"]
+            anim.append(c)
+        anim.sort(key=lambda c: (c["H"], c["T"]))
+        cases = anim + cases
         arts.append({"key": key, "name": fd.NAMES[key], "bodies": B, "ref": ref, "up": up,
                      "dn": dn, "siglabels": SIGLAB[key], "cases": cases,
                      "lines": [{"anchor": ln["anchor"].tolist(), "legs": [ln["body"]],
                                 "ring": None, "T0": round(ln["T0"], 3), "k": round(ln["k"], 3),
                                 "fl": [round(float(v), 5) for v in ln["fairlead"]]}
                                for ln in lines],
-                     "k_line": cases[0]["k_line"], "T0": cases[0]["T0"],
+                     "k_line": cases[-len(sets)]["k_line"], "T0": cases[-len(sets)]["T0"],
                      "att_z": round(float(lines[0]["fairlead"][2] + dk_m.bodies[lines[0]["body"]]
                                           .reference_point[2]), 3)})
     data = {"geom": {"z_top": Z_TOP, "z_wl": Z_WL, "z_bot": Z_BOT, "z_plate": Z_PLATE,
@@ -292,14 +433,14 @@ def static_html() -> None:
     h = h.replace("__LAYOUT_PNG__", "data:image/png;base64," + img)
     h = h.replace("__DATA__", json.dumps(data, separators=(",", ":")))
     OUT_HTML.write_text(h, encoding="utf-8")
-    print(f"wrote {OUT_HTML.name} ({len(h) / 1e6:.2f} MB, rev C static arrangement)")
+    print(f"wrote {OUT_HTML.name} ({len(h) / 1e6:.2f} MB, rev C animations + calm arrangement)")
 
 
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     warnings.simplefilter("ignore")
     ap = argparse.ArgumentParser()
-    ap.add_argument("step", choices=["run", "html", "static"])
+    ap.add_argument("step", choices=["run", "html", "static", "revc"])
     ap.add_argument("article", nargs="?", choices=["buoy", "cluster", "platform"])
     ap.add_argument("periods", nargs="?", default="2.2,2.9,3.5")
     ap.add_argument("--H", type=float, default=0.1)
@@ -309,6 +450,8 @@ def main() -> None:
         run(a.article, [float(x) for x in a.periods.split(",")], a.H, a.free)
     elif a.step == "static":
         static_html()
+    elif a.step == "revc":
+        revc_all()
     else:
         html()
 

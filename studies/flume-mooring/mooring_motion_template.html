@@ -141,13 +141,13 @@
 <div class="app">
   <div>
     <div class="eyebrow">FloatSim · MOORING-SPEC rev C · OSU Large Wave Flume</div>
-    <h1>Mooring arrangement — 1 buoy, 1 cluster and the 4×4 platform</h1>
-    <p class="sub">The rev C mooring at FloatSim's calm equilibrium: four soft lines per article, attached
-      below still water (buoy collar at −0.50 m; cluster and platform spars at −0.15 m) and running level to
-      underwater anchors on the side walls ±5 m up- and downstream. Two cord sets on the same anchors and
-      attachments: the operational set (response tests, H ≤ 0.12 m) and the stiffer extreme set (H = 0.2–0.5 m).
-      Static arrangement only: no rev C wave run is animated. Drag to orbit, scroll or pinch to zoom,
-      double-click to reset the view.</p>
+    <h1>Moored vs free motion — 1 buoy, 1 cluster and the 4×4 platform</h1>
+    <p class="sub">FloatSim playback of each article in regular waves (heading 0°, +x) with the rev C
+      operational mooring — four soft cords attached below still water (buoy collar −0.50 m; spars −0.15 m),
+      running level to underwater wall anchors ±5 m — and, with <b>Mooring: Off</b>, the same wave on the
+      free-floating article. H = 0.04 and 0.12 m (the operational band) at 1.4 s, 2.2 s, the tilt resonance and
+      3.5 s. The last cases are the calm arrangement of each cord set. Lines are coloured by their live tension.
+      True scale by default. Drag to orbit, scroll or pinch to zoom, double-click to reset.</p>
   </div>
 
   <header class="card hdr">
@@ -240,17 +240,18 @@
   </details>
 
   <footer id="foot">
-    Data (rev C): each case is the article's calm equilibrium with one cord set, from FloatSim — the moored
-    settle of the cluster and platform (moored_equilibrium.json) and the buoy's checked static solve — shown as
-    displacements from the unmoored (deck) equilibrium. Anchors, attachment points, pretension and at-rest line
-    tensions are MOORING-SPEC rev C's own numbers (spec_statics.json, spec_statics_extreme.json); the platform's
-    bridles are two lines per anchor. The calm tilt of the cluster and platform (≈ 1°, the confirmed limit) is the
-    pretension moment about the pins. <b>Not animated:</b> the earlier animated cases used a superseded mooring
-    (lines at the still-water line) and are withdrawn; no rev C wave run has saved frames. The wave-case predictions
-    (offsets, line loads, tilt) are tabled in MOORING-SPEC rev C. <b>Validity:</b> FloatSim integrates rotations with
-    small-angle kinematics (full rotation kinematics, "LEVEL2", are not yet wired). Tilts above 0.1 rad (5.7°) are
-    outside that range and are flagged ⚠ as indicative only; every near-resonance and extreme prediction in the spec
-    is beyond it.
+    Data (rev C): the wave cases are FloatSim runs (build_mooring_viewer.py revc) — deck bodies with the coupled
+    Capytaine BEM, wave-relative Morison drag on spar and heave plate, and the mooring as FloatSim Catenary lines
+    with the rev C operational cords (MOORING-SPEC rev C.1: k, L0, at-rest tension), started from FloatSim's calm
+    moored settle. <b>Mooring: Off</b> plays a separate FloatSim run of the free-floating article in the same wave.
+    Frames are FloatSim's own output over the last two wave periods after a 15 s ramp and 45 s of settling, shown
+    as displacements from the unmoored equilibrium (so the moored cases include the ≈ 1° calm pretension tilt of the
+    cluster and platform). No drift force is applied: the readout's mean offset is the drift-bound estimate for the
+    rev C stiffness. A run that runs away in yaw or tilt is not animated and is labelled. The calm cases are the
+    static arrangement of each cord set (the extreme set is used for H = 0.2–0.5 m and is not run here).
+    <b>Validity:</b> FloatSim integrates rotations with small-angle kinematics (full rotation kinematics, "LEVEL2",
+    are not yet wired). Tilts above 0.1 rad (5.7°) are flagged ⚠ as indicative only; that includes every
+    near-resonance case.
   </footer>
 </div>
 
@@ -533,13 +534,15 @@ const DATA=__DATA__;
     b.setAttribute("aria-pressed",i===ai?"true":"false"); b.onclick=()=>setArticle(i); artsEl.appendChild(b); });
   function setArticle(i){ ai=i; artsEl.querySelectorAll("button").forEach((b,j)=>b.setAttribute("aria-pressed",j===i?"true":"false"));
     casesEl.innerHTML=""; ART().cases.forEach((c,j)=>{ const b=document.createElement("button"); b.className="chip"; b.type="button";
-      b.textContent=c.label||("T "+c.T.toFixed(1)+" s · H "+c.H.toFixed(2)+" m"); b.onclick=()=>setCase(j); casesEl.appendChild(b); });
+      b.textContent=c.label||("T "+(+c.T.toFixed(2))+" s · H "+c.H.toFixed(2)+" m"); b.onclick=()=>setCase(j); casesEl.appendChild(b); });
     setCase(Math.min(ci,ART().cases.length-1)); }
   function setCase(i){
-    ci=i; frame=0; acc=0; buildChannels();
+    ci=i; frame=0; acc=0;
+    if(!CASE().free&&!moored){ moored=true; document.querySelectorAll("#moor button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.m==="1"?"true":"false")); }
+    buildChannels();
     casesEl.querySelectorAll(".chip").forEach((c,j)=>c.setAttribute("aria-pressed",j===i?"true":"false"));
     const cc=CASE(), a=ART(), vv=VAR(), on=MOORED();
-    document.querySelectorAll("#moor button").forEach(b=>b.disabled=!!cc.no_moored||!!cc.static);
+    document.querySelectorAll("#moor button").forEach(b=>b.disabled=!!cc.no_moored||!!cc.static||(!cc.free&&b.dataset.m==="0"));
     document.getElementById("ro-T").innerHTML=cc.static?"calm":cc.T.toFixed(2)+'<small> s</small>';
     document.getElementById("ro-H").innerHTML=cc.static?"0":cc.H.toFixed(2)+'<small> m</small>';
     document.getElementById("ro-rao").textContent=cc.static?"—":vv.rao_ref.toFixed(2);
@@ -552,7 +555,9 @@ const DATA=__DATA__;
     const warn=splay+(outside?`<br><span class="warn">⚠ peak buoy tilt ${vv.max_tilt_deg.toFixed(1)}° exceeds 0.1 rad (5.7°): outside FloatSim's small-angle kinematics (LEVEL2 not wired) — indicative only${st>TILT_VALID_DEG?"; the static pretension tilt alone exceeds it":""}</span>`:"");
     const kk=cc.k_line!==undefined?cc.k_line:a.k_line, t0=cc.T0!==undefined?cc.T0:a.T0;
     const moorTxt=cc.no_moored?`<span class="warn">no moored run: ${cc.no_moored}; showing the free-floating run</span>`:on?(a.key==="platform"?`bridles k = ${kk.toFixed(1)} N/m, T₀ = ${t0.toFixed(2)} N, two legs each (tension shown per leg)`:`lines k = ${kk.toFixed(2)} N/m, T₀ = ${t0.toFixed(2)} N`):"no mooring (free-floating)";
-    const head=cc.static?`${cc.label} · ${moorTxt}<br><small>${cc.provenance}</small>`:`T = ${cc.T.toFixed(1)} s, H = ${cc.H.toFixed(2)} m · ${moorTxt}`;
+    const prov=(!on&&cc.free&&cc.free.provenance)?cc.free.provenance:(cc.provenance||"");
+    const fnote=cc.free_note?`<br><span class="warn">free-floating run: ${cc.free_note}</span>`:"";
+    const head=cc.static?`${cc.label} · ${moorTxt}<br><small>${cc.provenance}</small>`:`T = ${cc.T.toFixed(2)} s, H = ${cc.H.toFixed(2)} m · ${moorTxt}`+(prov?`<br><small>${prov}</small>`:"")+fnote;
     document.getElementById("caselabel").innerHTML=`<b>${a.name.replace("4x4","4×4")}</b><br>${head}`+warn;
     document.getElementById("seek").max=cc.n_frames-1;
   }
