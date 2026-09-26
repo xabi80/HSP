@@ -1127,6 +1127,87 @@ Rev C stands; Xabier decides.
   - Alternative: accept a reduced margin on the platform (T_min / T_rest ≈ 0.07 at the end of a
     day, still taut).
 
+## Phase I (2026-09-26): analytical check of the free buoy's pitch period (`pitch_analytic_check.py`, `../osu-test-buoy/underwater_volume.py`)
+
+Xabier's question: is there an analytical way to check the ~2.8 s pitch resonance and so
+validate the simulation? This is an evaluation only, with no spec change. The numbers are in
+`pitch_analytic_check.json` and `../osu-test-buoy/underwater_volume.json`.
+
+**The formula.** The buoy floats free in surge (no restoring), so surge and pitch form one mode.
+About the CoG (rigid-body M15 = 0), with surge condensed out of the 2-DOF eigenproblem:
+
+    T = 2π √[ (I55 + A55 − A15² / (M + A11)) / C55 ],   C55 = ρg (I_wp + ∇ (z_B − z_G))
+
+- The mode rotates about a point A15 / (M + A11) = **0.20 m above the CoG**.
+- The uncoupled estimate, T = 2π √[(I55 + A55) / C55], ignores surge. It gives 2.842 s by hand:
+  close to "2.8 s", but for the wrong reason.
+
+**Result:**
+
+| evaluation | C55 (N·m/rad) | A11 (kg) | A15 (kg·m) | A55 (kg·m²) | pitch T, formula | FloatSim modal |
+|---|---|---|---|---|---|---|
+| by hand: the mesh geometry, strip theory (Ca = 1), no BEM | 74.14 | 19.23 | 8.15 | 4.97 | **2.685 s** | — |
+| flume BEM, 12-sided waterline | 70.77 | 20.12 | 8.73 | 5.29 | 2.7607 s | 2.7607 s |
+| converged BEM, 96-sided | 74.08 | 18.90 | 8.20 | 4.98 | **2.6840 s** | 2.6840 s |
+
+- **FloatSim's modal assembly reproduces the formula exactly with its own coefficients.** The
+  mass, inertia, C and A(ω) are assembled correctly.
+- **The hand calculation, independent of the BEM and FloatSim, matches the converged value to
+  0.05 %**, and the OSU buoy model's pitch decay (2.69 s).
+- The ~2.8 s (2.761 s) is the 12-sided mesh artefact (§C8): C55 is 4.5 % low.
+
+**What the check cannot validate: the inputs.** Found while doing it:
+
+1. **The model's mass and underwater volume are parametric, not as-built.**
+   - M = 21.52 kg is ρ × the spreadsheet's DESIGN displacement, 21.57 L.
+   - That displacement is the pipe to the 967 mm waterline (19.27 L), plus an assumed "low
+     hemisphere" (1.06 L), plus an assumed ballast volume (1.25 L): `OSU Spar Buoy Platform
+     Metric.xlsx` B45 + B47 + B48.
+   - The BEM mesh displaces 20.57 L: the pipe plus the placeholder disc (1.30 L, ≈ the
+     spreadsheet's ballast term).
+   - The "missing litre" is the spreadsheet's hemisphere. The real buoy has no hemisphere.
+2. **As-built underwater volume** (CAD via gmsh: each solid minus the pipe envelope and
+   everything above the waterline):
+
+   | group, outside the pipe and under water | volume | centroid z |
+   |---|---|---|
+   | ballast frame: base plate + webs | 0.966 L | −1.27 m |
+   | lower cap | 0.247 L | −1.00 m |
+   | four unnamed side parts on +y (y = +75 … +209 mm) | 0.395 L | −0.75 m |
+   | **total (none of it in the mesh)** | **1.615 L** | **−1.10 m** |
+
+   - Add the lead (13.36 kg, 1.18 L, not in the CAD), which the placeholder disc stands in for.
+   - At the 967 mm waterline the as-built displacement is **22.06 L**, a floating mass of
+     22.02 kg (the model has 21.52 kg).
+   - The side parts are one-sided. From the parts' bounding boxes, their buoyancy moment is
+     ≈ 0.5 N·m, a static heel of ≈ 0.4° unless the mass distribution balances it.
+3. **Effect on the pitch period.** With the as-built volume, the lead at the inertia model's
+   z = −1.383 m, and the model's CoG and inertia: C55 = 71.70 N·m/rad and **T = 2.733 s
+   (+1.8 %)**.
+4. **The dominant input uncertainties:**
+   - **CoG** (−0.907 m, from the spreadsheet's parametric formula): 2 cm lower gives 2.654 s,
+     2 cm higher 2.819 s.
+   - **Pitch inertia** (10.2 kg·m², uniform-density assumption): −10 % gives 2.628 s, +10 %
+     gives 2.834 s.
+   - **Waterline:** 967 mm, the same as the spreadsheet's design 0.574 L.
+   - **Where the lead sits.**
+5. **Heave, for completeness:** the as-built +0.5 kg lengthens the converged heave period by
+   ≈ 0.8 %, to ≈ 2.54 s. The field video gave 2.47–2.53 s.
+
+**Recommendation: measure the inputs on the real buoy before the tank tests.**
+
+- Weigh it with the lead, and mark its floating waterline: this gives the mass and ∇.
+- **Inclining test in water:** a known heeling moment (a mass moved across a known arm) and the
+  static heel angle give C55 = M_heel / θ directly. It is the hydrostatic half of the check.
+  Predicted: 70.8 (flume mesh), 71.7 (as-built) or 74.1 N·m/rad (model geometry).
+- **Pitch inertia:** a swing test in air (bifilar or compound pendulum), or infer it from the
+  pitch decay once C55 is measured.
+- **A pitch free decay** then closes the check: the measured period against the formula with
+  the measured C55 and I55.
+
+The mooring study's conclusions are relative (moored vs free on the same database) and stand.
+Only the absolute periods move.
+
 ## Open decisions for Xabier (after Phase C round 2; STOP before Phase D)
 
 1. **BEM regeneration at NT = 36** (§C8). Every resonance moves 0.040–0.077 s (> 0.025 s). The cost

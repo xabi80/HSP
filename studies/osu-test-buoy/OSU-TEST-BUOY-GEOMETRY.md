@@ -70,6 +70,21 @@ Anchors: **structure = 8.16 kg** (all parts minus the ballast box), **unloaded w
 
 (OSU Hinsdale lab is **fresh** water; period is density-independent for a free-floating body.)
 
+## ⚠ As-built underwater volume vs the model (2026-09-26, `underwater_volume.py`)
+The model's mass (21.52 kg) and the spreadsheet volume it comes from (21.57 L) are
+**parametric**: pipe 19.27 L + an assumed "low hemisphere" 1.06 L + an assumed ballast volume
+1.25 L. The BEM mesh (pipe + the placeholder disc) displaces 20.57 L.
+
+The CAD's structure outside the pipe and under water is 1.615 L, none of it in the mesh:
+- the ballast frame (base plate + webs), 0.966 L at z −1.27 m;
+- the lower cap, 0.247 L at −1.00 m;
+- four unnamed one-sided parts on +y, 0.395 L at −0.75 m.
+
+With the lead (1.18 L, not in the CAD), the as-built displacement at the 967 mm waterline is
+22.06 L, a floating mass of ≈ 22.0 kg. The effect on pitch (+1.8 %) and the recommended
+measurements (weigh, waterline, inclining test, inertia, pitch decay) are in
+`../flume-mooring/DESIGN-BASIS.md` Phase I.
+
 ## Spar BEM (capytaine)
 Wetted spar cylinder (Ø0.1593, immersed 0.967 m), `hydro_from_measurements.py`:
 - **C33 = 194 N/m** (matches the spreadsheet ~195 ✓); spar heave added mass only ~1.1 kg →

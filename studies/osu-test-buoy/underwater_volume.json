@@ -1,0 +1,185 @@
+{
+ "waterline_mm_above_pipe_bottom": 967.0,
+ "external_underwater_volume_L": 1.6145,
+ "external_centroid_z_wl_m": -1.0972,
+ "groups": {
+  "ballast frame (base plate + webs)": {
+   "volume_L": 0.966,
+   "z_wl_m": -1.2705
+  },
+  "lower cap (outside the pipe)": {
+   "volume_L": 0.247,
+   "z_wl_m": -1.0033
+  },
+  "side parts on +y (outside the pipe)": {
+   "volume_L": 0.3947,
+   "z_wl_m": -0.7469
+  },
+  "other": {
+   "volume_L": 0.0068,
+   "z_wl_m": -0.2211
+  }
+ },
+ "parts": [
+  {
+   "tag": 14,
+   "name": "COMPOUND",
+   "volume_L": 0.3097,
+   "z_wl_m": -1.3832,
+   "y_range_mm": [
+    -94,
+    104
+   ]
+  },
+  {
+   "tag": 15,
+   "name": "solid 15",
+   "volume_L": 0.057,
+   "z_wl_m": -1.3535,
+   "y_range_mm": [
+    -90,
+    88
+   ]
+  },
+  {
+   "tag": 16,
+   "name": "solid 16",
+   "volume_L": 0.057,
+   "z_wl_m": -1.3535,
+   "y_range_mm": [
+    -90,
+    88
+   ]
+  },
+  {
+   "tag": 4,
+   "name": "solid 4",
+   "volume_L": 0.0937,
+   "z_wl_m": -1.3405,
+   "y_range_mm": [
+    -53,
+    205
+   ]
+  },
+  {
+   "tag": 11,
+   "name": "solid 11",
+   "volume_L": 0.0717,
+   "z_wl_m": -1.2616,
+   "y_range_mm": [
+    -51,
+    201
+   ]
+  },
+  {
+   "tag": 10,
+   "name": "solid 10",
+   "volume_L": 0.0565,
+   "z_wl_m": -1.198,
+   "y_range_mm": [
+    -61,
+    65
+   ]
+  },
+  {
+   "tag": 7,
+   "name": "solid 7",
+   "volume_L": 0.0324,
+   "z_wl_m": -1.1845,
+   "y_range_mm": [
+    -61,
+    -25
+   ]
+  },
+  {
+   "tag": 6,
+   "name": "solid 6",
+   "volume_L": 0.088,
+   "z_wl_m": -1.1634,
+   "y_range_mm": [
+    151,
+    239
+   ]
+  },
+  {
+   "tag": 8,
+   "name": "solid 8",
+   "volume_L": 0.1065,
+   "z_wl_m": -1.1049,
+   "y_range_mm": [
+    -67,
+    -38
+   ]
+  },
+  {
+   "tag": 9,
+   "name": "solid 9",
+   "volume_L": 0.0935,
+   "z_wl_m": -1.0954,
+   "y_range_mm": [
+    -51,
+    203
+   ]
+  },
+  {
+   "tag": 2,
+   "name": "Lower cap 6 inch",
+   "volume_L": 0.247,
+   "z_wl_m": -1.0033,
+   "y_range_mm": [
+    -80,
+    107
+   ]
+  },
+  {
+   "tag": 5,
+   "name": "solid 5",
+   "volume_L": 0.1068,
+   "z_wl_m": -0.8995,
+   "y_range_mm": [
+    129,
+    209
+   ]
+  },
+  {
+   "tag": 12,
+   "name": "solid 12",
+   "volume_L": 0.0849,
+   "z_wl_m": -0.868,
+   "y_range_mm": [
+    75,
+    177
+   ]
+  },
+  {
+   "tag": 13,
+   "name": "solid 13",
+   "volume_L": 0.0941,
+   "z_wl_m": -0.6264,
+   "y_range_mm": [
+    75,
+    151
+   ]
+  },
+  {
+   "tag": 3,
+   "name": "solid 3",
+   "volume_L": 0.1089,
+   "z_wl_m": -0.6069,
+   "y_range_mm": [
+    92,
+    172
+   ]
+  },
+  {
+   "tag": 17,
+   "name": "Ballast Line Guide",
+   "volume_L": 0.0068,
+   "z_wl_m": -0.2211,
+   "y_range_mm": [
+    73,
+    101
+   ]
+  }
+ ]
+}
