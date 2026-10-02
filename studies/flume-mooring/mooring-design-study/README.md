@@ -3,7 +3,8 @@
 An 18-slide deck for a technical audience. It follows the leadership briefing's storyline
 (`../leadership-deck/`), in technical language, and adds a slide for each configuration (single
 buoy, cluster, 4×4 platform) with its plan and elevation to scale. It is built from MOORING-SPEC
-rev C.1.
+rev D (2026-10-02: the platform resized to the HSFP test matrix's 2.4 m square, DESIGN-BASIS
+Phase J).
 
 The slides:
 - **The problem:** the summary; the test articles and their natural periods; the station-keeping
@@ -47,8 +48,8 @@ These come from the committed records and are itemised here, as the standing rul
 
 - **Heave natural periods** (slides 3 and 8–11) come from `attachment_sweep.json`, the chosen
   rows' `heave_T_s` and `heave_shift_pct`, also tabulated in DESIGN-BASIS F4. The free periods are derived from those two fields.
-  - Free → moored: buoy 2.561 → 2.548 s, cluster 2.586 → 2.584 s, platform 2.606 → 2.606 s.
-  - The extreme set: cluster 2.583 s, platform 2.605 s (`extreme_set.json`, `declare`).
+  - Free → moored: buoy 2.561 → 2.548 s, cluster 2.586 → 2.584 s, platform 2.599 → 2.598 s.
+  - The extreme set: cluster 2.583 s, platform 2.598 s (`extreme_set.json`, `declare`).
 - **Converged buoy periods** (slides 3 and 8) come from `bem_waterline.json` (DESIGN-BASIS §C8).
   - The flume BEM's 12-sided waterline reads C33 and C55 4.5 % low, so its periods are long.
   - Converged mesh (96-sided), free buoy: heave 2.519 s, pitch 2.684 s. The flume BEM gives
@@ -59,7 +60,7 @@ These come from the committed records and are itemised here, as the standing rul
     Their converged values need the NT36 regeneration, which is planned before Phase D.
 - **Moored vs free heave RAO** (slide 11) comes from `viewer_rows_revc/`: 48 runs, with the free
   runs unrestrained.
-  - At the tilt resonance the heave RAO changes by −0.2 to +4.6 %.
+  - At the tilt resonance the heave RAO changes by −0.2 to +5.9 %.
   - At T = 2.2 s, H = 0.12 m it changes by +9.0 % (buoy) and +7.8 % (cluster). That period is off
     resonance and inside the sloshing exclusion window (2.08–2.30 s).
   - Some of these values exceed criterion 6's ±3 %. The formal check is Phase D.

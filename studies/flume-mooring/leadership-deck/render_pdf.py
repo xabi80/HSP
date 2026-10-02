@@ -21,7 +21,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 EDGE = Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
-IMAGES = {"811a0730779f4cec52f3275383605a7a": HERE.parent / "figs" / "plan_platform.png",
+IMAGES = {"8fa52515c9804f1adb909253a696de6e": HERE.parent / "figs" / "plan_platform.png",
           "c12cf90b5d58c7d918eb1c0525bcb3f4": HERE.parent / "figs" / "elevation_cluster.png"}
 CSS = """@page{size:1920px 1080px;margin:0}html,body{margin:0;padding:0}
 section{box-sizing:border-box;width:1920px;height:1080px;position:relative;overflow:hidden;

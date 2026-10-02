@@ -31,12 +31,12 @@ PDF_NAME = "mooring-design-study.pdf"
 IMAGES = {
     "f9b13b27d48c3256917416e8af7dee83": "plan_buoy",
     "5b03f69303836a658ffc3c0610e87641": "plan_cluster",
-    "41e85135e04fb4e195ea0a4a86f1050e": "plan_platform",
+    "98f6aa25984c66093cde415bfb2e85a7": "plan_platform",
     "c300f2bff091d9c42c968b028f8028f5": "elevation_buoy",
     "39de03f0967508f6b5b14defec4eb151": "elevation_cluster",
-    "57f7c82e8e4f93625d331e542757c65f": "elevation_platform",
-    "6cda2eacb540ac124962af15f1d948f7": "rationale",
-    "a63bacae17ffeebd086e9c488c237b14": "offsets",
+    "aa48bb8fdf1768d61a773adfd37d6fd9": "elevation_platform",
+    "64aed7e8c05fa76976b24b6f547b6c55": "rationale",
+    "10c32a7e173ab7fbb2996e94018e4014": "offsets",
 }
 CSS = """@page{size:1920px 1080px;margin:0}html,body{margin:0;padding:0}
 section{box-sizing:border-box;width:1920px;height:1080px;position:relative;overflow:hidden;

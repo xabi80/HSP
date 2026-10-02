@@ -1208,6 +1208,132 @@ About the CoG (rigid-body M15 = 0), with surge condensed out of the 2-DOF eigenp
 The mooring study's conclusions are relative (moored vs free on the same database) and stand.
 Only the absolute periods move.
 
+## Phase J (2026-10-01/02): the platform resized to a 2.4 m square — MOORING-SPEC rev D
+
+Xabier's request: redo the wall and mooring studies for the HSFP test matrix's platform, with its
+**buoy centres on a 2.4 m square** (his choice between that and the unscaled Phase-3 layout).
+
+- It is the 2.5 m-circle layout scaled by 1.358: the cluster arm is 1.131 m and the grid 0.8 m.
+- Buoy centres sit at x, y = ±0.4 / ±1.2 m, flat-on (45°) as before.
+- Masses, inertias and the buoys are unchanged; only positions change.
+- The switch is `PLAT_SQUARE_M=2.4`, set by default in `floatsim_decks.py`. `PLAT_SQUARE_M=""`
+  reproduces rev C.1.
+- The single buoy and the cluster are unchanged, and their records reproduce exactly.
+
+### J1. Geometry and the sidewall study (`../platform-12buoy/flume-wall-effect`, `c27c193`)
+
+- **Span across the flume:**
+  - with the plates, 2.69 m (73 % of the 3.66 m width), leaving **0.49 m per side**;
+  - this is **below Phase B criterion 4's body-to-wall clearance ≥ 0.6 m**;
+  - corner-on does not fit at all (3.68 m).
+- **Sidewall effect, coupled BEM, walls-in vs walls-out, flat-on:**
+  - free-decay heave −0.49 %, against −0.55 % at 0.80 m;
+  - heave RAO +3.2 / +1.8 / −0.6 / −0.5 % at 2.19 / 2.52 / 3.0 / 3.5 s;
+  - excitation ≤ 2.9 % over 2–4 s;
+  - accelerations ≤ 0.8 / 3.3 / 2.0 % (surge / heave / pitch).
+  - Every one is at or below the 2.5 m circle's value: **the walls do not compromise the dynamic
+    data**.
+- **Finite-depth effect** at 2.52 / 3.0 / 3.5 / 4.0 s: −21 / −29 / −35 / −38 %, against −19 / −27
+  / −33 / −37 %.
+- **Open for Xabier:** accept 0.49 m of geometric clearance on the evidence above, or reduce the
+  platform.
+
+### J2. Re-derived inputs (standing rule)
+
+- **The new BEM.** The coupled open-flume database is `coupled_osu_open_rot45_sq2p4_psd.nc` (NT
+  12, 27 min). Its rigid-surge added mass is **313.6 kg** (310.6), now a size-gated constant in
+  `mooring_sizing.py`. The design line stiffness is 33.42 N/m per line (+0.45 %).
+- **Free modal periods:** heave 2.599 s, tilt 2.926 s, against 2.606 / 2.924 s.
+  `T_TILT_FREE` 2.90 s holds.
+- **Damping**, from the resonance sweep at H = 0.04 m with the pin-level mooring:
+  - tilt ζ **3.03 %** (3.15 %), so **ζ/3 = 1.01 %** (1.05 %);
+  - heave ζ 10.3 %;
+  - tilt T_n 2.650 s;
+  - the fine step stays 0.05 s.
+- **Caches.** Every platform cache keyed without geometry was cleared:
+  - the moored-equilibrium tags;
+  - the bandwidth, tank, kinematic and viewer rows;
+  - the extreme-set runs.
+
+  The stiff-cord runs now save one key-checked file per run in `es_rows/`, with the platform
+  geometry in the file name.
+
+### J3. The operational set (attachment sweep, `attachment_sweep.py`)
+
+- **Chosen** (same rule): z = −0.15 m, k ×0.5, the same attachment and stiffness as rev C.1.
+- **Pretension:**
+  - the static-tilt estimate gave 1.00°, FloatSim's settle **1.051°** (rev C.1: 1.064°);
+  - **trimmed ×0.9506 to T0 1.559 N per leg** (1.540), re-settled at **0.999°**;
+  - the at-rest tension is 1.44 N per leg.
+- **Natural periods:**
+  - tilt shift **−0.74 %** (limit 1.01 %), heave −0.04 %;
+  - moored tilt 2.904 s;
+  - surge / sway / yaw 22.9 / 60.8 / 32.7 s.
+- **Statics:**
+  - cord 8.36 N/m per leg;
+  - L0 3.665 / 3.874 m (shorter: the outer spars are farther out);
+  - surge pull stiffness 61.7 N/m.
+- **Operational runs (drift sum):**
+  - H 0.12 m at 2.9 s: T_min / T0 **0.18** (0.19; criterion ≥ 0.15), tilt 17.3°;
+  - at 1.4 s: 0.62.
+- **The operational set at H = 0.5 m:** mean offset 3.40 / 2.87 m, max 3.51 / 2.95 m, peak tension
+  29.5 N. The platform still needs the extreme set.
+- **Moored vs free** (the viewer's 16 platform runs, `viewer_rows_revc/`, H = 0.04 / 0.12 m):
+  - at the tilt resonance (2.9 s) the heave RAO changes by **+5.9 / +3.4 %** (rev C.1: +4.6 /
+    +2.8 %) and the peak tilt by +1.07 / +0.57° (+0.97 / +0.45°);
+  - at 2.2 and 3.5 s the heave RAO is within ±0.4 %; elsewhere the peak tilt differs by the 1°
+    calm tilt (+0.79 to +1.10°);
+  - criterion 6's ±3 % is exceeded at the resonance, as for the cluster (+3.2 %); its formal
+    check, with restrained free runs, stays with Phase D;
+  - the viewer artifact is republished with these runs.
+
+### J4. The extreme set (k scan, `extreme_set.py`)
+
+- **Max surge at T 2.35 / 2.65 s:**
+  - ×4: 1.215 / 1.013 m;
+  - ×5: 1.024 / 0.871 m;
+  - **×5.5: 0.954 / 0.819 m**;
+  - ×6: 0.897 / 0.776 m;
+  - ×6.5: 0.849 / 0.739 m.
+- **Chosen ×5.5** (rev C.1: ×6). On the mean alone ×5 would do.
+- **The final runs at the at-rest-matched T0:** max surge **0.940 / 0.807 m: PASS**, peak tension
+  41.4 / 42.0 N per leg.
+- **Statics:**
+  - k 45.96 N/m per leg, nominal T0 2.11 N, at rest 1.44 N;
+  - pre-stretch only **31 mm**: set by tension or calm tilt;
+  - surge pull stiffness 330.0 N/m (×5.35 the operational); identification threshold **143 N/m**.
+- **Declared:** tilt −4.34 %, heave −0.05 %, surge 9.8 s. Criterion 2's 14 s would cap k at about
+  ×2.7.
+- **Static residual at the operational settle:** 0.0087 N with the at-rest-matched extreme lines,
+  against 0.29 N at the same nominal T0.
+- **Anchor working load** (×3): **246.9 N** (267.4 N). The ≥ 300 N rating holds.
+
+### J5. Pretension and creep (Phase H re-run for the platform; MOORING-SPEC §5)
+
+- **Pretension evaluation** (`PRETENSION-EVAL.md`, regenerated; the cluster is unchanged):
+  - V1 (taut minimum) is 0.448 N per leg;
+  - the tilt shift falls from −0.74 % (V0) to −0.64 % (V1) and −0.24 % (T0 = 0);
+  - V1's lines lose their stretch for 29–41 % of each resonant cycle;
+  - at V1's tension the extreme set would reach 0.966 m (+2.8 %), still inside the window.
+  - **Xabier's V0 decision stands**: taut, modelled lines.
+- **Creep thresholds** (`build_spec.thresholds`):
+  - **the platform's operational set re-tensions below 0.96° / 1.38 N, reached ~8 min after
+    tensioning** (rev C.1: 0.95°, ~14 min). Its no-slack margin is thinner: T_min / T0 is 0.18
+    at H = 0.12 m near the tilt resonance (0.19).
+  - Its lines stay taut down to 0.82°, about 24 days.
+  - The extreme set needs no threshold: its window margin (0.940 m + 27 mm per N) exceeds its
+    whole tension.
+  - The spec's rule is unchanged: re-tension before the first run of each day and before the
+    H = 0.12 m near-resonance cases.
+
+### J6. Not re-run (record-only; their platform numbers stay rev C.1's)
+
+- `design_basis.py`, `phase_d_plan.py`, `symmetry_check.py`, `line_hardware.py all` and
+  `attachment_options.py`. These are the pre-rev-B record and the Phase D plan; the Phase D plan
+  needs re-planning for the new test matrix anyway.
+- The flume-wall decks (`make_flume_*_ppt.py`) still describe the 2.5 m circle. The README carries
+  the 2.4 m results.
+
 ## Open decisions for Xabier (after Phase C round 2; STOP before Phase D)
 
 1. **BEM regeneration at NT = 36** (§C8). Every resonance moves 0.040–0.077 s (> 0.025 s). The cost

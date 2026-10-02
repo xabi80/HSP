@@ -16,6 +16,14 @@ Deliverables:
 - `mooring_motion.html`: interactive 3D motion viewer of the three moored articles in the flume
   (`build_mooring_viewer.py`; see "Motion viewer" below).
 
+## Status: MOORING-SPEC rev D (2026-10-02)
+
+The current specification is [`MOORING-SPEC.md`](MOORING-SPEC.md) rev D. The 4×4 platform is
+now the HSFP test matrix's **2.4 m square** (buoy centres on a 0.8 m grid, `PLAT_SQUARE_M=2.4`,
+the default in `floatsim_decks.py`). Its mooring was re-derived and its sidewall study re-run:
+`DESIGN-BASIS.md` Phase J. The sections below are the earlier record, for the 2.5 m-circle
+platform (0.80 m wall clearance); rev D's platform is 0.49 m from each wall.
+
 ## Status: FloatSim re-check (2026-09-23)
 
 Every motion result below now comes from **FloatSim itself**:

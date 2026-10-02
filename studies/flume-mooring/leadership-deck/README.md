@@ -1,7 +1,7 @@
 # Leadership briefing — flume mooring design
 
 A 16-slide briefing, for leadership, on how the flume mooring was designed and what it achieves.
-It is written in plain language and built from MOORING-SPEC rev C.1.
+It is written in plain language and built from MOORING-SPEC rev D (the platform resized to the test matrix's 2.4 m square).
 
 ## Where things are
 
