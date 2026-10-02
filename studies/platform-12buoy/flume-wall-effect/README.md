@@ -160,6 +160,13 @@ impractically slow.
 - `Flume_wall_effect_technical.pptx` — technical deck (`make_flume_technical_ppt.py`): config +
   method, weak-wavemaker / sub-cut-on physics, the transverse-cut-on ("ring") analysis, and the
   free-decay / wave-response / all-DOF results; no lay explainer.
+- Both decks are for the 2.5 m circle. With `PLAT_SQUARE_M=2.4` the same generators write the
+  2.4 m square versions, `Flume_wall_effect_explained_sq2p4.pptx` and
+  `Flume_wall_effect_technical_sq2p4.pptx`, from the `_rot45_sq2p4` figures and records. The size
+  slide (`size_compare_rot45.png`) replaces the orientation slide there, since corner-on does not
+  fit. The heave radiation share is on the platform's own FloatSim decay damping: 0.41 of 6.32 %
+  of critical, about 6.5 %. The 2.5 m decks' "~3.5 %" divides the same BEM radiation (0.46 %) by
+  the single hull's ~13 % field-decay damping; on the platform's decay it would be about 7 %.
 
 ## Files
 

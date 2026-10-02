@@ -2,11 +2,14 @@
 
 Simple-words explainer: the concern, how we checked it (three ways), the results, the bottom
 line. Embeds flume_blockage.png, articulated_summary.png, articulated_accel.png. Writes
-Flume_wall_effect_explained.pptx next to this script. Requires python-pptx (scripting-only).
+Flume_wall_effect_explained.pptx next to this script; with PLAT_SQUARE_M=2.4 (the 2.4 m square
+platform, as the study scripts) Flume_wall_effect_explained_sq2p4.pptx from the _rot45_sq2p4
+figures. Requires python-pptx (scripting-only).
 """
 # ruff: noqa: RUF001  -- slide copy uses display typography (en dashes, arrows, times sign).
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from pptx import Presentation
@@ -16,6 +19,19 @@ from pptx.util import Inches, Pt
 
 HERE = Path(__file__).resolve().parent
 ORI = "_rot45"   # test orientation: 45 deg flat-on ("" = 0 deg corner-on)
+# PLAT_SQUARE_M selects the platform size, as the study scripts: unset or "" = the 2.5 m circle,
+# "2.4" = buoy centres on a 2.4 m square. The numbers are make_flume_technical_ppt.R_BY_SIZE's.
+_SQ = os.environ.get("PLAT_SQUARE_M") or None
+TXT_BY_SIZE = {
+    None: {"size": "2.5 m", "frame": "a 2.5 m frame", "gap": "about 0.8 m",
+           "rad": "3–4% ", "most": "at most about 4%", "acc": "about 4% or less"},
+    "2.4": {"size": "2.4 m", "frame": "a 2.4 m square frame", "gap": "about half a metre (0.49 m)",
+            "rad": "6–7% ", "most": "at most about 3%", "acc": "about 3% or less"},
+}
+if _SQ not in TXT_BY_SIZE:
+    raise ValueError(f"PLAT_SQUARE_M={_SQ!r}: no deck text recorded for this platform size")
+X = TXT_BY_SIZE[_SQ]
+SUF = ORI + ("" if _SQ is None else f"_sq{_SQ.replace('.', 'p')}")
 TEAL, TEAL_D = RGBColor(0x0C, 0x8B, 0x96), RGBColor(0x0A, 0x55, 0x60)
 INK, GREY = RGBColor(0x25, 0x32, 0x3A), RGBColor(0x54, 0x63, 0x6D)
 LIGHT = RGBColor(0xEE, 0xF6, 0xF7)
@@ -115,7 +131,7 @@ r.font.name, r.font.size, r.font.bold, r.font.color.rgb = FONT, Pt(42), True, IN
 tb = s.shapes.add_textbox(Inches(0.95), Inches(5.8), Inches(11.5), Inches(1.4))
 tb.text_frame.word_wrap = True
 r = tb.text_frame.paragraphs[0].add_run()
-r.text = "Short answer: no. The 2.5 m, 16-buoy platform is fine in the OSU wave flume."
+r.text = f"Short answer: no. The {X['size']}, 16-buoy platform is fine in the OSU wave flume."
 r.font.name, r.font.size, r.font.bold, r.font.color.rgb = FONT, Pt(20), True, WHITE
 p = tb.text_frame.add_paragraph()
 r = p.add_run()
@@ -124,12 +140,12 @@ r.font.name, r.font.size, r.font.color.rgb = FONT, Pt(14), LIGHT
 
 # 2 -- the concern
 s = slide("The concern a reviewer raised", "the question")
-s.shapes.add_picture(str(HERE / f"flume_blockage{ORI}.png"), Inches(7.15), Inches(1.85),
+s.shapes.add_picture(str(HERE / f"flume_blockage{SUF}.png"), Inches(7.15), Inches(1.85),
                      height=Inches(4.6))
 bullets(s, [
-    (0, [T("We want to test a floating platform — 16 buoys on a 2.5 m frame — in OSU's "
+    (0, [T(f"We want to test a floating platform — 16 buoys on {X['frame']} — in OSU's "
            "wave flume (a long tank, "), T("3.66 m wide", b=True), T(").")]),
-    (0, [T("It sits square to the tank in the middle, about 0.8 m from each wall. A reviewer "
+    (0, [T(f"It sits square to the tank in the middle, {X['gap']} from each wall. A reviewer "
            "worried:")]),
     (1, [T("“the platform makes waves, they bounce off the side walls, come back, and "
            "corrupt the measured data.”", i=True, c=TEAL_D)]),
@@ -149,7 +165,7 @@ bullets(s, [
          T("nothing to bounce off the walls and come back", b=True, c=TEAL_D),
          T(". That's the whole story.")]),
 ], t=2.2, gap=16)
-caption(s, [T("In numbers: only about "), T("3–4% ", b=True, c=TEAL_D),
+caption(s, [T("In numbers: only about "), T(X["rad"], b=True, c=TEAL_D),
             T("of the bobbing energy leaves as waves — the rest is friction. So even perfect "
               "wall reflections could barely touch the result.")], size=14)
 
@@ -195,17 +211,17 @@ caption(s, [T("Half a percent is far smaller than the "),
 
 # 7 -- result 2: wave response near the natural period
 s = slide("Result 2 — the response to waves", "results")
-s.shapes.add_picture(str(HERE / f"articulated_summary{ORI}.png"), Inches(1.05), Inches(1.85),
+s.shapes.add_picture(str(HERE / f"articulated_summary{SUF}.png"), Inches(1.05), Inches(1.85),
                      width=Inches(11.2))
 caption(s, [T("Across every wave period we'll test, the full articulated-platform simulation "
               "shows the walls change the response by "),
-            T("at most about 4%", b=True, c=TEAL_D),
+            T(X["most"], b=True, c=TEAL_D),
             T(" — and it doesn't grow at long waves.")],
         t=6.45, size=13)
 
 # 8 -- result 3: the water depth matters more than the walls
 s = slide("Result 3 — the shallow water matters more than the walls", "results")
-s.shapes.add_picture(str(HERE / f"wall_vs_depth{ORI}.png"), Inches(1.35), Inches(1.95),
+s.shapes.add_picture(str(HERE / f"wall_vs_depth{SUF}.png"), Inches(1.35), Inches(1.95),
                      width=Inches(10.6))
 caption(s, [T("The walls (teal) stay "), T("small at every wave period", b=True, c=TEAL_D),
             T("; it's the "), T("shallow 2.7 m water", b=True, c=RED),
@@ -216,13 +232,13 @@ caption(s, [T("The walls (teal) stay "), T("small at every wave period", b=True,
 
 # 9 -- result 4: accelerations in every direction
 s = slide("Result 4 — every direction, not just up-down", "results")
-s.shapes.add_picture(str(HERE / f"accel_multidof{ORI}.png"), Inches(1.15), Inches(2.05),
+s.shapes.add_picture(str(HERE / f"accel_multidof{SUF}.png"), Inches(1.15), Inches(2.05),
                      width=Inches(11.0))
 caption(s, [T("We checked the accelerometers in "),
             T("every direction they can move", b=True, c=TEAL_D),
             T(" — fore-aft, up-down, and tilt (pitch). Near the natural period, walls in vs out "
               "changes each one by "),
-            T("about 4% or less", b=True, c=TEAL_D),
+            T(X["acc"], b=True, c=TEAL_D),
             T(", at the deck centre and all four cluster points. Side-to-side and twist stay "
               "essentially zero (the waves come straight down the flume).")],
         t=6.05, h=1.15, size=13)
@@ -254,7 +270,7 @@ bullets(s, [
 # 11 -- bottom line
 s = slide("Bottom line", "conclusion")
 bullets(s, [
-    (0, [T("The 2.5 m, 16-buoy platform is "),
+    (0, [T(f"The {X['size']}, 16-buoy platform is "),
          T("compatible with the OSU wave flume", b=True, c=TEAL_D), T(".")]),
     (0, [T("The side walls change the measured bobbing speed by "), T("about ½%", b=True),
          T(", the damping "), T("not at all", b=True), T(", and the near-resonance wave response "
@@ -267,6 +283,6 @@ bullets(s, [
            i=True, c=TEAL_D)]),
 ], t=2.2, gap=15)
 
-out = HERE / "Flume_wall_effect_explained.pptx"
+out = HERE / f"Flume_wall_effect_explained{SUF.removeprefix(ORI)}.pptx"
 prs.save(str(out))
 print(f"wrote {out}  ({len(prs.slides.__iter__.__self__._sldIdLst)} slides)")

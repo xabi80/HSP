@@ -1331,8 +1331,8 @@ Xabier's request: redo the wall and mooring studies for the HSFP test matrix's p
 - `design_basis.py`, `phase_d_plan.py`, `symmetry_check.py`, `line_hardware.py all` and
   `attachment_options.py`. These are the pre-rev-B record and the Phase D plan; the Phase D plan
   needs re-planning for the new test matrix anyway.
-- The flume-wall decks (`make_flume_*_ppt.py`) still describe the 2.5 m circle. The README carries
-  the 2.4 m results.
+- The flume-wall decks (`make_flume_*_ppt.py`) describe the 2.5 m circle by default; with
+  `PLAT_SQUARE_M=2.4` they write the 2.4 m versions (`*_sq2p4.pptx`, added 2026-10-02).
 
 ## Open decisions for Xabier (after Phase C round 2; STOP before Phase D)
 

@@ -11,12 +11,15 @@ long periods and over-states the wall effect there, so it is used only for the (
 Airy-corroborated) finite-depth effect.
 
 Embeds flume_blockage.png, ring_modes.png, articulated_summary.png, wall_vs_depth.png,
-accel_multidof.png, orientation_compare.png. Writes Flume_wall_effect_technical.pptx.
+accel_multidof.png and orientation_compare.png (2.5 m) or size_compare_rot45.png (2.4 m). Writes
+Flume_wall_effect_technical.pptx; with PLAT_SQUARE_M=2.4 (the 2.4 m square platform, as the study
+scripts) Flume_wall_effect_technical_sq2p4.pptx from the _rot45_sq2p4 records.
 """
 # ruff: noqa: RUF001, E702  -- slide copy uses display typography (en dashes, arrows, times
 # sign); E702 compact multi-statement helper setup lines in a one-off deck generator.
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from pptx import Presentation
@@ -31,15 +34,41 @@ HERE = Path(__file__).resolve().parent
 # periods, so the sidewall effect is read from the coupled solve (small and flat across the band).
 # ORI selects the orientation-tagged figures/data ("" = 0 deg corner-on, "_rot45" = 45 deg).
 ORI = "_rot45"
-R = {
-    "T_heave": -0.55, "zeta": "6.4% → 6.4%", "buoy_tilt": "0.0005 → 0.0007 rad",
-    "rao_max": 4.0,               # coupled RAO wall effect, whole band (no growth at long T)
-    "exc_max": 3.6,               # coupled excitation wall effect, whole band
-    "depth_exc": "−19% to −37%",  # finite-depth effect, 2.52-4 s (Airy-corroborated)
-    "acc_surge": 0.6, "acc_heave": 4.4, "acc_pitch": 2.1,
-    "clearance_cm": 80, "span_pct": 56, "rad_frac_pct": 3.5,
-    "cutoffs": "2.19 / 1.53 / 1.25 s",
+# PLAT_SQUARE_M selects the platform size, as the study scripts: unset or "" = the 2.5 m circle,
+# "2.4" = buoy centres on a 2.4 m square (figures and records suffixed _sq2p4).
+_SQ = os.environ.get("PLAT_SQUARE_M") or None
+R_BY_SIZE = {
+    None: {
+        "T_heave": -0.55, "zeta": "6.4% → 6.4%", "buoy_tilt": "0.0005 → 0.0007 rad",
+        "rao_max": 4.0,               # coupled RAO wall effect, whole band (no growth at long T)
+        "exc_max": 3.6,               # coupled excitation wall effect, whole band
+        "depth_exc": "−19% to −37%",  # finite-depth effect, 2.52-4 s (Airy-corroborated)
+        "acc_surge": 0.6, "acc_heave": 4.4, "acc_pitch": 2.1,
+        "clearance_cm": 80, "span_pct": 56, "rad_frac_pct": 3.5,
+        "cutoffs": "2.19 / 1.53 / 1.25 s",
+        "decay_T": "2.607 → 2.593 s", "shift_txt": "< 0.6 %", "rao_txt": "4", "acc_txt": "4",
+        "size": "2.5 m to buoy centres", "size_short": "2.50 m", "span_m": "2.06",
+        "clear_txt": "~0.80 m", "scatter": "~20× smaller than the ±(3–5) % scatter",
+    },
+    # The 2.4 m square, from the study's records (README "The 2.4 m square platform"):
+    # articulated_decay / _rao / accel_multidof_rot45_sq2p4, size_compare_rot45.json. Radiation
+    # share: summed heave B33 at the decay period over 2 omega (M + A33), against the platform's own
+    # FloatSim decay zeta (0.41 / 6.32 %; the 2.5 m deck's ~3.5 % used the hull's ~13 % instead).
+    "2.4": {
+        "T_heave": -0.49, "zeta": "6.3% → 6.3%", "buoy_tilt": "0.0004 → 0.0007 rad",
+        "rao_max": 3.2, "exc_max": 2.9, "depth_exc": "−21% to −38%",
+        "acc_surge": 0.8, "acc_heave": 3.3, "acc_pitch": 2.0,
+        "clearance_cm": 49, "span_pct": 73, "rad_frac_pct": 6.5,
+        "cutoffs": "2.19 / 1.53 / 1.25 s",
+        "decay_T": "2.600 → 2.587 s", "shift_txt": "< 0.5 %", "rao_txt": "3.2", "acc_txt": "3.3",
+        "size": "buoy centres on a 2.4 m square", "size_short": "2.4 m", "span_m": "2.69",
+        "clear_txt": "0.49 m", "scatter": "an order of magnitude below the ±(3–5) % scatter",
+    },
 }
+if _SQ not in R_BY_SIZE:
+    raise ValueError(f"PLAT_SQUARE_M={_SQ!r}: no deck numbers recorded for this platform size")
+R = R_BY_SIZE[_SQ]
+SUF = ORI + ("" if _SQ is None else f"_sq{_SQ.replace('.', 'p')}")
 
 TEAL, TEAL_D = RGBColor(0x0C, 0x8B, 0x96), RGBColor(0x0A, 0x55, 0x60)
 INK, GREY = RGBColor(0x1B, 0x26, 0x2E), RGBColor(0x51, 0x60, 0x6A)
@@ -166,14 +195,15 @@ r.font.name, r.font.size, r.font.color.rgb = FONT, Pt(19), GREY
 tb = s.shapes.add_textbox(Inches(0.95), Inches(5.55), Inches(11.5), Inches(1.7))
 tb.text_frame.word_wrap = True
 r = tb.text_frame.paragraphs[0].add_run()
-r.text = ("Finding: sidewalls do not corrupt the dynamic data. Free-decay periods shift < 0.6 %; "
-          "the heave RAO wall effect is ≤ 4 % across the whole wave band.")
+r.text = (f"Finding: sidewalls do not corrupt the dynamic data. Free-decay periods shift "
+          f"{R['shift_txt']}; the heave RAO wall effect is ≤ {R['rao_txt']} % across the whole "
+          "wave band.")
 r.font.name, r.font.size, r.font.bold, r.font.color.rgb = FONT, Pt(17), True, WHITE
 p = tb.text_frame.add_paragraph()
 r = p.add_run()
 r.text = ("The dominant flume artifact is the finite 2.7 m depth, not the walls. "
-          "16-buoy platform (4 clusters × 4), 2.5 m to buoy centres, tested flat-on (45°) "
-          "with ~0.80 m side clearance.")
+          f"16-buoy platform (4 clusters × 4), {R['size']}, tested flat-on (45°) "
+          f"with {R['clear_txt']} side clearance.")
 r.font.name, r.font.size, r.font.color.rgb = FONT, Pt(13), LIGHT
 
 # ============================ 2 — claim & finding =====================================
@@ -191,25 +221,25 @@ bullets(s, [
     (0, [T("Method: ", b=True), T("Capytaine potential-flow BEM with the LWF walls modelled by "
            "the method of images; every comparison is "),
          T("walls-in vs walls-out at the same depth", b=True), T(".")]),
-    (0, [T("Finding: ", b=True), T("free-decay periods shift < 0.6 %; the heave RAO wall effect is "
-           "≤ 4 % across the band and does not grow at long periods. "),
+    (0, [T("Finding: ", b=True), T(f"free-decay periods shift {R['shift_txt']}; the heave RAO wall "
+           f"effect is ≤ {R['rao_txt']} % across the band and does not grow at long periods. "),
          T("The larger flume effect is the finite depth — a known, correctable facility "
            "property, not a sidewall artifact.", b=True, c=TEAL_D)]),
 ], t=3.05, gap=12)
 
 # ============================ 3 — configuration & method ==============================
 s = slide("Configuration and method", "setup")
-s.shapes.add_picture(str(HERE / f"flume_blockage{ORI}.png"), Inches(7.5), Inches(1.75),
+s.shapes.add_picture(str(HERE / f"flume_blockage{SUF}.png"), Inches(7.5), Inches(1.75),
                      height=Inches(4.5))
 bullets(s, [
     (0, [T("Test article: ", b=True), T("16-buoy platform — 4 clusters × 4 buoys (square), "
            "articulated (gimbal buoy→hub, hub→deck).")]),
     (0, [T("Hull: ", b=True), T("Phase-1 decay-correlated spar + heave plate (T ≈ 2.6 s, "
            "ζ ≈ 13 %).")]),
-    (0, [T("Size: ", b=True), T("2.5 m to buoy centres, flat-on (45°); span across the "
-           "flume 2.06 m "),
+    (0, [T("Size: ", b=True), T(f"{R['size']}, flat-on (45°); span across the "
+           f"flume {R['span_m']} m "),
          T(f"({R['span_pct']} % of width)", b=True),
-         T(f"; clearance ~0.{R['clearance_cm']} m/side.")]),
+         T(f"; clearance {R['clear_txt']}/side.")]),
     (0, [T("Facility: ", b=True), T("OSU LWF, W = 3.66 m, h = 2.7 m.")]),
     (0, [T("Walls: ", b=True), T("method of images (mirror across y = ±W/2, ~3 levels).")]),
     (0, [T("Depth: ", b=True), T("sidewall effect from the coupled BEM (deep; free-decay is "
@@ -217,7 +247,10 @@ bullets(s, [
            "effect assessed at 2.7 m.", size=14)]),
     (0, [T("Reviewer's 0.6 m: at the 45° test orientation the as-built clearance is ~0.80 m; the "
            "widest (corner-on) orientation, 0.44 m, gives the same result — see the orientation "
-           "slide.", c=GREY, size=13)]),
+           "slide." if _SQ is None else
+           "Reviewer's 0.6 m: the 2.4 m platform's clearance, 0.49 m, is below it, yet its wall "
+           "effect is no larger than the 2.5 m layout's at 0.80 m — see the size slide. Corner-on "
+           "does not fit (3.68 m with plates).", c=GREY, size=13)]),
 ], w=6.5, t=1.75, gap=8)
 
 # ============================ 4 — physical basis ======================================
@@ -230,7 +263,7 @@ bullets(s, [
     (0, [T("Wave response — sub-cut-on. ", b=True, c=TEAL_D),
          T("A corrupting cross-flume standing wave forms only at the transverse cut-ons (next "
            "slide); the operating band is below the first one, so the residual sidewall effect on "
-           "the wave loads stays small (≤ 4 %) at every period.")]),
+           f"the wave loads stays small (≤ {R['rao_txt']} %) at every period.")]),
     (0, [T("Porous, does not span the tank. ", b=True, c=TEAL_D),
          T("Water passes between the buoys and runs off along the 104 m length; only the "
            "cross-flume direction is bounded.")]),
@@ -257,21 +290,21 @@ bullets(s, [
 s = slide("Free-decay results (depth-robust)", "results 1/4")
 table(s, [
     ("Quantity", "walls out → walls in", "wall effect"),
-    ("Heave natural period", "2.607 → 2.593 s", f"{R['T_heave']:+.2f}%"),
+    ("Heave natural period", R["decay_T"], f"{R['T_heave']:+.2f}%"),
     ("Heave damping ζ", R["zeta"], "unchanged"),
     ("Buoy gimbal tilt", R["buoy_tilt"], "~0 (negligible)"),
 ], 1.1, 2.0, [4.2, 4.0, 3.0], size=15)
 bullets(s, [
     (0, [T("Full articulated 21-body FloatSim (real quadratic drag, KKT gimbal joints), "
            "walls-in vs walls-out.")]),
-    (0, [T("The period shift is "), T("~20× smaller than the ±(3–5) % scatter", b=True, c=TEAL_D),
+    (0, [T("The period shift is "), T(R["scatter"], b=True, c=TEAL_D),
          T(" of a physical free-decay test; damping is viscous-dominated and unchanged. Radiation "
            "is depth-robust, so deep-water modelling is valid here.")]),
 ], t=4.05, gap=12)
 
 # ============================ 7 — wave response =======================================
 s = slide("Wave-frequency response", "results 2/4")
-s.shapes.add_picture(str(HERE / f"articulated_summary{ORI}.png"), Inches(1.05), Inches(1.9),
+s.shapes.add_picture(str(HERE / f"articulated_summary{SUF}.png"), Inches(1.05), Inches(1.9),
                      width=Inches(11.2))
 caption(s, [T("Coupled 21-body BEM (open vs walled). The heave RAO wall effect is "),
             T(f"≤ {R['rao_max']} % across the whole band", b=True, c=TEAL_D),
@@ -284,10 +317,11 @@ caption(s, [T("Coupled 21-body BEM (open vs walled). The heave RAO wall effect i
 
 # ============================ 8 — walls vs depth ======================================
 s = slide("Sidewalls vs finite depth — the dominant effect", "results 3/4")
-s.shapes.add_picture(str(HERE / f"wall_vs_depth{ORI}.png"), Inches(1.6), Inches(1.75),
+s.shapes.add_picture(str(HERE / f"wall_vs_depth{SUF}.png"), Inches(1.6), Inches(1.75),
                      width=Inches(10.1))
-caption(s, [T("The "), T("sidewall effect (teal, coupled BEM) stays small and flat (≤ 4 %)", b=True,
-              c=TEAL_D), T(" at every period, while the "),
+caption(s, [T("The "), T(f"sidewall effect (teal, coupled BEM) stays small and flat "
+                          f"(≤ {R['rao_txt']} %)", b=True, c=TEAL_D),
+            T(" at every period, while the "),
             T(f"finite-depth effect (red) grows to {R['depth_exc']}", b=True, c=RED),
             T(" at 2.5–4 s. The reviewer's concern (walls) is the minor term; the real flume "
               "consideration is depth — a known, correctable property handled by depth-scaling.")],
@@ -310,7 +344,7 @@ bullets(s, [
 
 # ============================ 9 — all-DOF accelerations ==============================
 s = slide("All-DOF accelerations near resonance", "results 4/4")
-s.shapes.add_picture(str(HERE / f"accel_multidof{ORI}.png"), Inches(1.25), Inches(1.75),
+s.shapes.add_picture(str(HERE / f"accel_multidof{SUF}.png"), Inches(1.25), Inches(1.75),
                      width=Inches(10.8))
 caption(s, [T("Articulated 21-body accelerations at the deck centre and four cluster hubs, "
              "each excited DOF: surge "), T(f"≤ {R['acc_surge']} %", b=True, c=TEAL_D),
@@ -319,18 +353,31 @@ caption(s, [T("Articulated 21-body accelerations at the deck centre and four clu
             T(". Sway/roll/yaw unexcited in head seas; peaks at the 2.19 s cut-on.")],
         t=6.35, h=0.95, size=13)
 
-# ============================ 9b — orientation robustness ============================
-s = slide("Orientation robustness — 0° vs 45°", "orientation")
-s.shapes.add_picture(str(HERE / "orientation_compare.png"), Inches(1.55), Inches(1.75),
-                     width=Inches(10.2))
-caption(s, [T("The platform is tested flat-on (45°, 0.80 m/side). Turning it corner-on — 0°, "
-             "the widest orientation at 0.44 m/side (a 90° turn is a symmetry no-op) — "),
-            T("gives the same answer", b=True, c=TEAL_D),
-            T(": free-decay −0.55 % both, excitation wall effect 3.6 vs 3.5 %. The effect is set "
-              "by the "), T("bulk channel blockage", b=True, c=RED),
-            T(", not the nearest-buoy clearance — so the reviewer's 0.6 m is not the controlling "
-              "parameter.")],
-        t=6.35, h=0.95, size=12.5)
+# ============================ 9b — orientation (2.5 m) / size (2.4 m) robustness ======
+if _SQ is None:
+    s = slide("Orientation robustness — 0° vs 45°", "orientation")
+    s.shapes.add_picture(str(HERE / "orientation_compare.png"), Inches(1.55), Inches(1.75),
+                         width=Inches(10.2))
+    caption(s, [T("The platform is tested flat-on (45°, 0.80 m/side). Turning it corner-on — 0°, "
+                 "the widest orientation at 0.44 m/side (a 90° turn is a symmetry no-op) — "),
+                T("gives the same answer", b=True, c=TEAL_D),
+                T(": free-decay −0.55 % both, excitation wall effect 3.6 vs 3.5 %. The effect is "
+                  "set by the "), T("bulk channel blockage", b=True, c=RED),
+                T(", not the nearest-buoy clearance — so the reviewer's 0.6 m is not the "
+                  "controlling parameter.")],
+            t=6.35, h=0.95, size=12.5)
+else:
+    s = slide("Size robustness — 2.5 m circle vs 2.4 m square", "platform size")
+    s.shapes.add_picture(str(HERE / "size_compare_rot45.png"), Inches(2.07), Inches(1.7),
+                         width=Inches(9.2))       # aspect 2.03: ends at 6.24 in, above the caption
+    caption(s, [T("The 2.4 m square fills 73 % of the width and clears each wall by 0.49 m (the "
+                 "2.5 m circle: 56 %, 0.80 m). It "),
+                T("gives the same answer", b=True, c=TEAL_D),
+                T(": free-decay −0.49 vs −0.55 %, excitation wall effect 2.9 vs 3.6 %. The effect "
+                  "is set by the "), T("weak radiation", b=True, c=RED),
+                T(", not the clearance — so the reviewer's 0.6 m is not the controlling parameter. "
+                  "Corner-on does not fit (3.68 m with plates).")],
+            t=6.35, h=0.95, size=12.5)
 
 # ============================ 10 — concessions & recs ================================
 s = slide("Scope, concessions and recommendations", "caveats")
@@ -339,7 +386,7 @@ bullets(s, [
          T("skip these narrow, known periods in the sweep matrix (bounded ~±6 % even there).")]),
     (0, [T("Long-period tests (T > 3 s): ", b=True),
          T("apply the standard finite-depth correction — the response there is depth-dominated, "
-           "not a sidewall artifact (the sidewall effect stays ≤ 4 %).")]),
+           f"not a sidewall artifact (the sidewall effect stays ≤ {R['rao_txt']} %).")]),
     (0, [T("Method fidelity: ", b=True),
          T("the sidewall effect is read from the coupled 21-body BEM; the single-array "
            "frequency-domain method under-converges in image count at long periods (it over-states "
@@ -354,16 +401,17 @@ s = slide("Conclusion", "conclusion")
 _rect(s, 0.85, 1.9, 11.6, 0.06, TEAL)
 bullets(s, [
     (0, [T("Sidewall reflections do not corrupt the Phase-3 dynamic data: free-decay periods "
-           "shift < 0.6 %, and the heave RAO wall effect is ≤ 4 % across the whole band.")]),
+           f"shift {R['shift_txt']}, and the heave RAO wall effect is ≤ {R['rao_txt']} % across "
+           "the whole band.")]),
     (0, [T("Accelerations at every sensor point, every excited DOF, change by "),
-         T("≤ 4 %", b=True, c=TEAL_D), T(" near resonance.")]),
+         T(f"≤ {R['acc_txt']} %", b=True, c=TEAL_D), T(" near resonance.")]),
     (0, [T("The dominant flume consideration is the finite 2.7 m depth", b=True),
          T(" — larger than the walls, and handled by standard depth-scaling, not by the "
            "sidewalls.")]),
-    (0, [T("The 2.50 m platform is compatible with the OSU Large Wave Flume.", b=True, c=TEAL_D,
-           size=19)]),
+    (0, [T(f"The {R['size_short']} platform is compatible with the OSU Large Wave Flume.", b=True,
+           c=TEAL_D, size=19)]),
 ], t=2.15, gap=14)
 
-out = HERE / "Flume_wall_effect_technical.pptx"
+out = HERE / f"Flume_wall_effect_technical{SUF.removeprefix(ORI)}.pptx"
 prs.save(str(out))
 print(f"wrote {out}  ({len(prs.slides.__iter__.__self__._sldIdLst)} slides)")
