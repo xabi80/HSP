@@ -150,12 +150,12 @@
 
 <div class="app">
   <div>
-    <div class="eyebrow">FloatSim · MOORING-SPEC rev C · OSU Large Wave Flume</div>
+    <div class="eyebrow">FloatSim · MOORING-SPEC rev D · OSU Large Wave Flume</div>
     <h1>Moored vs free motion — 1 buoy, 1 cluster and the 4×4 platform</h1>
-    <p class="sub">FloatSim playback of each article in regular waves (heading 0°, +x) with the rev C
+    <p class="sub">FloatSim playback of each article in regular waves (heading 0°, +x) with the rev D
       operational mooring — four soft cords attached below still water (buoy collar −0.50 m; spars −0.15 m),
       running level to underwater wall anchors ±5 m — and, with <b>Mooring: Off</b>, the same wave on the
-      free-floating article. H = 0.04 and 0.12 m (the operational band) at 1.4 s, 2.2 s, the tilt resonance and
+      free-floating article. The platform is the test matrix's 2.4 m square (0.8 m grid). H = 0.04 and 0.12 m (the operational band) at 1.4 s, 2.2 s, the tilt resonance and
       3.5 s. The last cases are the calm arrangement of each cord set. Lines are coloured by their live tension.
       True scale by default. Drag to orbit, scroll or pinch to zoom, double-click to reset.</p>
   </div>
@@ -244,9 +244,9 @@
   </section>
 
   <details class="card meshwrap">
-    <summary>Mooring layout <span class="tag">— plan views, to scale (MOORING-SPEC rev C figures)</span></summary>
+    <summary>Mooring layout <span class="tag">— plan views, to scale (MOORING-SPEC rev D figures)</span></summary>
     <div class="meshbody">
-      <div class="plate"><img src="__LAYOUT_PNG__" alt="Plan views, to scale, of the rev C X-spread mooring for the buoy, cluster and platform in the 3.66 m flume, with the wall anchors labelled and the tracking window shaded"></div>
+      <div class="plate"><img src="__LAYOUT_PNG__" alt="Plan views, to scale, of the rev D X-spread mooring for the buoy, cluster and platform in the 3.66 m flume, with the wall anchors labelled and the tracking window shaded"></div>
       <p class="meshcap"><b>X-spread of four soft elastic cords</b> from underwater wall anchors 5 m up- and downstream,
         attached below still water at the anchors' depth: the buoy's slender radial collar (r = 0.2 m, z = −0.50 m), the
         cluster's four spars and the platform's upstream and downstream rows of four spars through two-leg bridles
@@ -255,14 +255,14 @@
   </details>
 
   <footer id="foot">
-    Data (rev C): the wave cases are FloatSim runs (build_mooring_viewer.py revc) — deck bodies with the coupled
+    Data (rev D): the wave cases are FloatSim runs (build_mooring_viewer.py revc) — deck bodies with the coupled
     Capytaine BEM, wave-relative Morison drag on spar and heave plate, and the mooring as FloatSim Catenary lines
-    with the rev C operational cords (MOORING-SPEC rev C.1: k, L0, at-rest tension), started from FloatSim's calm
+    with the rev D operational cords (MOORING-SPEC rev D: k, L0, at-rest tension), started from FloatSim's calm
     moored settle. <b>Mooring: Off</b> plays a separate FloatSim run of the free-floating article in the same wave.
     Frames are FloatSim's own output over the last two wave periods after a 15 s ramp and 45 s of settling, shown
     as displacements from the unmoored equilibrium (so the moored cases include the ≈ 1° calm pretension tilt of the
     cluster and platform). No drift force is applied: the readout's mean offset is the drift-bound estimate for the
-    rev C stiffness. A run that runs away in yaw or tilt is not animated and is labelled. The calm cases are the
+    rev D stiffness. A run that runs away in yaw or tilt is not animated and is labelled. The calm cases are the
     static arrangement of each cord set (the extreme set is used for H = 0.2–0.5 m and is not run here).
     <b>Validity:</b> FloatSim integrates rotations with small-angle kinematics (full rotation kinematics, "LEVEL2",
     are not yet wired). Tilts above 0.1 rad (5.7°) are flagged ⚠ as indicative only; that includes every

@@ -10,7 +10,7 @@
 **DECISION (Xabier, 2026-09-25): KEEP V0, rev C's operational pretension.**
 
 - **The decisive reason:** V0 keeps every operational cord taut, so the tank and FloatSim see the
-  same, modelled mooring. V1's slack/taut cycling in the resonant cases (18–40 % of each cycle)
+  same, modelled mooring. V1's slack/taut cycling in the resonant cases (18–41 % of each cycle)
   is unmodelled dynamics in exactly the cases the validation depends on.
 - Pretension is not needed for wall avoidance. **It is kept for model fidelity and installation
   control.**
@@ -24,24 +24,24 @@
 The operational cords do not NEED their pretension to measure the response:
 - **The response is unchanged.** At the "taut minimum" V1, the wave-frequency response is within
   1.2 % (heave RAO) and 0.7° (max tilt) of V0, and the surge amplitude is unchanged.
-- **The calm tilt falls** from 1.00° to 0.25° (cluster) / 0.33° (platform).
-- **The tilt interference falls** from −0.73 / −0.72 % to −0.54 / −0.60 %.
+- **The calm tilt falls** from 1.00° to 0.25° (cluster) / 0.32° (platform).
+- **The tilt interference falls** from −0.73 / −0.74 % to −0.54 / −0.64 %.
 
 But the gain is small, and it buys three costs:
 
 1. **Cord cycling.**
    - V0's lines stay stretched in every operational case run (minimum 0.27 N).
-   - V1's lines lose their stretch for 18–40 % of each cycle at the tilt resonance.
+   - V1's lines lose their stretch for 18–41 % of each cycle at the tilt resonance.
    - The down-flume lines hang loose for 82–100 % of the time under the H = 0.12 m drift.
    - A loose cord in waves is outside what FloatSim models (its line is quasi-static). Tank and
      model then see different moorings in exactly the resonant cases the tests are for.
-2. **Fouling risk.** Quasi-statically, the loose cords droop 0.30–0.46 m but stay ≥ 0.47 m from
+2. **Fouling risk.** Quasi-statically, the loose cords droop 0.28–0.46 m but stay ≥ 0.63 m from
    any other spar and ≥ 1.14 m from any heave plate. How a near-neutral cord moves in the
    orbital flow is NOT modelled: that is a question for the installer.
 3. **Position repeatability and installation control.**
-   - The calm position is held by 0.36 / 0.45 N instead of 1.44 / 1.42 N.
-   - Surge stiffness drops 26 % / 18 %, so the H = 0.12 m drift offsets grow ×1.49 / ×1.44.
-   - The calm-tilt pretension gauge shrinks from 1° to 0.25–0.33°, too small to verify the
+   - The calm position is held by 0.36 / 0.45 N instead of 1.44 / 1.44 N.
+   - Surge stiffness drops 26 % / 15 %, so the H = 0.12 m drift offsets grow ×1.49 / ×1.39.
+   - The calm-tilt pretension gauge shrinks from 1° to 0.25–0.32°, too small to verify the
      tension.
    - The cluster's extreme set, re-tensioned to V1's tension, would leave the tracking window
      (1.054 m at H = 0.5 m, T = 2.35 s, FloatSim) and need re-sizing.
@@ -68,33 +68,34 @@ fouling risk, and weaker position repeatability and installation control.
 
 {{WEIGHT}}
 
-- **At low pretension the weight matters.** V1's calm sag is 170 mm (cluster) / 98 mm (platform)
-  with the record's 0.02 N/m, 307 / 190 mm with 0.05 N/m, and ~1 mm with a neutral cord.
+- **At low pretension the weight matters.** V1's calm sag on the cluster is 170 mm with the
+  record's 0.02 N/m, 307 mm with 0.05 N/m, and ~1 mm with a neutral cord. The rev D platform's
+  legs are shorter, so they sag less (not recomputed for rev D).
 
 ## 2. The physics claims, checked (FloatSim)
 
 1. **"Taut at zero tension: linear in each direction at ~k (one pair) instead of ~2k" —
    partly.**
    - At T0 = 0 the surge stiffness is symmetric (+/−), but it is **34 % of V0, not 50 %**
-     (cluster 5.1 vs 15.0 N/m; platform 20.5 vs 60.6 N/m).
+     (cluster 5.1 vs 15.0 N/m; platform 20.9 vs 61.7 N/m).
    - One pair engaging accounts for half. The rest is catenary compliance: at near-zero tension
      the submerged weight sags the soft cord, and the cord must straighten before it stretches.
-   - **Sway drops more, to 26 % / 28 %**, because the pretension's geometric sway stiffness
+   - **Sway drops more, to 26 % / 27 %**, because the pretension's geometric sway stiffness
      (T/L) is lost too.
    - So the surge period grows ×1.7 and the sway period ×1.9, not ×√2.
 2. **"Drift offsets ~2×" — ×1.5 at V1.** V1 keeps both pairs engaged for small offsets:
-   0.067 → 0.100 m (cluster) and 0.061 → 0.088 m (platform) at H = 0.12 m, T = 1.4 s.
-3. **"Removes the calm static tilt" — yes.** 0.25° / 0.33° at V1, and 0 without tension.
+   0.067 → 0.100 m (cluster) and 0.059 → 0.082 m (platform) at H = 0.12 m, T = 1.4 s.
+3. **"Removes the calm static tilt" — yes.** 0.25° / 0.32° at V1, and 0 without tension.
 4. **"Tilt interference nearly unchanged, because k governs it" — no. It falls with T0:**
    - cluster −0.73 → −0.54 (V1) → −0.23 % (T0 = 0);
-   - platform −0.72 → −0.60 → −0.23 %.
+   - platform −0.74 → −0.64 → −0.24 %.
 
    The pretension is part of the coupling. At low tension the catenary compliance softens the
    line, and at zero tension only one pair engages per half-cycle. That is a benefit of lower
    pretension, but a small one.
 5. **"Exactly taut at zero tension" is not zero tension with a submerged-weight cord.**
-   - The weight sags the soft cord and stretches it to ~0.2 N at rest (T0 = 0: 0.21 / 0.22 N;
-     V2: 0.20 / 0.20 N).
+   - The weight sags the soft cord and stretches it to ~0.2 N at rest (T0 = 0: 0.21 / 0.20 N;
+     V2: 0.20 / 0.18 N).
    - Only a neutral cord is force-free.
    - For the same reason, V2's kinematic dead band is not force-free with the record's cord (see
      §3).
@@ -108,7 +109,7 @@ fouling risk, and weaker position repeatability and installation control.
     vulcanizate", PMC6728486).
   - A test day (1 min → 1 day) is 3.2 decades, so ~13 % of the loaded stretch. The loaded
     stretch is taken conservatively as V0's operational peak (0.50 m cluster, 0.34 m platform).
-  - Result: **V1 = 0.306 N (cluster) / 0.439 N per leg (platform) nominal**, 0.357 / 0.450 N at
+  - Result: **V1 = 0.306 N (cluster) / 0.448 N per leg (platform) nominal**, 0.357 / 0.447 N at
     rest.
   - With the dry creep rate (2.4 %/decade): 0.20 / 0.30 N.
   - The same relaxation applies to V0: its at-rest tension falls ~13 % over a test day
@@ -153,8 +154,8 @@ fouling risk, and weaker position repeatability and installation control.
   - max tilt 0.5–0.7° lower in V1.
 - **Fouling geometry** (quasi-static catenary at each line's slackest instant, own spar
   excluded):
-  - the loose V1 cords droop 0.30–0.46 m below their chord;
-  - they stay ≥ 0.63 m (cluster) / ≥ 0.47 m (platform) from any other spar, and ≥ 1.14 m from
+  - the loose V1 cords droop 0.28–0.46 m below their chord;
+  - they stay ≥ 0.63 m (cluster) / ≥ 0.67 m (platform) from any other spar, and ≥ 1.14 m from
     any heave plate.
   - **Dynamic cord motion is not modelled.** A near-neutral cord that has lost its stretch for
     a third of every resonant cycle moves with the water. Whether it can reach a spar, a heave
@@ -192,8 +193,8 @@ part) and into part of its tilt shift. Rev C: 2.40 N, yaw period 1.12 s.
 
 | Xabier's reasoning | The record |
 |---|---|
-| Zero pretension halves surge/sway stiffness (~k vs ~2k) | Surge 34 %, sway 26–28 % of V0: catenary compliance of the weight-sagged cord, and the lost geometric (T/L) stiffness |
-| Periods ~√2 longer, drift offsets ~2× | T0 = 0: surge ×1.7, sway ×1.9. V1: offsets ×1.44–1.49 |
+| Zero pretension halves surge/sway stiffness (~k vs ~2k) | Surge 34 %, sway 26–27 % of V0: catenary compliance of the weight-sagged cord, and the lost geometric (T/L) stiffness |
+| Periods ~√2 longer, drift offsets ~2× | T0 = 0: surge ×1.7, sway ×1.9. V1: offsets ×1.39–1.49 |
 | Tilt interference nearly unchanged (k governs it, not T0) | It falls with T0: −0.73 → −0.54 → −0.23 % (cluster) |
 | Lines exactly taut at zero tension | With a submerged-weight cord they self-tension to ~0.2 N through their sag. Only a neutral cord is force-free |
 | Submerged weight roughly 10–20 % of dry | 9–17 % for 1.1–1.2 g/cm³. The record uses 0.02 N/m (6.7 %, ≈ 1.07 g/cm³), already submerged: no correction |

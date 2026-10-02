@@ -6,7 +6,7 @@ Reviewed: `HSFP_1-50_Wave_Test_Matrix_9-26-2026.xlsx`, kept unchanged in this fo
   - Regular_Waves rows 24–26;
   - the new FloatSim_Predictions sheet;
   - it is built by `fill_predictions.py`.
-- Every number below comes from the study's records (MOORING-SPEC rev C.1, DESIGN-BASIS,
+- Every number below comes from the study's records (MOORING-SPEC rev D, DESIGN-BASIS,
   `viewer_rows_revc/`, the JSON files) or from the matrix itself.
 - The standing rule applies: where the matrix and the record disagree, it is itemised here.
 
@@ -44,7 +44,7 @@ It is a good planning tool. Its weak points are where it meets the models and th
 - The matrix asks for "a truncated mooring with equivalent horizontal stiffness" (emulating the
   2,500 m site's taut mooring).
 - The design basis's confirmed intent (2026-09-24) is a soft restraint that disturbs the
-  measured motion as little as possible. MOORING-SPEC rev C.1 implements that.
+  measured motion as little as possible. MOORING-SPEC rev D implements that.
 - Opinion: keep the soft restraint for the response and validation tests.
   - An equivalent-stiffness mooring needs a full-scale mooring design, which does not exist yet.
   - Its stiffness would enter the measured response, which is what the validation must avoid.
@@ -104,8 +104,9 @@ Against that:
 - **Heights above 0.5 m are outside the design.**
   - s3 reaches 0.53–0.83 m for T ≥ 16 s FS.
   - The extreme irregular seas give single waves up to ≈ 0.56 m.
-  - The extreme set, the anchors (≥ 300 N; the platform's working load is already 267.4 N at
-    H = 0.5 m) and the tracking window (max surge 0.95–0.97 m at H = 0.5 m) were all sized at
+  - The extreme set, the anchors (≥ 300 N; the platform's working load is already 246.9 N at
+    H = 0.5 m, rev D) and the tracking window (max surge 0.94–0.97 m at H = 0.5 m) were all sized
+    at
     H = 0.5 m.
   - FloatSim's H = 0.5 m tilts are already 22–33°, well past its validity.
 - **Recommendation:**
@@ -181,10 +182,12 @@ Against that:
   - s1 at 4–6 s FS is 8–19 mm model: close to the gauge and tracking resolution.
   - 4 s FS is below the wavemaker's comfortable minimum (the matrix flags it).
   - Suggest a 1–2 cm minimum height, or drop 4 s.
-- **Platform footprint.**
-  - The matrix says ~2.4 m square; the spar grid is 2.06 m wide (MOORING-SPEC).
-  - At 2.4 m the wall clearance is 0.65 m, against the 0.6 m criterion (0.80 m in the design).
-  - Confirm what the 2.4 m includes.
+- **Platform footprint — RESOLVED by MOORING-SPEC rev D (2026-10-02).**
+  - The platform is now the matrix's 2.4 m square, taken as the buoy-centre span (0.8 m grid).
+  - With the heave plates it spans 2.69 m, leaving 0.49 m to each wall: below the 0.6 m
+    criterion.
+  - The re-run sidewall study shows the walls still change the response by ≤ 3.3 %, no more than
+    at 0.80 m. Accepting the 0.49 m is a decision for Xabier (`../DESIGN-BASIS.md` Phase J).
 - **Flume dimensions: no real discrepancy.**
   - OSU's Large Wave Flume page (checked 2026-09-26) gives the width as 3.7 m (12 ft) and the
     maximum depth for wind/storm waves as 2.7 m (9 ft).
@@ -196,7 +199,7 @@ Against that:
   - The page's maximum wave is 1.7 m at 5 s in 2.7 m of water; the matrix uses 1.8 m. That
     does not limit any case (the largest is 0.88 m).
 - **Orientation and variants.**
-  - The mooring is designed for the cluster and platform in the orientation of the rev C
+  - The mooring is designed for the cluster and platform in the orientation of the rev D
     figures.
   - These are outside the spec:
     - P2-D (cluster at 45° to the waves) needs its own attachment layout;

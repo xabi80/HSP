@@ -201,7 +201,7 @@ def main() -> None:
             "flume BEM (≈ 18.5-19 s FS after the mesh correction)."
         ],
         [],
-        ["2. Moored slow modes (MOORING-SPEC rev C.1 §5) and the decay record they need"],
+        ["2. Moored slow modes (MOORING-SPEC rev D §5) and the decay record they need"],
         [
             "Article",
             "Cord set",
