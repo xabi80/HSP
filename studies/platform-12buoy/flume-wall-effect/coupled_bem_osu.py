@@ -49,7 +49,14 @@ BUOY_ANGLES_DEG = [0, 90, 180, 270]        # 4 buoys/cluster (square); 12-buoy u
 NB = len(CLUSTER_ANGLES_DEG) * len(BUOY_ANGLES_DEG)   # 16 buoys
 NDOF = 6 * NB                              # 96 coupled rigid DOFs
 ROT = float(__import__("os").environ.get("PLAT_ROT_DEG", "0"))  # platform yaw about +z (deg)
-SUF = ("" if ROT == 0 else f"_rot{int(ROT)}") + ("" if NT == 12 else f"_nt{NT}")  # file suffix
+# Platform size: unset = the Phase-3 layout scaled to buoy centres on a 2.5 m circle (cluster arm
+# 1.25/1.5 m). PLAT_SQUARE_M=<a> sets the flat-on (45 deg) outer buoy-centre span to a metres
+# (cluster arm a*sqrt(2)/3; buoys at half the arm from their hub) and suffixes the outputs _sq<a>.
+_SQ = __import__("os").environ.get("PLAT_SQUARE_M") or None  # "" = the 2.5 m circle
+S_ARM = 1.25 / 1.5 if _SQ is None else float(_SQ) * np.sqrt(2.0) / 3.0
+SUF = (("" if ROT == 0 else f"_rot{int(ROT)}")
+       + ("" if _SQ is None else f"_sq{_SQ.replace('.', 'p')}")
+       + ("" if NT == 12 else f"_nt{NT}"))  # file suffix
 DOF6 = ["Surge", "Sway", "Heave", "Roll", "Pitch", "Yaw"]
 # rigid-DOF reflection across a y=const plane: translations flip y; rotations (pseudovec)
 # flip x,z. So surge/heave/pitch keep sign under the image; sway/roll/yaw flip.
@@ -58,7 +65,7 @@ HERE = Path(__file__).resolve().parent
 
 
 def centers() -> list[tuple[float, float]]:
-    s = 1.25 / 1.5
+    s = S_ARM
     out = []
     for pc in np.deg2rad(np.array(CLUSTER_ANGLES_DEG) + ROT):
         cx, cy = s * np.cos(pc), s * np.sin(pc)

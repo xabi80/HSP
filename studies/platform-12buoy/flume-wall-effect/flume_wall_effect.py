@@ -52,12 +52,17 @@ C33_BUOY = 194.5        # N/m, single-buoy heave waterplane stiffness
 T_HEAVE = 2.52          # s, Phase-1 correlated heave period
 ZETA = 0.13             # -, Phase-1 correlated heave damping (viscous)
 
-# --- platform layout (16-buoy, 2.5 m to centres) ---
+# --- platform layout (16-buoy; default 2.5 m to centres) ---
+# PLAT_SQUARE_M=<a> (as coupled_bem_osu / articulated_wall): flat-on outer buoy-centre span a m,
+# cluster arm a*sqrt(2)/3, outputs suffixed _sq<a>. Unset: centres on the 2.5 m circle.
 N_BUOY = 16
-_SCALE = 1.25 / 1.5     # centre radius 1.5 m (sim) -> 1.25 m (2.5 m diameter to centres)
+_SQ = __import__("os").environ.get("PLAT_SQUARE_M") or None  # "" = the 2.5 m circle
+_SCALE = 1.25 / 1.5 if _SQ is None else float(_SQ) * np.sqrt(2.0) / 3.0  # cluster arm (m)
 ARM, INTRA = 1.0 * _SCALE, 0.5 * _SCALE
 ROT = float(__import__("os").environ.get("PLAT_ROT_DEG", "0"))   # platform yaw about +z (deg)
-SUF = "" if ROT == 0 else f"_rot{int(ROT)}"
+SUF = ("" if ROT == 0 else f"_rot{int(ROT)}") + (
+    "" if _SQ is None else f"_sq{_SQ.replace('.', 'p')}")
+LAYOUT = "2.5 m to centres" if _SQ is None else f"{_SQ} m square to centres"
 CLUSTER_DEG = (np.array([0.0, 90.0, 180.0, 270.0]) + ROT).tolist()
 BUOY_DEG = (np.array([0.0, 90.0, 180.0, 270.0]) + ROT).tolist()  # 4 per cluster (square)
 RHO, G = 998.0, 9.806
@@ -74,7 +79,7 @@ def buoy_centers() -> NDArray[np.float64]:
 
 
 def clearance() -> float:
-    """Side clearance (m) from the outermost fin edge to the wall (as-built ~0.44 m)."""
+    """Side clearance (m) from the outermost plate edge to the wall."""
     c = buoy_centers()
     return FLUME_W / 2 - (np.abs(c[:, 0]).max() + PLATE_R)
 
@@ -213,7 +218,7 @@ def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     outer = 2 * (np.abs(buoy_centers()[:, 0]).max() + PLATE_R)
     cutoffs = [round(t, 2) for t in transverse_cutoff_periods()]
-    print(f"16-buoy platform (2.5 m to centres, rot {ROT:.0f} deg) in the OSU LWF "
+    print(f"16-buoy platform ({LAYOUT}, rot {ROT:.0f} deg) in the OSU LWF "
           f"({FLUME_W} m x {FLUME_H} m)")
     print(f"  outer fin extent {outer:.2f} m -> side clearance {clearance() * 100:.0f} cm/side "
           f"({100 * outer / FLUME_W:.0f}% of width)")

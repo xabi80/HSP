@@ -57,13 +57,18 @@ PLATE_R, PLATE_T, PLATE_CDN, PLATE_CDT = 0.1437, 0.0039, 5.0, 1.5
 N_DOF = 21 * 6
 OVR = "flume wall-effect: coarse coupled OSU BEM, small-body kernel"
 ROT = float(__import__("os").environ.get("PLAT_ROT_DEG", "0"))   # platform yaw about +z (deg)
-SUF = "" if ROT == 0 else f"_rot{int(ROT)}"
+# Platform size, as in coupled_bem_osu: unset = buoy centres on a 2.5 m circle; PLAT_SQUARE_M=<a>
+# = flat-on outer buoy-centre span a metres (cluster arm a*sqrt(2)/3), outputs suffixed _sq<a>.
+_SQ = __import__("os").environ.get("PLAT_SQUARE_M") or None  # "" = the 2.5 m circle
+S_ARM = 1.25 / 1.5 if _SQ is None else float(_SQ) * np.sqrt(2.0) / 3.0
+SUF = ("" if ROT == 0 else f"_rot{int(ROT)}") + (
+    "" if _SQ is None else f"_sq{_SQ.replace('.', 'p')}")
 CLUSTER_DEG = (np.array([0.0, 90.0, 180.0, 270.0]) + ROT).tolist()
 BUOY_DEG = (np.array([0.0, 90.0, 180.0, 270.0]) + ROT).tolist()   # 4 buoys/cluster (square)
 
 
 def centers():
-    s = 1.25 / 1.5
+    s = S_ARM
     out = []
     for pc in np.deg2rad(CLUSTER_DEG):
         cx, cy = s * np.cos(pc), s * np.sin(pc)
@@ -78,7 +83,7 @@ def deck() -> Deck:
     plate = PlateMember(type="plate", center=[0.0, 0.0, _PLATE_B], normal=[0.0, 0.0, 1.0],
                         radius=PLATE_R, thickness=PLATE_T, Cd_n=PLATE_CDN, Cd_t=PLATE_CDT)
     cen = centers()
-    s = 1.25 / 1.5
+    s = S_ARM
     bodies: list = []
     joints: list = []
     for c, pc in enumerate(np.deg2rad(CLUSTER_DEG)):

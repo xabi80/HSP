@@ -83,6 +83,40 @@ The wall effect is **unchanged** despite doubling the clearance (`orientation_co
 clearance. Every orientation-tagged output carries a `_rot45` suffix; regenerate with
 `PLAT_ROT_DEG=45 python <script>.py`.
 
+## The 2.4 m square platform (2026-10-01)
+
+The study was re-run for the platform with its buoy centres on a **2.4 m square** (the HSFP test
+matrix's footprint), flat-on (45°), with the same method and buoys. It is the 2.5 m-circle layout
+scaled by 1.358: a 0.80 m grid, buoy centres at ±0.40 / ±1.20 m. Every script takes it through
+`PLAT_SQUARE_M=2.4` (outputs suffixed `_rot45_sq2p4`); unset, they reproduce the 2.5 m circle.
+
+| Quantity (walls-in vs walls-out, same depth) | 2.5 m circle | **2.4 m square** |
+|---|---|---|
+| Span across the flume, with the plates / share of the width | 2.06 m / 56 % | **2.69 m / 73 %** |
+| Clearance to each wall | 0.80 m | **0.49 m** |
+| Free-decay heave period | 2.607 → 2.593 s (−0.55 %) | **2.600 → 2.587 s (−0.49 %)** |
+| Free-decay damping ζ | 6.4 % → 6.4 % | **6.3 % → 6.3 %** |
+| Heave RAO wall effect at 2.19 / 2.52 / 3.0 / 3.5 s | +4.0 / +1.9 / −0.7 / −0.6 % | **+3.2 / +1.8 / −0.6 / −0.5 %** |
+| Excitation wall effect, max over 2–4 s | 3.6 % | **2.9 %** |
+| Accelerations, deck + 4 hubs: surge / heave / pitch | ≤ 0.6 / 4.4 / 2.1 % | **≤ 0.8 / 3.3 / 2.0 %** |
+| Finite-depth effect at 2.52 / 3.0 / 3.5 / 4.0 s (2.7 m vs deep) | −19 / −27 / −33 / −37 % | **−21 / −29 / −35 / −38 %** |
+
+- **The larger platform does not raise the sidewall effect.**
+  - Its clearance falls from 0.80 to 0.49 m, and it fills 73 % of the width.
+  - Yet every wall effect stays at or below the 2.5 m circle's, and within ±3.3 %.
+  - This confirms the orientation finding: the effect is set by the weak radiation, not by the
+    clearance.
+- **The 0.49 m clearance is below the 0.6 m in the reviewer's comment** (and in the flume-mooring
+  criterion 4). The dynamic data are unaffected, as shown above. For the mooring it remains a
+  geometric margin to discuss (`../../flume-mooring/DESIGN-BASIS.md` Phase J).
+- **Corner-on (0°) does not fit.** Its diagonal is 3.39 m between buoy centres, 3.68 m with the
+  plates, against a 3.66 m flume. The 0° vs 45° comparison is therefore replaced by a size
+  comparison at 45° (`compare_sizes.py` → `size_compare_rot45.png` / `.json`).
+- **The finite-depth effect grows by 1–2 points** with the larger array. It is still the dominant
+  flume effect.
+- Run notes: walled coupled BEM 63 min, open 27 min, NT = 12 as the original study. The masses and
+  inertias of the hubs and deck are those of the 2.5 m model; only positions change.
+
 ## Models and fidelity
 
 | Model | Script | Role |
@@ -111,6 +145,9 @@ python articulated_plots.py
 python compare_orientations.py
 ```
 
+The 2.4 m square platform: the same commands with `PLAT_ROT_DEG=45 PLAT_SQUARE_M=2.4` set
+(psd_project.py on the `_rot45_sq2p4` files), then `python compare_sizes.py`.
+
 The coupled `.nc` files are large and regeneratable, so they are not committed. The buoy count is
 parametric (`BUOY_ANGLES_DEG` in `coupled_bem_osu.py` / `articulated_wall.py`); the coupled BEM
 also honours a `FLUME_DEPTH` env var (default deep) for the record, though finite depth there is
@@ -131,6 +168,8 @@ impractically slow.
 | `flume_wall_effect.py` | Single-array BEM at 2.7 m: the finite-depth effect (its wall effect under-converges and is not used). |
 | `coupled_bem_osu.py` | Coupled 16-buoy method-of-images BEM (96-DOF), open/walled — the authoritative sidewall effect. |
 | `compare_orientations.py` | 0° vs 45° sidewall comparison (coupled BEM). |
+| `compare_sizes.py` | 2.5 m circle vs 2.4 m square, flat-on (coupled BEM): `size_compare_rot45.png` / `.json`. |
+| `*_rot45_sq2p4.*` | The 2.4 m square platform's outputs (decay json, RAO / accel npz, sweep npy, figures). |
 | `depth_effect_plots.py` | Finite-depth explainer figure from Airy theory, with the BEM points overlaid. |
 | `psd_project.py` | Symmetrise + PSD-project the walled radiation matrix. |
 | `articulated_wall.py` | Articulated 21-body FloatSim decay / RAO / all-DOF accel. |

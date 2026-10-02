@@ -25,7 +25,10 @@ import xarray as xr
 
 HERE = Path(__file__).resolve().parent
 ROT = float(__import__("os").environ.get("PLAT_ROT_DEG", "0"))
-SUF = "" if ROT == 0 else f"_rot{int(ROT)}"
+# platform size switch, as articulated_wall ("" or unset = the 2.5 m circle)
+_SQ = __import__("os").environ.get("PLAT_SQUARE_M") or None
+SUF = ("" if ROT == 0 else f"_rot{int(ROT)}") + (
+    "" if _SQ is None else f"_sq{_SQ.replace('.', 'p')}")
 TEAL, TEALD, RED, GREY = "#0c8b96", "#0a5560", "#b2432c", "#51606a"
 PTS = ["platform_centre", "cluster_1", "cluster_2", "cluster_3", "cluster_4"]
 LBL = ["platform", "cl.1", "cl.2", "cl.3", "cl.4"]
@@ -182,7 +185,7 @@ def fig_wall_vs_depth() -> None:
     ax.set_xlabel("wave period T (s)")
     ax.set_ylabel("effect on heave wave excitation (%)")
     ax.set_title("Sidewall effect vs finite-depth effect on heave excitation\n"
-                 "the sidewall effect stays small (≤ 3 %); the depth effect grows with period",
+                 "the sidewall effect stays small; the depth effect grows with period",
                  fontsize=11, fontweight="bold")
     ax.legend(fontsize=9, loc="lower left"); ax.grid(axis="y", alpha=0.3)
     fig.tight_layout(); fig.savefig(HERE / f"wall_vs_depth{SUF}.png", dpi=130, bbox_inches="tight")
