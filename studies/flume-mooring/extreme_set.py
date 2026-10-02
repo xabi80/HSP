@@ -35,13 +35,21 @@ Steps (FloatSim throughout):
               attachment_sweep.py) -- DECLARED, not a criterion (load / survival tests).
   t0       -- optional (cheap, cluster only): T0 raised to the confirmed 3 deg mean-tilt
               allowance on the chosen extreme set -- does it cut the peak re-tension?
+  residuals -- FloatSim's joint-projected static residual at the operational settle with the
+              operational lines, the extreme lines at the at-rest-matched T0, and the extreme
+              lines at the same nominal T0 (extreme_set_residuals.json; the spec quotes it).
 
-Writes extreme_set.json.  Run: python extreme_set.py predict|runs M1 M2 ..|choose|final|declare|t0
+Article names after the step restrict it to those articles (rev D: the platform) and MERGE into
+the record, keeping the other articles' entries: e.g. ``runs platform 4 5 6``, ``final platform``.
+
+Writes extreme_set.json.  Run: python extreme_set.py predict|runs M1 M2 ..|choose|final|settle|
+declare|t0|residuals [articles]
 """
 # ruff: noqa: E402  -- sys.path bootstrap first
 from __future__ import annotations
 
 import json
+import os
 import sys
 import warnings
 from concurrent.futures import ProcessPoolExecutor
@@ -59,6 +67,8 @@ import line_hardware as lh
 import tank_predictions as tp
 
 OUT = HERE / "extreme_set.json"
+ROWS = HERE / "es_rows"                    # one file per completed run (resumable, key-checked)
+WORKERS = int(os.environ.get("ES_WORKERS", "12"))   # each platform run peaks at ~3 GB of memory
 ARTS = ("cluster", "platform")
 H_EXT, T_EXT = 0.5, (2.35, 2.65)
 FOV = 1.0
@@ -95,10 +105,10 @@ def _pull(art: str, o: dict):  # type: ignore[no-untyped-def]
     return lambda x: float(F0 - res(tp.rigid(dk, xi, "surge", x))[0])
 
 
-def predict() -> dict:
+def predict(arts: tuple = ARTS) -> dict:
     ad = json.loads((HERE / "attachment_design.json").read_text())
     out = {}
-    for art in ARTS:
+    for art in arts:
         base = _pull(art, opts(art, 1.0))
         rows = {r["T"]: r for r in ad["extremes"] if r["article"] == art and r["H"] == H_EXT}
         pred = []
@@ -132,6 +142,34 @@ def run_one(args: tuple) -> dict:
     return {**r, "m": m, "t0x": t0s, "pretension": "at-rest matched" if rest else "nominal"}
 
 
+def run_saved(args: tuple) -> dict:
+    """run_one, saved as it completes and reused on a re-run only if its options match: one
+    failed run (e.g. out of memory) no longer loses the batch. The file name carries the platform
+    geometry (articulated_wall SUF), the stored options the design."""
+    art, m, T, t0s = args[:4]
+    rest = len(args) > 4 and args[4]
+    o = opts(art, m, t0s, rest)
+    name = (f"{art}{fd.aw.SUF if art == 'platform' else ''}_m{m:g}_T{T:g}_t0x{t0s:g}"
+            f"{'_rest' if rest else ''}").replace(".", "p")
+    path = ROWS / f"{name}.json"
+    key = json.loads(json.dumps(o, default=_jsonable))
+    if path.exists():
+        rec = json.loads(path.read_text())
+        if rec.get("opts_key") == key:
+            return rec["result"]
+    r = run_one(args)
+    ROWS.mkdir(exist_ok=True)
+    path.write_text(json.dumps({"opts_key": key, "result": r}, default=_jsonable))
+    print(f"{art} k x{m:g} T {T:g}{' (at-rest matched)' if rest else ''}: max surge "
+          f"{r['surge_max_m']:.3f} m, mean {r['mean_offset_m']:.3f} m -> {path.name}", flush=True)
+    return r
+
+
+def _jsonable(x):  # type: ignore[no-untyped-def]
+    """JSON default: numpy arrays to lists, numpy scalars to floats."""
+    return x.tolist() if hasattr(x, "tolist") else float(x)
+
+
 def _k_surge(art: str, o: dict) -> float:
     p = _pull(art, o)
     return (p(1e-3) - p(-1e-3)) / 2e-3
@@ -144,9 +182,9 @@ def slack_retension(r: dict) -> float:
     return max(v) if v else 0.0
 
 
-def choose(runs: list[dict]) -> dict:
+def choose(runs: list[dict], arts: tuple = ARTS) -> dict:
     out = {}
-    for art in ARTS:
+    for art in arts:
         scan = [r for r in runs if r["t0x"] == 1.0 and r.get("pretension", "nominal") == "nominal"]
         ms = sorted({r["m"] for r in scan if r["article"] == art})
 
@@ -189,30 +227,55 @@ def declare(art: str) -> dict:
     return {**out, "m": m}
 
 
+def residuals(art: str) -> dict:
+    """Joint-projected static residual (N) at the operational settle, per line set."""
+    m = json.loads(OUT.read_text())["choice"][art]["m_criterion4"]
+    xi = np.asarray(json.loads(fd.EQ_CACHE.read_text())[asw.chosen(art)["tag"]]["xi"])
+    out = {}
+    sets = (("operational", opts(art, 1.0)), ("extreme at-rest matched", opts(art, m, rest=True)),
+            ("extreme nominal T0", opts(art, m)))
+    for name, o in sets:
+        dk, _ = fd.moored(fd.deck(art), art, **o)
+        s = lh.fsd.build_system(fd.with_positions(dk, xi), dt=fd.DT, t_max_kernel=fd.T_KERNEL,
+                                solve_equilibrium=False, **fd.hdbs(art))
+        out[name] = fd.joint_residual(s, xi)
+    print(f"{art:8s} static residual at the operational settle: "
+          + ", ".join(f"{k} {v:.4f} N" for k, v in out.items()), flush=True)
+    return out
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     step = sys.argv[1]
+    names = [x for x in sys.argv[2:] if x in ARTS]
+    arts = tuple(names) or ARTS
+    nums = [x for x in sys.argv[2:] if x not in ARTS]
     res = json.loads(OUT.read_text()) if OUT.exists() else {}
     if step == "predict":
-        res["predict"] = predict()
+        res["predict"] = {**res.get("predict", {}), **predict(arts)}
+    elif step == "residuals":
+        rp = HERE / "extreme_set_residuals.json"
+        rr = json.loads(rp.read_text()) if rp.exists() else {}
+        rp.write_text(json.dumps({**rr, **{a: residuals(a) for a in arts}}, indent=1))
+        return
     elif step == "runs":
-        ms = [float(x) for x in sys.argv[2:]]
-        todo = [(a, m, T, 1.0) for a in ARTS for m in ms for T in T_EXT]
-        with ProcessPoolExecutor(max_workers=len(todo)) as ex:
-            new = list(ex.map(run_one, todo))
+        ms = [float(x) for x in nums]
+        todo = [(a, m, T, 1.0) for a in arts for m in ms for T in T_EXT]
+        with ProcessPoolExecutor(max_workers=min(len(todo), WORKERS)) as ex:
+            new = list(ex.map(run_saved, todo))
         res = json.loads(OUT.read_text()) if OUT.exists() else {}    # others may have written
         keep = [r for r in res.get("runs", []) if (r["article"], r["m"], r["T"], r["t0x"])
                 not in {(n["article"], n["m"], n["T"], n["t0x"]) for n in new}]
         res["runs"] = keep + new
     elif step == "choose":
-        res["choice"] = choose(res["runs"])
+        res["choice"] = {**res.get("choice", {}), **choose(res["runs"], arts)}
     elif step == "final":
-        todo = [(a, res["choice"][a]["m_criterion4"], T, 1.0, True) for a in ARTS for T in T_EXT]
-        with ProcessPoolExecutor(max_workers=len(todo)) as ex:
-            new = list(ex.map(run_one, todo))
+        todo = [(a, res["choice"][a]["m_criterion4"], T, 1.0, True) for a in arts for T in T_EXT]
+        with ProcessPoolExecutor(max_workers=min(len(todo), WORKERS)) as ex:
+            new = list(ex.map(run_saved, todo))
         res = json.loads(OUT.read_text())
-        res["final"] = new
-        for a in ARTS:
+        res["final"] = [r for r in res.get("final", []) if r["article"] not in arts] + new
+        for a in arts:
             rr = [r for r in new if r["article"] == a]
             ok = all(r["surge_max_m"] <= FOV for r in rr)
             res["choice"][a]["final_passes"] = ok
@@ -220,10 +283,11 @@ def main() -> None:
                   f"{max(r['surge_max_m'] for r in rr):.3f} m -> {'PASS' if ok else 'FAIL'}",
                   flush=True)
     elif step == "settle":
-        with ProcessPoolExecutor(max_workers=len(ARTS)) as ex:
-            res["settle"] = dict(zip(ARTS, ex.map(settle, ARTS), strict=True))
+        with ProcessPoolExecutor(max_workers=len(arts)) as ex:
+            res["settle"] = {**res.get("settle", {}),
+                             **dict(zip(arts, ex.map(settle, arts), strict=True))}
     elif step == "declare":
-        res["declare"] = {a: declare(a) for a in ARTS}
+        res["declare"] = {**res.get("declare", {}), **{a: declare(a) for a in arts}}
     elif step == "t0":
         art = "cluster"
         m = res["choice"][art]["m_criterion4"]

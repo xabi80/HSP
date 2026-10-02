@@ -335,7 +335,9 @@ def revc_all() -> None:
     ROWS_REVC.mkdir(exist_ok=True)
     todo = [(a, T, H, fr) for a in ("platform", "cluster", "buoy") for H in H_REVC
             for T in revc_periods(a) for fr in (False, True)]
-    with ProcessPoolExecutor(max_workers=24) as ex:
+    # VIEWER_WORKERS caps the pool: each platform run peaks at ~3 GB of memory
+    workers = int(__import__("os").environ.get("VIEWER_WORKERS", "24"))
+    with ProcessPoolExecutor(max_workers=workers) as ex:
         for line in ex.map(run_revc, todo):
             print(line, flush=True)
 

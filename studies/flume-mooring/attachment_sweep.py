@@ -42,7 +42,8 @@ Steps (FloatSim throughout):
             moored design at H = 0.12 m (its tilt resonance and 1.4 s) with the drift sum.
 
 Writes attachment_sweep.json (kin/sweep/choose) and attachment_design.json (settle/extremes).
-Run: python attachment_sweep.py kin|sweep|choose|settle|trim|extremes
+Run: python attachment_sweep.py kin|sweep|choose|settle|trim|extremes  (sweep/settle/extremes
+take optional article names)
 """
 # ruff: noqa: E402  -- sys.path bootstrap first
 from __future__ import annotations
@@ -82,11 +83,15 @@ HEIGHTS = {"pin": 0.717, "swl": 0.0, "z-0.15": -0.15, "z-0.30": -0.30, "z-0.50":
 T0_SCALES = (1.0, 0.75, 0.6, 0.5, 0.35, 0.25)
 K_SCALES = (1.0, 0.5)
 H_OP = 0.12
-T_TILT_FREE = {"buoy": 2.75, "cluster": 2.85, "platform": 2.90}   # free tilt resonance (modal)
+# free tilt resonance (modal), rounded. The rev D platform (2.4 m square) is 2.926 s, as 2.924 s
+# for the 2.5 m circle, so 2.90 holds for both.
+T_TILT_FREE = {"buoy": 2.75, "cluster": 2.85, "platform": 2.90}
 T_KIN = (1.4,)                                                    # + the tilt resonance
 ZETA = {a: json.loads((HERE / "resonance_bandwidth.json").read_text())["cases"][f"{a}@H0.04"]
         ["pitch"]["zeta"] for a in ARTICLES}                      # tilt zeta at H = 0.04 m
-K_TILT = {"cluster": 75.36, "platform": 81.45}                    # N m/rad per buoy (record)
+# N m/rad per buoy (record, 2.5 m-circle platform). Only the sweep's static-tilt ESTIMATE uses it;
+# the chosen design's T0 is trimmed to FloatSim's settle (step trim), for either platform size.
+K_TILT = {"cluster": 75.36, "platform": 81.45}
 T_REST = 60.0
 COLLAR = 0.2
 YAW_K_BUOY = 3.337                                               # collar yaw stiffness, T0 4 N
@@ -405,11 +410,15 @@ def main() -> None:
                 dres["settle"] = {**dres.get("settle", {}),
                                   **dict(zip(arts, ex.map(settle, arts), strict=True))}
         else:
-            todo = [(a, 0.5, T) for a in ("cluster", "platform") for T in (2.35, 2.65)]
-            todo += [(a, H_OP, T) for a in ("cluster", "platform")
+            # extremes [arts]: re-run only these articles' rows, keep the others (rev D: platform)
+            arts = tuple(sys.argv[2:]) or ("cluster", "platform")
+            todo = [(a, 0.5, T) for a in arts for T in (2.35, 2.65)]
+            todo += [(a, H_OP, T) for a in arts
                      for T in (round(chosen(a)["row"]["tilt_T_s"], 2), *T_KIN)]
             with ProcessPoolExecutor(max_workers=len(todo)) as ex:
-                dres["extremes"] = list(ex.map(extreme, todo))
+                rows = list(ex.map(extreme, todo))
+            dres["extremes"] = [r for r in dres.get("extremes", [])
+                                if r["article"] not in arts] + rows
         OUT_DESIGN.write_text(json.dumps(dres, indent=1, default=float))
 
 

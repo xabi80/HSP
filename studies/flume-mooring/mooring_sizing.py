@@ -32,6 +32,7 @@ Writes mooring_sizing.png + mooring_sizing.csv next to this script.  Run: python
 from __future__ import annotations
 
 import csv
+import os
 from pathlib import Path
 
 import matplotlib
@@ -50,7 +51,9 @@ M_BUOY = 21.52                               # OSU buoy, unloaded floating mass 
 # the circle's area (Phase C item 1). Used only by the superseded trim printout below.
 C33_BUOY = 194.5
 A11_BUOY = 18.87                             # kg, single-buoy low-freq surge added mass (BEM)
-A11_ARRAY_PER_BUOY = 310.6 / 16              # kg, per buoy inside the 16-buoy array (coupled BEM)
+# kg, the platform's rigid-surge added mass: the coupled BEM's summed surge-surge block at low
+# frequency (omega 0.1 rad/s to 2 pi/15 s). Per platform size (PLAT_SQUARE_M; the gate below).
+A11_PLATFORM_BY_SIZE = {None: 310.6, "2.4": 313.6}
 A11_CLUSTER = 78.81                          # kg, 4-buoy cluster rigid surge (bem_cluster.py)
 # N m/rad, single-buoy pitch restoring about the CoG: FloatSim's C[4, 4] from the flume BEM
 # (single_osu_open_psd.nc). Replaces (10.2 + 5.03)(2 pi/2.11)^2, built from the INVALID 2.11 s
@@ -62,6 +65,14 @@ H_LIST = [0.2, 0.3, 0.4, 0.5]                # wave heights (m); moderate matrix
 STEEP = 1 / 15                               # practical non-breaking cap on regular-wave H/L
 STEEP_MATRIX = 0.08                          # the CONFIRMED Phase D matrix cap on H/lambda
 S = 1.25 / 1.5                               # Phase-3 layout scale (2.5 m to buoy centres)
+# The platform's size (MOORING-SPEC rev D): PLAT_SQUARE_M as articulated_wall, the flat-on outer
+# buoy-centre span; "" or unset = the 2.5 m circle. The cluster keeps S.
+_SQ = os.environ.get("PLAT_SQUARE_M") or None
+S_PLAT = S if _SQ is None else float(_SQ) * np.sqrt(2.0) / 3.0
+if _SQ not in A11_PLATFORM_BY_SIZE:
+    raise ValueError(f"PLAT_SQUARE_M={_SQ!r}: no platform surge added mass recorded for this size")
+A11_PLATFORM = A11_PLATFORM_BY_SIZE[_SQ]
+A11_ARRAY_PER_BUOY = A11_PLATFORM / 16       # kg, per buoy inside the 16-buoy array
 LAT_DIST = 0.10                              # nominal lateral disturbance = 10 % of surge drift
 
 
@@ -85,16 +96,16 @@ def drift_per_spar(H: float, T: float, steep: float = STEEP) -> tuple[float, flo
     return Fd, Fp, Hu
 
 
-def centres(n_cluster: int, rot_deg: float) -> np.ndarray:
+def centres(n_cluster: int, rot_deg: float, s: float = S) -> np.ndarray:
     ang_c = np.deg2rad(np.array([0.0, 90.0, 180.0, 270.0])[:n_cluster] + rot_deg)
     ang_b = np.deg2rad(np.array([0.0, 90.0, 180.0, 270.0]) + rot_deg)
-    arm = S * 1.0 if n_cluster > 1 else 0.0
-    return np.array([(arm * np.cos(c) + 0.5 * S * np.cos(b),
-                      arm * np.sin(c) + 0.5 * S * np.sin(b)) for c in ang_c for b in ang_b])
+    arm = s * 1.0 if n_cluster > 1 else 0.0
+    return np.array([(arm * np.cos(c) + 0.5 * s * np.cos(b),
+                      arm * np.sin(c) + 0.5 * s * np.sin(b)) for c in ang_c for b in ang_b])
 
 
 CL = centres(1, 45.0)             # Phase-2 cluster, 45 deg test orientation (2 buoys upwave)
-PF = centres(4, 45.0)             # Phase-3 platform, 45 deg test orientation
+PF = centres(4, 45.0, S_PLAT)     # Phase-3 platform, 45 deg test orientation
 ARTICLES = {
     "1 buoy": dict(n=1, M=M_BUOY, A=A11_BUOY, half_w=PLATE_R, C55=C55_BUOY,
                    z_top=0.718, top="spar top"),
@@ -102,7 +113,7 @@ ARTICLES = {
                                 half_w=float(np.abs(CL[:, 1]).max()) + PLATE_R,
                                 C55=C33_BUOY * float((CL[:, 0] ** 2).sum()),
                                 z_top=0.717, top="hub"),
-    "4x4 platform (45°)": dict(n=16, M=16 * M_BUOY + 4 * 2.0 + 6.0, A=310.6,
+    "4x4 platform (45°)": dict(n=16, M=16 * M_BUOY + 4 * 2.0 + 6.0, A=A11_PLATFORM,
                                half_w=float(np.abs(PF[:, 1]).max()) + PLATE_R,
                                C55=C33_BUOY * float((PF[:, 0] ** 2).sum()),
                                z_top=0.90, top="deck"),

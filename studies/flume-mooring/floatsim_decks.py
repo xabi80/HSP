@@ -55,6 +55,9 @@ import time
 from pathlib import Path
 
 os.environ.setdefault("PLAT_ROT_DEG", "45")
+# MOORING-SPEC rev D: the platform has its buoy centres on a 2.4 m square (articulated_wall /
+# coupled_bem_osu PLAT_SQUARE_M). PLAT_SQUARE_M="" reproduces rev C.1's 2.5 m-circle platform.
+os.environ.setdefault("PLAT_SQUARE_M", "2.4")
 
 import numpy as np
 

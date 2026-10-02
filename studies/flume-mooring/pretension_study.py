@@ -404,6 +404,11 @@ def buoy_scan() -> list[dict]:
     return out
 
 
+def _workers(n: int) -> int:
+    """Pool size: all runs at once, capped by PRE_WORKERS (each platform run peaks at ~3 GB)."""
+    return min(n, int(__import__("os").environ.get("PRE_WORKERS", str(n))))
+
+
 def main() -> None:
     """Each step merges only its own keys into a freshly loaded JSON (steps may run in parallel)."""
     sys.stdout.reconfigure(encoding="utf-8")
@@ -420,13 +425,13 @@ def main() -> None:
                         "s_peak_op_m": {a: s_peak_op(a) for a in (*ARTS, "buoy")}}
     elif step == "statics":
         todo = [(a, v) for a in ARTS for v in ("V0", "V1", "T0=0", "V2")]
-        with ProcessPoolExecutor(max_workers=len(todo)) as ex:
+        with ProcessPoolExecutor(max_workers=_workers(len(todo))) as ex:
             new["statics"] = list(ex.map(statics_one, todo))
     elif step == "runs":
         names = sys.argv[2:] or ["V0", "V1"]
         todo = [(a, v, H, T) for v in names for a in ARTS for H in H_RUN
                 for T in (round(asw.chosen(a)["row"]["tilt_T_s"], 2), T_OFF)]
-        with ProcessPoolExecutor(max_workers=len(todo)) as ex:
+        with ProcessPoolExecutor(max_workers=_workers(len(todo))) as ex:
             runs = list(ex.map(run_one, todo))
         keep = [r for r in _load().get("runs", []) if r["variant"] not in names]
         new["runs"] = keep + runs
@@ -438,7 +443,7 @@ def main() -> None:
         _save(res)
         todo = [(a, T) for a in ARTS if est[a]["run"] for T in es.T_EXT]
         if todo:
-            with ProcessPoolExecutor(max_workers=len(todo)) as ex:
+            with ProcessPoolExecutor(max_workers=_workers(len(todo))) as ex:
                 new["extreme_runs"] = list(ex.map(extreme_run_v1, todo))
     elif step == "buoy":
         new["buoy"] = buoy_scan()
