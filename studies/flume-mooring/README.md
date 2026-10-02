@@ -11,7 +11,9 @@ buoys facing the waves.
 
 Deliverables:
 - [`RESPONSE-mooring.md`](RESPONSE-mooring.md): the reviewer response text.
-- `Flume_mooring_technical.pptx`: a 12-slide technical deck (`make_mooring_ppt.py`).
+- `Flume_mooring_technical.pptx`: a 12-slide technical deck (`make_mooring_ppt.py`), from the
+  2026-09-23 sizing phase (before the spec). The current decks are `mooring-design-study/` and
+  `leadership-deck/` (online decks, PDFs and PowerPoint copies by `deck_pptx.py`).
 - [`HWRL-questions.md`](HWRL-questions.md): open facility questions for OSU.
 - `mooring_motion.html`: interactive 3D motion viewer of the three moored articles in the flume
   (`build_mooring_viewer.py`; see "Motion viewer" below).
