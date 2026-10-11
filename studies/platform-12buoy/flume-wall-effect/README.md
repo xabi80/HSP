@@ -117,6 +117,47 @@ scaled by 1.358: a 0.80 m grid, buoy centres at ±0.40 / ±1.20 m. Every script 
 - Run notes: walled coupled BEM 63 min, open 27 min, NT = 12 as the original study. The masses and
   inertias of the hubs and deck are those of the 2.5 m model; only positions change.
 
+## Platform yaw: the 2.4 m square turned in the flume (2026-10-11)
+
+Question: if the platform turns (yaw) in the flume, which heading has the largest wall effect?
+`compare_yaw.py` → `yaw_compare_sq2p4.png` / `.json`. Yaw ψ is measured from flat-on (the test
+orientation), so the runs are `PLAT_ROT_DEG = 45 − ψ` with the same coupled BEM (48 frequencies)
+and articulated FloatSim decay and all-DOF accelerations as the flat-on study.
+
+- **Geometry.** The plates reach the walls at ψ = 38.5°, so headings between 38.5° and 51.5°
+  (around corner-on) do not fit. Clearance per side: 0.49 / 0.30 / 0.15 / 0.05 m at ψ = 0 / 10 /
+  20 / 30°.
+- **Why intermediate yaw is different.** Flat-on and corner-on are mirror-symmetric about the
+  flume centreline, so head seas excite only surge, heave and pitch, and only the symmetric
+  cross-flume modes. At any other yaw the platform is lopsided. Head seas then also push it
+  sideways and twist it, and it can couple to the antisymmetric n = 1 mode (cut-on 2.19 s).
+
+| Wall effect (walls in vs out) | ψ = 0° | 10° | 20° | 30° |
+|---|---|---|---|---|
+| Heave excitation, max over 1.4–4 s | 2.9 % | 2.8 % | 2.8 % | 3.7 % (at 1.46 s) |
+| Surge / pitch excitation, max | 10.1 / 4.6 % (at 1.46 s) | 5.8 / 3.3 % | 1.4 / 1.2 % | 2.2 / 1.5 % |
+| Yaw-moment excitation (where ≥ 5 % of the pitch peak) | — (zero) | ≤ 6 % | ≤ 10 % | ≤ 15 % |
+| Free-decay heave period | −0.49 % | −0.44 % | −0.44 % | −0.44 % |
+| Heave RAO at 2.19 / 2.52 / 3.0 / 3.5 s | +3.2 / +1.8 / −0.6 / −0.5 % | +3.1 / +1.8 / −0.6 / −0.5 % | +3.0 / +1.7 / −0.7 / −0.5 % | +2.7 / +1.6 / −0.6 / −0.5 % |
+| Accelerations, deck + hubs: surge / heave / pitch | 0.8 / 3.3 / 2.0 % | 1.5 / 3.4 / 2.0 % | 1.0 / 3.3 / 2.1 % | 0.7 / 3.0 / 2.6 % |
+| Sway acceleration, open → walled (% of the peak heave acceleration) | 0 → 0 | 1.5 → 1.8 | 2.5 → 5.1 (at 3.0 s) | 2.3 → 2.8 |
+
+- **No heading makes the wall effect large.** Heave, surge and pitch, the motions the tests
+  measure, stay within about 3–4 % at every heading that fits. The free-decay period and damping
+  do not change with yaw.
+- **What grows with yaw is small:**
+  - The wall effect on the yaw moment rises to 15 % at ψ = 30°. It occurs only in short waves
+    (1.5–2.1 s), near the n = 2 and n = 1 cut-ons, and the resulting yaw acceleration stays near
+    2 % of the heave acceleration.
+  - A sideways (sway) acceleration appears at 3.0 s, largest at ψ ≈ 20° (5 % of the heave
+    acceleration with walls, against 2.5 % without). The turned platform's ends approach opposite
+    walls, so the walls turn part of its large surge motion into a sideways push.
+- **The worst headings are therefore about 20–30°**, but the effect is still a few percent. Testing
+  flat-on with the mooring holding the heading, and avoiding periods near 1.5 s and 2.2 s, keeps
+  it smallest.
+- **The surge / pitch excitation at 1.46 s** (10 % / 4.6 % flat-on) is the n = 2 cut-on (1.53 s).
+  It was not in the flat-on record, which reported heave only, and it falls as the platform turns.
+
 ## Models and fidelity
 
 | Model | Script | Role |
@@ -147,6 +188,9 @@ python compare_orientations.py
 
 The 2.4 m square platform: the same commands with `PLAT_ROT_DEG=45 PLAT_SQUARE_M=2.4` set
 (psd_project.py on the `_rot45_sq2p4` files), then `python compare_sizes.py`.
+The yaw study: the same steps with `PLAT_SQUARE_M=2.4` and `PLAT_ROT_DEG` = 35 / 25 / 15
+(`articulated_wall.py decay` and `accel_multidof.py`; the deck-centre heave acceleration is
+ω² × the heave RAO, so the separate `rao` run is not needed), then `python compare_yaw.py`.
 
 The coupled `.nc` files are large and regeneratable, so they are not committed. The buoy count is
 parametric (`BUOY_ANGLES_DEG` in `coupled_bem_osu.py` / `articulated_wall.py`); the coupled BEM
@@ -177,6 +221,8 @@ impractically slow.
 | `compare_orientations.py` | 0° vs 45° sidewall comparison (coupled BEM). |
 | `compare_sizes.py` | 2.5 m circle vs 2.4 m square, flat-on (coupled BEM): `size_compare_rot45.png` / `.json`. |
 | `*_rot45_sq2p4.*` | The 2.4 m square platform's outputs (decay json, RAO / accel npz, sweep npy, figures). |
+| `compare_yaw.py` | The 2.4 m square at yaw 0 / 10 / 20 / 30° from flat-on: `yaw_compare_sq2p4.png` / `.json`. |
+| `*_rot35_sq2p4.*`, `*_rot25_sq2p4.*`, `*_rot15_sq2p4.*` | The yaw study's decay json and accel npz (yaw 10 / 20 / 30°). |
 | `depth_effect_plots.py` | Finite-depth explainer figure from Airy theory, with the BEM points overlaid. |
 | `psd_project.py` | Symmetrise + PSD-project the walled radiation matrix. |
 | `articulated_wall.py` | Articulated 21-body FloatSim decay / RAO / all-DOF accel. |
