@@ -94,6 +94,21 @@ FloatSim cannot reach the stability limit on its own:
   buoyancy, is what an operator will notice first. A practical allowable is better taken from the
   tilt lines, e.g. ≤ 10° hub tilt ↔ mass × offset ≤ 1.2 kg·m.
 
+## Presentation
+
+`Cluster_payload_stability.pptx` (15 slides, `make_payload_ppt.py`) explains the physics with
+pictures:
+- the cluster and its loads, drawn to scale (`sketch_cluster.png`);
+- three loadings as still strips and animations, from the solved equilibria
+  (`payload_figures.py`): the centred mass sinking (`seq_centred.png`, `anim_centred.gif`), the
+  seesaw (`seq_offset.png`, `anim_offset.gif`) and the hub rolling onto its side
+  (`seq_rollover.png`, `anim_rollover.gif`). The GIFs play in PowerPoint's slide show;
+- native, editable charts of a buoy's pin load and gimbal margin against sinkage, the
+  tilt-against-moment collapse (`tilt_paths.json`) and both envelopes;
+- the cross-checks, guidance and limits.
+
+A copy is in `studies/` (PRESENTATIONS.md).
+
 ## Limits of this analysis
 
 - **Static, calm water.** Waves, dynamics and the mooring (its 1° pretension lean) are not
@@ -113,6 +128,8 @@ python draft_hydrostatics.py   # Capytaine, ~10 min
 python cluster_statics.py      # ~10 min
 python floatsim_crosscheck.py  # needs flume-mooring/cluster_osu_open_rot45_psd.nc
 python envelope_plot.py
+python payload_figures.py     # pictures and animations, ~10 min
+python make_payload_ppt.py    # the deck
 ```
 
 ## Next: the platform
