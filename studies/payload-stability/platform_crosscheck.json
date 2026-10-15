@@ -1,0 +1,108 @@
+{
+ "nt": "12",
+ "floatsim_c33_N_per_m": 186.2581329135901,
+ "rows": [
+  {
+   "m_kg": 10.0,
+   "offset_m": 0.0,
+   "dir_deg": 0.0,
+   "floatsim": {
+    "heave_m": -0.07897104824315987,
+    "tilt_deg": 2.460004202280691e-15
+   },
+   "statics_like_for_like": {
+    "heave_m": -0.0789710482431599,
+    "tilt_deg": 0.0
+   },
+   "statics_real_heights": {
+    "heave_m": -0.0789710482431599,
+    "tilt_deg": 0.0
+   }
+  },
+  {
+   "m_kg": 50.0,
+   "offset_m": 0.0,
+   "dir_deg": 0.0,
+   "floatsim": {
+    "heave_m": -0.21058946198175954,
+    "tilt_deg": 3.465279398748941e-15
+   },
+   "statics_like_for_like": {
+    "heave_m": -0.210589461981759,
+    "tilt_deg": 0.0
+   },
+   "statics_real_heights": {
+    "heave_m": -0.21058946198175904,
+    "tilt_deg": 0.0
+   }
+  },
+  {
+   "m_kg": 5.0,
+   "offset_m": 0.5,
+   "dir_deg": 0.0,
+   "floatsim": {
+    "heave_m": -0.06251874652583489,
+    "tilt_deg": 0.7364433216238729
+   },
+   "statics_like_for_like": {
+    "heave_m": -0.06251874652583524,
+    "tilt_deg": 0.7364636009610309
+   },
+   "statics_real_heights": {
+    "heave_m": -0.06251874652583524,
+    "tilt_deg": 0.7441664470893758
+   }
+  },
+  {
+   "m_kg": 5.0,
+   "offset_m": 0.5,
+   "dir_deg": 45.0,
+   "floatsim": {
+    "heave_m": -0.06251874652583486,
+    "tilt_deg": 0.7364413910283947
+   },
+   "statics_like_for_like": {
+    "heave_m": -0.0625187465258352,
+    "tilt_deg": 0.7364636009610309
+   },
+   "statics_real_heights": {
+    "heave_m": -0.0625187465258352,
+    "tilt_deg": 0.7441664470893758
+   }
+  },
+  {
+   "m_kg": 10.0,
+   "offset_m": 1.0,
+   "dir_deg": 0.0,
+   "floatsim": {
+    "heave_m": -0.07897104824315981,
+    "tilt_deg": 2.945773286495491
+   },
+   "statics_like_for_like": {
+    "heave_m": -0.07897104824315991,
+    "tilt_deg": 2.9470726137390315
+   },
+   "statics_real_heights": {
+    "heave_m": -0.07897104824315991,
+    "tilt_deg": 2.9922186651070075
+   }
+  },
+  {
+   "m_kg": 10.0,
+   "offset_m": 1.0,
+   "dir_deg": 30.0,
+   "floatsim": {
+    "heave_m": -0.07897104824315984,
+    "tilt_deg": 2.9457694253070676
+   },
+   "statics_like_for_like": {
+    "heave_m": -0.07897104824315973,
+    "tilt_deg": 2.9470726137390315
+   },
+   "statics_real_heights": {
+    "heave_m": -0.07897104824315973,
+    "tilt_deg": 2.9922186651070075
+   }
+  }
+ ]
+}

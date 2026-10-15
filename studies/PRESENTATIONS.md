@@ -1,6 +1,6 @@
 # Presentations: flume mooring and flume wall effect
 
-The `.pptx` files in this folder are **copies** (collected 2026-10-02; the payload deck added 2026-10-14). Each original stays in
+The `.pptx` files in this folder are **copies** (collected 2026-10-02; the payload decks added 2026-10-14 and 2026-10-15). Each original stays in
 its study folder and is regenerated there; re-copy after a regeneration.
 
 | File | Version | Original, and how it is made |
@@ -13,6 +13,7 @@ its study folder and is regenerated there; re-copy after a regeneration.
 | `Flume_wall_effect_technical_2.5m-circle.pptx` | Earlier: 2.5 m circle platform, 0.80 m to each wall | `platform-12buoy/flume-wall-effect/Flume_wall_effect_technical.pptx` (`python make_flume_technical_ppt.py`) |
 | `Flume_wall_effect_explained_2.5m-circle.pptx` | Earlier: plain-English, 2.5 m circle | `platform-12buoy/flume-wall-effect/Flume_wall_effect_explained.pptx` (`python make_flume_ppt.py`) |
 | `Cluster_payload_stability.pptx` | Current: payload mass and CG envelope of the 4-buoy cluster (2026-10-14) | `payload-stability/Cluster_payload_stability.pptx` (`python make_payload_ppt.py`) |
+| `Platform_payload_stability.pptx` | Current: payload mass and CG envelope of the 4x4 platform, with the payload CG height (2026-10-15) | `payload-stability/Platform_payload_stability.pptx` (`python make_platform_ppt.py`) |
 
 Notes:
 - **The two mooring rev D decks are picture slides.** Each slide is an image of the online deck's

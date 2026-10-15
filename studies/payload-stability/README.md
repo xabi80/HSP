@@ -1,8 +1,8 @@
-# Payload stability: the 4-buoy cluster (2026-10-14)
+# Payload stability: the 4-buoy cluster (2026-10-14) and the 4x4 platform (2026-10-15)
 
 **Question (Xabier):** add mass on top of the cluster until its stability is compromised, move
-that mass around parallel to the waterline, and give an envelope of mass and CG. The platform
-follows later.
+that mass around parallel to the waterline, and give an envelope of mass and CG. Then the same
+exercise for the platform: see [The platform](#the-platform-2026-10-15) below.
 
 ## Decisions
 
@@ -110,7 +110,8 @@ pictures:
   tilt-against-moment collapse (`tilt_paths.json`) and both envelopes;
 - the cross-checks, guidance and limits.
 
-A copy is in `studies/` (PRESENTATIONS.md).
+A copy is in `studies/` (PRESENTATIONS.md). The slide helpers are shared with the platform deck in
+`deck_kit.py`.
 
 ## Limits of this analysis
 
@@ -135,8 +136,134 @@ python payload_figures.py     # pictures and animations, ~10 min
 python make_payload_ppt.py    # the deck
 ```
 
-## Next: the platform
+## The platform (2026-10-15)
 
-The same exercise for the 2.4 m square platform (four hubs and a deck at +0.90 m) needs the
-deck's height above the pins in the statics. A payload on the deck sits above the pin plane, so
-the hub-tilt destabilisation that is zero for the cluster appears there.
+**Question (Xabier):** "the same exercise as for the cluster" for the 4x4 platform.
+
+### Model
+
+- **The platform is the record's** (`articulated_wall.deck` with PLAT_SQUARE_M 2.4 and
+  PLAT_ROT_DEG 45, the model `mooring_verify.article_platform` runs):
+  - 16 buoys on a 0.8 m grid (outer buoy-centre span 2.4 m), in four 2 × 2 clusters;
+  - each buoy hangs from its hub (2 kg) by a gimbal at its pin (+0.717 m);
+  - each hub hangs from the deck frame (6 kg, +0.90 m) by a gimbal at the hub centre, in the
+    pin plane.
+- **Decisions carried over from the cluster:** free-floating, calm water, every gimbal free,
+  pins dry; the limit is the loss of restoring or the first pin awash.
+- **Payload:** a point mass on the deck frame (+0.90 m, 0.183 m above the pins), moved out to the
+  outer buoy-centre line (1.2 m), in 4 directions (0° = between hubs, along the grid; 45° =
+  towards a hub, on the diagonal). The deck sits above the pins, so the payload's CG height
+  matters. It is run as a sensitivity: full envelopes with the CG 0.5 and 1.0 m above the deck,
+  and the centred limit for CG heights 0–2 m.
+- **Each hub hangs level, exactly.** The deck's load reaches a hub at its gimbal: the hub centre,
+  in the plane of its four pins. That load has no lever arm to tilt the hub, so its four buoys
+  sink together and each cluster acts as one vertical spring under the deck (4 × 194 N/m,
+  1.131 m from the centre). Only the deck tilts. Equilibrium is solved on the deck's heave, roll
+  and pitch. The stability check uses all 11 coordinates, the hub tilts included, and the hub
+  moment residual stays ≤ 2e-14 N·m.
+
+Scripts:
+- `platform_statics.py`: the platform, exact at any deck tilt, on the cluster's draft table and
+  building blocks (`cluster_statics.Buoy`, `rot`, `awash`). It writes:
+  - `platform_envelope_h0p0.json`, `_h0p5.json` and `_h1p0.json` (one per payload CG height);
+  - `platform_vs_height.json`.
+- `platform_crosscheck.py`: FloatSim's own platform model, solved statically.
+- `platform_envelope_plot.py`: draws `platform_envelope.png`.
+
+### Results
+
+![platform envelope](platform_envelope.png)
+
+- **A centred mass on the deck only sinks the platform.**
+  - The limit is **212.7 kg** on the deck, when all 16 pins reach the waterline.
+  - That is about four times the cluster's limit, less the deck: 4 × 54.7 − 6.
+  - Each kilogram sinks the platform 3.16 mm. The deck and hubs alone sink it 44 mm.
+- **Off-centre, the whole deck tilts, and much more stiffly than the cluster's hub.**
+  - The hubs stay level; the clusters' differential sinkage resists the tilt at **1987 N·m/rad**,
+    29 times the cluster's hub (16 buoys at about 0.8 m, against 4 at 0.3 m).
+  - The tilt again depends mostly on mass × offset, the same in every direction. The values below
+    are the smallest over the offsets: heavy masses at small offsets tilt a little more, because
+    they sit above the pins.
+
+    | Deck tilt | 1° | 2° | 5° | 10° | 20° |
+    |---|---|---|---|---|---|
+    | mass × offset | 3.3 kg·m | 6.2 kg·m | 15.1 kg·m | 30.1 kg·m | 60.8 kg·m |
+
+- **Limits** (payload mass on the deck; deck tilt and whole-platform CG offset at the limit):
+
+  | Offset | Between hubs (0°), CG on the deck | Towards a hub (45°, worst), CG on the deck | 45°, CG 1.0 m above the deck |
+  |---|---|---|---|
+  | 0 | 212.7 kg, pins awash | 212.7 kg | 170.4 kg, the level deck tips over |
+  | 0.2 m | 164.3 kg (11°, CG 63 mm) | 150.8 kg (10°, CG 59 mm) | 105.6 kg (17°) |
+  | 0.4 m | 134.9 kg (18°, CG 109 mm) | 118.3 kg (15°, CG 99 mm) | 84.5 kg (21°) |
+  | 0.6 m | 114.9 kg (23°, CG 146 mm) | 97.4 kg (19°, CG 128 mm) | 71.7 kg (23°) |
+  | 0.8 m | 100.5 kg (26°, CG 175 mm) | 83.6 kg (21°, CG 151 mm) | 62.7 kg (24°) |
+  | 1.0 m | 89.2 kg (29°, CG 199 mm) | 72.9 kg (23°, CG 169 mm) | 56.0 kg (25°) |
+  | 1.2 m | 80.3 kg (31°, CG 220 mm) | 64.9 kg (24°, CG 184 mm) | 50.7 kg (26°) |
+
+  - With the payload on the deck, every limit is one cluster's four pins going awash together.
+    The deck never tips over.
+  - Towards a hub is the worst direction, by up to 19 %.
+  - The limits sit at 10–31° of deck tilt (up to 37° with a raised CG). As for the cluster, a
+    practical allowable is better taken from the tilt lines.
+- **A raised payload can tip the deck over: the platform's new limit.**
+  - As the deck tilts, a mass at a height H above the pins moves sideways by H × the angle. That
+    gives a tipping moment m g H per radian against the clusters' 1987 N·m/rad.
+  - The level deck loses its restoring at m (h + 0.183 m) = 1987/g − 6 × 0.183 = **201.6 kg·m**,
+    where h is the CG height above the deck. The full calculation follows this rule exactly
+    (panel c).
+  - Centred, the pins limit the payload while its CG is below about 0.77 m above the deck. Above
+    that, the deck tips first: 170 kg with the CG 1 m up; at most 1.83 / 1.16 / 0.82 m for
+    100 / 150 / 200 kg.
+  - Off-centre, a raised CG lowers the limits (purple lines) and amplifies the tilt by
+    1 / (1 − m H / 201.6 kg·m).
+- **The buoys behave as in the cluster.** They never flop on their gimbals: the margin is
+  ≥ 23.9 N·m/rad at every limit. They never come near each other either: 0.47 m between axes at
+  worst, against a 0.287 m heave plate.
+- **FloatSim cross-check** (`platform_crosscheck.py`; FloatSim's 12-panel coupled BEM, C33
+  186.3 N/m per buoy).
+  - **Like for like** (every weight in the pin plane, all FloatSim's linear model can represent),
+    FloatSim and the statics agree exactly:
+    - sinkage 79.0 / 210.6 mm for 10 / 50 kg;
+    - tilt 0.736° for 5 kg at 0.5 m, and 2.946° vs 2.947° for 10 kg at 1.0 m, in every direction.
+  - **With the real deck and payload heights,** the statics tilt up to 1.6 % more: the m g h
+    effect FloatSim omits.
+
+### Presentation
+
+`Platform_payload_stability.pptx` (15 slides, `make_platform_ppt.py`), built like the cluster
+deck, with the same shared helpers in `deck_kit.py`:
+- **Pictures** (`platform_figures.py`), with one fixed view for every drawing. The view is
+  atan(1/4) ≈ 14° off the grid, where the 16 spars project evenly, 0.19 m apart, so none hides
+  another. A top-view inset gives the payload's position. The pictures are:
+  - the labelled sketch, `sketch_platform.png`;
+  - three loadings as strips and animations: centred (`pseq_centred.png`, `panim_centred.gif`),
+    1.2 m towards a corner (`pseq_offset`, `panim_offset`), and the CG 1 m up, 0.2 m off centre
+    (`pseq_raised`, `panim_raised`).
+- **Native, editable charts:** tilt against mass × offset (`platform_tilt_paths.json`), the
+  centred limit against CG height, and both envelopes.
+- **The comparison with the cluster,** the cross-check, guidance and limits.
+
+A copy is in `studies/` (PRESENTATIONS.md).
+
+### Limits of this analysis (platform)
+
+As for the cluster:
+- **Static, in calm water, free-floating.** Waves and the mooring would reduce the margins, most
+  for raised payloads.
+- **The payload is a point mass,** within the outer buoy-centre line (1.2 m).
+- **The deck frame is rigid.** Gimbal travel, payload retention and the deck's own flexibility
+  are not modelled.
+
+### Reproduce (platform)
+
+```
+python platform_statics.py envelope 0     # ~2 min each
+python platform_statics.py envelope 0.5
+python platform_statics.py envelope 1.0
+python platform_statics.py heights
+python platform_crosscheck.py             # needs platform-12buoy/flume-wall-effect/coupled_osu_open_rot45_sq2p4_psd.nc
+python platform_envelope_plot.py
+python platform_figures.py                # pictures and animations, ~5 min
+python make_platform_ppt.py               # the deck
+```
