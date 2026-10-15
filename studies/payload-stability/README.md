@@ -98,7 +98,10 @@ FloatSim cannot reach the stability limit on its own:
 
 `Cluster_payload_stability.pptx` (15 slides, `make_payload_ppt.py`) explains the physics with
 pictures:
-- the cluster and its loads, drawn to scale (`sketch_cluster.png`);
+- the cluster and its loads, drawn to scale (`sketch_cluster.png`). Every picture is drawn from
+  one fixed direction, 22.5° off the buoy diagonals: seen square-on or along a diagonal, buoys
+  hide behind each other, but from 22.5° all four show. A top-view inset gives the payload's
+  position;
 - three loadings as still strips and animations, from the solved equilibria
   (`payload_figures.py`): the centred mass sinking (`seq_centred.png`, `anim_centred.gif`), the
   seesaw (`seq_offset.png`, `anim_offset.gif`) and the hub rolling onto its side

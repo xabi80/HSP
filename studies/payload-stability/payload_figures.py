@@ -1,9 +1,12 @@
 """Pictures of the cluster's payload physics, drawn to scale from the solved equilibria
 (cluster_statics.py), for the payload-stability deck.
 
-Side views, looking across the direction of the payload offset. Every buoy hangs vertically from
-its gimbal pin. Nearer buoys are drawn darker; the hub arms run from the hub centre to the four
-pins.
+Side views, all from ONE fixed direction, 22.5 deg off the buoy diagonals (VIEW_DEG): seen
+square-on or along a diagonal, buoys hide behind each other, but from 22.5 deg the four spars
+spread evenly across the picture. The payload always appears on the right. Every buoy hangs
+vertically from its gimbal pin; nearer buoys are drawn darker; the hub arms run from the hub centre
+to the four pins. A top-view inset shows the four buoys, the payload position and the viewing
+direction.
 - sketch_cluster.png: the unloaded cluster, labelled, with the loads of a payload on the hub.
 - seq_centred.png, seq_offset.png, seq_rollover.png: still sequences of three loadings.
   - centred: the mass only sinks the cluster, until the pins are awash at 54.7 kg;
@@ -29,7 +32,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation, PillowWriter
 from matplotlib.colors import to_rgba
-from matplotlib.patches import FancyArrowPatch, Rectangle
+from matplotlib.patches import Circle, FancyArrowPatch, Rectangle
 
 HERE = Path(__file__).resolve().parent
 SPAR_R, PLATE_R = 0.07965, 0.1437
@@ -38,6 +41,7 @@ PIN_TO_PLATE = 0.717 + 1.383             # pin down to the heave plate
 PIN_TO_COG = cs.L_PIN
 WATER, WATER_EDGE = "#d9eef2", "#5aa9b8"
 HULL, HUB, PAYLOAD, LIMIT = "#1f3b4d", "#3a4852", "#c9772b", "#b2432c"
+VIEW_DEG = 22.5                          # camera direction for every picture (see the docstring)
 CASES = {
     "centred": {"e": 0.0, "dir": 0.0, "title": "Centred mass: the cluster only sinks"},
     "offset": {"e": 0.2, "dir": 45.0, "title": "0.2 m towards a buoy: the seesaw"},
@@ -69,10 +73,31 @@ def geometry(q: np.ndarray, e: np.ndarray) -> dict:
     return {"hub": hub, "pins": hub + cs.Q_PIN @ R.T, "payload": hub + R @ e}
 
 
-def draw(ax, q: np.ndarray, m: float, e: np.ndarray, d: float, note: str = "",  # type: ignore[no-untyped-def]
+def plan_inset(ax, e: np.ndarray, u: np.ndarray, v: np.ndarray,  # type: ignore[no-untyped-def]
+               box: tuple[float, float, float, float]) -> None:
+    """Top view of the (level) cluster: buoys, hub arms, payload and the viewing direction."""
+    ins = ax.inset_axes(box)
+    ins.set_facecolor("white")
+    for sp in ins.spines.values():
+        sp.set_edgecolor("0.7"); sp.set_linewidth(0.8)
+    for x, y, _ in cs.Q_PIN:
+        ins.plot([0, x], [0, y], color=HUB, lw=1.6, zorder=2)
+        ins.add_patch(Circle((x, y), PLATE_R, color=HULL, alpha=0.85, zorder=3))
+    ins.add_patch(Rectangle((e[0] - 0.06, e[1] - 0.06), 0.12, 0.12, color=PAYLOAD, zorder=4))
+    tail = 0.95 * v; head = 0.6 * v                       # the viewer stands on the +v side
+    ins.add_patch(FancyArrowPatch(tuple(tail[:2]), tuple(head[:2]), arrowstyle="-|>",
+                                  mutation_scale=10, color=LIMIT, lw=1.6, zorder=5))
+    lab = tail[:2] + 0.32 * u[:2]
+    ins.text(lab[0], lab[1], "view", fontsize=7, color=LIMIT, ha="center", va="center")
+    ins.set_xlim(-1.15, 1.15); ins.set_ylim(-1.15, 1.15); ins.set_aspect("equal")
+    ins.set_xticks([]); ins.set_yticks([])
+    ins.set_title("top view", fontsize=7, color="0.4", pad=2)
+
+
+def draw(ax, q: np.ndarray, m: float, e: np.ndarray, note: str = "",  # type: ignore[no-untyped-def]
          labels: bool = False) -> None:
     ax.clear()
-    u, v = view_axes(d)
+    u, v = view_axes(VIEW_DEG)
     g = geometry(q, e)
     ax.add_patch(Rectangle((-1.2, -2.6), 2.4, 2.6, color=WATER, zorder=0))
     ax.axhline(0.0, color=WATER_EDGE, lw=1.2, zorder=1)
@@ -112,6 +137,7 @@ def draw(ax, q: np.ndarray, m: float, e: np.ndarray, d: float, note: str = "",  
         ax.text(-1.12, 1.01, note, fontsize=9.5, color=LIMIT, fontweight="bold")
     if labels:
         annotate(ax, g, u)
+    plan_inset(ax, e, u, v, (0.01, 0.01, 0.27, 0.27) if labels else (0.72, 0.6, 0.27, 0.27))
     ax.set_xlim(-1.2, 1.2); ax.set_ylim(-2.45, 1.45); ax.set_aspect("equal"); ax.axis("off")
 
 
@@ -140,8 +166,7 @@ def annotate(ax, g: dict, u: np.ndarray) -> None:  # type: ignore[no-untyped-def
     pl = g["pins"][np.argmin(g["pins"] @ u)]; hl = pl @ u
     ax.add_patch(FancyArrowPatch((hl, pl[2] - 0.95), (hl, pl[2] - 0.6), arrowstyle="-|>",
                                  mutation_scale=14, color=WATER_EDGE, lw=2, zorder=9))
-    ax.text(hl - 0.14, pl[2] - 1.05, "extra buoyancy as\nthe buoy sinks", fontsize=9,
-            color="#2d7f8f", ha="right")
+    ax.text(-1.15, pl[2] - 1.05, "extra buoyancy\nas it sinks", fontsize=9, color="#2d7f8f")
 
 
 def path_states(case: dict) -> tuple[list[dict], np.ndarray, float, str]:
@@ -172,8 +197,7 @@ def sequence(name: str, masses: list[float]) -> None:
     fig, axs = plt.subplots(1, len(masses), figsize=(3.1 * len(masses), 4.6))
     for ax, m in zip(axs, masses, strict=True):
         st = nearest(path, m)
-        draw(ax, np.array(st["q"]), st["m_kg"], e, case["dir"],
-             note=note if m == lim else "")
+        draw(ax, np.array(st["q"]), st["m_kg"], e, note=note if m == lim else "")
     fig.tight_layout(); fig.savefig(HERE / f"seq_{name}.png", dpi=140, bbox_inches="tight")
     plt.close(fig)
 
@@ -186,8 +210,7 @@ def animate(name: str) -> None:
 
     def frame(k: int) -> None:
         st = nearest(path, masses[k])
-        draw(ax, np.array(st["q"]), st["m_kg"], e, case["dir"],
-             note=note if k >= 40 else "")
+        draw(ax, np.array(st["q"]), st["m_kg"], e, note=note if k >= 40 else "")
 
     anim = FuncAnimation(fig, frame, frames=len(masses))
     anim.save(HERE / f"anim_{name}.gif", writer=PillowWriter(fps=8), dpi=95)
@@ -215,7 +238,7 @@ def main() -> None:
     b = cs.Buoy("36")
     q0, _ = cs.solve(0.0, np.zeros(3), b, np.zeros(3))
     fig, ax = plt.subplots(figsize=(7.4, 7.0))
-    draw(ax, np.asarray(q0), 0.0, np.zeros(3), 0.0, labels=True)
+    draw(ax, np.asarray(q0), 0.0, np.zeros(3), labels=True)
     fig.tight_layout(); fig.savefig(HERE / "sketch_cluster.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
     sequence("centred", [0.0, 20.0, 40.0])
