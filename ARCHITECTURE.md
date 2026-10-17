@@ -51,6 +51,16 @@ Where:
 - `F_moor` = mooring reaction forces
 - `F_ext` = any external forces (user-defined)
 
+**Static loads (weight preload, opt-in; `docs/weight-preload-plan.md`).** With
+`simulation.weight_preload: true` the right-hand side also carries a constant `F_static`:
+- every body's weight `(0, 0, −m g)` at its reference point (the CoG);
+- each hydro body's buoyancy at its BEM draft, `(0, 0, ρ g V)`, with `V` its `displaced_volume`
+  (default `m/ρ`, zero net force).
+
+Its moments under rotation are already in `C`. In an articulated model the joints carry the
+resulting static preload, and the joint Jacobian's configuration dependence turns it into
+geometric stiffness: the `−P L` of a load on a pin above a CoG, the `−m g h` of a raised mass.
+
 ### 2.2 Multi-body generalization
 
 For N bodies, global state: `Ξ = [ξ₁ᵀ, ξ₂ᵀ, …, ξ_Nᵀ]ᵀ` of size 6N.
@@ -180,6 +190,7 @@ simulation:
   retardation_memory: 60.0     # s (convolution truncation, §9.1)
   ramp_duration: 20.0          # s (excitation ramp-up, §9.3)
   skip_static_equilibrium: false  # debug only (§9.4)
+  weight_preload: false        # opt-in static loads + joint preload (§2.1, §9.4)
 
 environment:
   water_depth: 200.0           # m
@@ -204,6 +215,7 @@ bodies:
       format: orcawave
       path: ./hydro/semisub.yml
       body_index: 0
+    displaced_volume: 1.95e4   # m³ at the BEM draft; read only with weight_preload (default m/ρ)
     drag_elements:
       - type: morison_member
         node_a: [ 20, 0, -10]
@@ -365,6 +377,14 @@ These four were open during architecture review and are now locked for Phase 1.
   F_{gravity}(\xi_{eq}) + F_{buoyancy}(\xi_{eq}) + F_{moor}(\xi_{eq}) = 0
   $$
   via `scipy.optimize.root` (Levenberg-Marquardt or hybrid Powell).
+- **Implementation status.** Without `weight_preload` the solve is `C ξ = F_state(0, ξ, 0)`:
+  there is no gravity or buoyancy vector, and the joints are not seen. Every hydro body is then
+  taken to float freely at its BEM draft, and every structural body is weightless in statics
+  (tracker `WEIGHT-PRELOAD-UNWIRED`).
+- **With `weight_preload: true`** (opt-in; `docs/weight-preload-plan.md`) the static loads of
+  §2.1 enter, and a deck with joints solves the joint-constrained equilibrium
+  `C ξ − G(ξ)ᵀ λ = F_state(0, ξ, 0)`, `φ(ξ) = 0`. `λ` is the joints' static preload (the M9
+  sign convention: the physical force on each joint's body A).
 - Time integration begins from `ξ_eq` with zero velocity.
 - Outputs equilibrium offset and mooring pretensions to the log for sanity checking.
 - Deck override `skip_static_equilibrium: true` available for debugging / specific test cases only.

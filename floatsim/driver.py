@@ -87,7 +87,10 @@ from floatsim.mooring.catenary_analytic import (
     CatenaryLine,
     make_catenary_state_force,
 )
-from floatsim.solver.equilibrium import solve_static_equilibrium
+from floatsim.solver.equilibrium import (
+    solve_constrained_static_equilibrium,
+    solve_static_equilibrium,
+)
 from floatsim.solver.ramp import HalfCosineRamp
 from floatsim.solver.state import (
     assemble_global_kernel,
@@ -104,6 +107,12 @@ _EARTH_INDEX: Final[int] = -1
 # fixture's 1 N because the driver is the cross-deck path; if a future
 # deck genuinely needs a looser tol, expose it as a kwarg later.
 _EQUILIBRIUM_TOL_N: Final[float] = 1.0
+
+# Joint-constrained static solve under the weight preload (docs/weight-preload-plan.md §2.2).
+# Its multipliers are the joints' static preload, which sets their geometric stiffness, so they
+# must be accurate: the solve is near-linear with an exact bordered-KKT Jacobian, and Newton
+# reaches round-off. Units mix N / N m (balance rows) and m / rad (constraint rows).
+_PRELOAD_EQUILIBRIUM_TOL: Final[float] = 1.0e-8
 
 # Restoring-matrix PSD gate (M11b PR8, PLATFORM-HYDROSTATIC-C-INDEFINITE).
 # The assembled restoring matrix C must be positive semi-definite on the
@@ -164,6 +173,14 @@ class SimulationSetup:
     """Velocity-level joint constraints from the deck's ``joints`` section
     (M9), or ``None`` if the deck declares no joints. Passed to
     ``integrate_cummins(constraints=...)`` to activate the KKT path."""
+    static_force: NDArray[np.float64] | None = None
+    """The weight-preload static load vector (docs/weight-preload-plan.md
+    §2.1) when ``simulation.weight_preload`` is on, else ``None``. It is
+    already included in ``state_force``."""
+    lam0: NDArray[np.float64] | None = None
+    """Joint multipliers at the static equilibrium: the joints' static
+    preload, the physical force on each joint's body A (M9 sign convention),
+    when the weight preload is on and the deck has joints, else ``None``."""
 
 
 # ---------------------------------------------------------------------------
@@ -377,16 +394,31 @@ def _compose_state_force(
     catenary_force: _StateForce | None,
     drag_force: _StateForce | None,
     n_dof: int,
+    static_force: NDArray[np.float64] | None = None,
 ) -> _StateForce:
-    """Sum the (optional) connector, catenary and drag force closures.
+    """Sum the (optional) connector, catenary and drag force closures, and the
+    constant weight-preload static force.
 
     Additive-generic over the present sources (order:
-    connector, catenary, drag). Returns a zero-vector closure if all are
+    connector, catenary, drag, static). Returns a zero-vector closure if all are
     None. With only connector + catenary present the result is
     ``connector(...) + catenary(...)`` -- byte-identical to the pre-M11a
-    two-source path (drag_force=None adds nothing).
+    two-source path (drag_force=None adds nothing); ``static_force=None`` (the
+    weight preload off) adds nothing either.
     """
-    sources = [f for f in (connector_force, catenary_force, drag_force) if f is not None]
+    static_source: _StateForce | None = None
+    if static_force is not None:
+        constant = np.asarray(static_force, dtype=np.float64)
+
+        def _static(
+            _t: float, _xi: NDArray[np.float64], _xd: NDArray[np.float64]
+        ) -> NDArray[np.float64]:
+            return constant.copy()
+
+        static_source = _static
+    sources = [
+        f for f in (connector_force, catenary_force, drag_force, static_source) if f is not None
+    ]
 
     if not sources:
         zeros = np.zeros(n_dof, dtype=np.float64)
@@ -556,6 +588,44 @@ def _build_joint_set(deck: Deck, name_to_index: dict[str, int]) -> JointSet | No
     # convention), not absolute position (Amendment A2).
     refs = tuple(np.asarray(b.reference_point, dtype=np.float64) for b in deck.bodies)
     return JointSet(joints=tuple(built), n_bodies=len(deck.bodies), body_references=refs)
+
+
+def _static_force(deck: Deck) -> NDArray[np.float64] | None:
+    """The weight-preload static load vector, or ``None`` when
+    ``simulation.weight_preload`` is off (docs/weight-preload-plan.md §2.1).
+
+    Body ``k``, at its reference point (the CoG, see ``_body_mass_matrix``):
+    its weight ``(0, 0, -m g)``; a hydro body also has its buoyancy at the BEM
+    draft, ``(0, 0, rho g V)``, with ``V`` its ``displaced_volume``. A hydro body
+    with no ``displaced_volume`` floats freely at its BEM draft: zero net force
+    (the Q2 default ``V = m / rho``, taken exactly). The rotational rows are zero:
+    both loads act at the reference point, and their moments under rotation are
+    already in ``C`` (the buoyancy-only hydrostatics plus
+    ``gravity_restoring_contribution``).
+
+    Raises
+    ------
+    ValueError
+        For a structural body that no joint holds: its weight would have
+        nothing to act against.
+    """
+    if not deck.simulation.weight_preload:
+        return None
+    held = {name for j in deck.joints for name in (j.body_a, j.body_b)}
+    g = deck.environment.gravity
+    rho = deck.environment.water_density
+    force = np.zeros(6 * len(deck.bodies), dtype=np.float64)
+    for k, body in enumerate(deck.bodies):
+        if body.structural:
+            if body.name not in held:
+                raise ValueError(
+                    f"weight_preload: structural body {body.name!r} is held by no joint; "
+                    "its weight has nothing to act against"
+                )
+            force[6 * k + 2] = -body.mass * g
+        elif body.displaced_volume is not None:
+            force[6 * k + 2] = rho * g * body.displaced_volume - body.mass * g
+    return force
 
 
 def _feasible_restoring_eigvals(
@@ -1068,7 +1138,12 @@ def build_system(
     drag_force = _build_drag_state_force(
         deck, n_dof, rho=deck.environment.water_density, wave=drag_wave, ramp=drag_wave_ramp
     )
-    state_force = _compose_state_force(connector_force, catenary_force, drag_force, n_dof)
+    # Weight preload (docs/weight-preload-plan.md §2.1, §2.3): a constant static load in the
+    # state force, so the static solve and the dynamics both carry it.
+    static_force = _static_force(deck)
+    state_force = _compose_state_force(
+        connector_force, catenary_force, drag_force, n_dof, static_force
+    )
 
     # --- Constraints + restoring-PSD gate (M11b PR8) ------------------------
     # Build the joint set now so the restoring-PSD gate can use its Jacobian.
@@ -1085,7 +1160,18 @@ def build_system(
         [np.asarray(b.initial_conditions.velocity, dtype=np.float64) for b in deck.bodies]
     )
 
-    if solve_equilibrium:
+    lam0: NDArray[np.float64] | None = None
+    if solve_equilibrium and static_force is not None and constraints is not None:
+        # §2.2: the joints carry the static loads, so the solve must see them.
+        ceq = solve_constrained_static_equilibrium(
+            lhs=lhs_global,
+            constraints=constraints,
+            state_force=state_force,
+            xi0=xi0_packed,
+            tol=_PRELOAD_EQUILIBRIUM_TOL,
+        )
+        xi0, lam0 = ceq.xi_eq, ceq.lam_eq
+    elif solve_equilibrium:
         eq = solve_static_equilibrium(
             lhs=lhs_global,
             state_force=state_force,
@@ -1104,4 +1190,6 @@ def build_system(
         xi_dot0=xi_dot0_packed,
         body_name_to_index=name_to_index,
         constraints=constraints,
+        static_force=static_force,
+        lam0=lam0,
     )

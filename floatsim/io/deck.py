@@ -50,6 +50,10 @@ class Simulation(_Base):
     retardation_memory: PositiveFloat = 60.0  # §9.1 default
     ramp_duration: NonNegativeFloat = 20.0  # §9.3 default
     skip_static_equilibrium: bool = False  # §9.4 — debug only
+    # §9.4 static loads (docs/weight-preload-plan.md, Q1 lock: opt-in). When True the static
+    # solve and the dynamics carry every body's weight and each hydro body's buoyancy at its
+    # BEM draft, so the joints carry their static preload and its geometric stiffness.
+    weight_preload: bool = False
 
 
 # --------------------------------------------------------------------------
@@ -231,6 +235,13 @@ class Body(_Base):
     The "exactly one" rule is a forcing function: a body that declares
     NONE (e.g. a misspelled ``hydro_databse:`` key) raises rather than
     silently becoming a hydro-free body (M10 plan Amendment A1).
+
+    ``displaced_volume`` (m^3; docs/weight-preload-plan.md, Q2 lock) is the
+    hydro body's displaced volume at its BEM draft, read only when
+    ``simulation.weight_preload`` is on. ``None`` means ``mass / rho``: the
+    body floats freely at its BEM draft, with zero net static force. Set it
+    when the BEM was computed at a loaded draft. A structural body has no
+    buoyancy, so declaring one there is rejected.
     """
 
     name: Annotated[str, Field(min_length=1)]
@@ -240,6 +251,7 @@ class Body(_Base):
     hydro_database: HydroDatabaseRef | None = None
     hydro_body_label: str | None = None
     structural: bool = False
+    displaced_volume: PositiveFloat | None = None
     drag_elements: list[DragElement] = Field(default_factory=list)
     initial_conditions: InitialConditions = Field(default_factory=InitialConditions)
 
@@ -255,6 +267,11 @@ class Body(_Base):
                 f"body {self.name!r}: exactly one of 'hydro_database' (per-body), "
                 "'hydro_body_label' (shared coupled database), or 'structural: true' "
                 f"(a hydro-free rigid body) must be set; got {n_set}"
+            )
+        if self.structural and self.displaced_volume is not None:
+            raise ValueError(
+                f"body {self.name!r}: displaced_volume is set on a structural body; a "
+                "structural (hydro-free) body has no buoyancy"
             )
         return self
 

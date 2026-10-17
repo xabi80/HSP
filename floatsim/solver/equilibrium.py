@@ -50,12 +50,16 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import NDArray
 from scipy.optimize import root
 
 from floatsim.hydro.radiation import CumminsLHS
+
+if TYPE_CHECKING:
+    from floatsim.bodies.joints import JointSet
 
 _StateForce = Callable[[float, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]
 
@@ -185,5 +189,152 @@ def solve_static_equilibrium(
         xi_eq=xi_eq,
         residual_norm=residual_norm,
         iterations=iterations,
+        converged=converged,
+    )
+
+
+@dataclass(frozen=True)
+class ConstrainedEquilibriumResult:
+    """Outcome of a joint-constrained static-equilibrium solve
+    (docs/weight-preload-plan.md §2.2).
+
+    Attributes
+    ----------
+    xi_eq
+        Generalized position at equilibrium, length ``6N``.
+    lam_eq
+        Joint multipliers at equilibrium, length ``m``: the physical force on each
+        joint's body A (N on translational rows, N·m on rotational rows), in the M9
+        convention where at rest ``F + Gᵀ λ = C ξ`` (docs/m9-joints-plan.md,
+        λ-units derivation).
+    residual_norm
+        ``inf``-norm of the stacked residual: N / N·m on the balance rows, m / rad
+        on the constraint rows.
+    iterations
+        Residual evaluations reported by ``scipy.optimize.root``.
+    converged
+        ``residual_norm <= tol``: judged on the residual itself, not on scipy's flag
+        (tracker STATIC-SOLVE-FALSE-CONVERGENCE).
+    """
+
+    xi_eq: NDArray[np.float64]
+    lam_eq: NDArray[np.float64]
+    residual_norm: float
+    iterations: int
+    converged: bool
+
+
+def solve_constrained_static_equilibrium(
+    *,
+    lhs: CumminsLHS,
+    constraints: JointSet,
+    state_force: _StateForce | None = None,
+    xi0: NDArray[np.floating] | None = None,
+    tol: float = 1.0e-6,
+    regularization: float | None = None,
+    allow_failure: bool = False,
+) -> ConstrainedEquilibriumResult:
+    """Solve the joint-constrained static equilibrium (ARCHITECTURE.md §9.4;
+    docs/weight-preload-plan.md §2.2)::
+
+        C ξ - G(ξ)ᵀ λ = F_state(0, ξ, 0)
+        φ(ξ) = 0
+
+    ``F_state`` carries the static loads (the weight-preload vector that
+    ``build_system`` composes into the state force) and any state-dependent
+    connector or mooring force at rest. ``G`` and ``φ`` are the M9 joint
+    Jacobian and residual (:class:`floatsim.bodies.joints.JointSet`); ``λ`` is
+    the physical joint force on each joint's body A.
+
+    Structural bodies have no ``C``: the joints fix their position. Rigid-body
+    DOFs with no restoring at all (the unmoored surge, sway and yaw of the whole
+    assembly) are kept well-posed by the same small diagonal regularisation
+    ``lambda_reg * I`` as :func:`solve_static_equilibrium`.
+
+    Parameters
+    ----------
+    lhs
+        Assembled :class:`CumminsLHS`; only ``C`` is used.
+    constraints
+        The deck's joint set (``n_dof`` must match ``lhs``).
+    state_force
+        State-dependent force closure, as in :func:`solve_static_equilibrium`.
+    xi0
+        Initial guess for ``ξ``, length ``6N`` (default zeros); ``λ`` starts at zero.
+    tol
+        Convergence threshold on the residual ``inf``-norm.
+    regularization
+        Diagonal regularisation on ``C`` (default ``1e-8 * max|diag(C)|``, or
+        ``1e-3`` if ``C`` is zero throughout).
+    allow_failure
+        Return a non-converged result instead of raising.
+
+    Returns
+    -------
+    ConstrainedEquilibriumResult
+
+    Raises
+    ------
+    ValueError
+        On shape mismatches or a negative ``regularization``.
+    RuntimeError
+        If the residual stays above ``tol`` and ``allow_failure`` is ``False``.
+    """
+    n_dof = int(lhs.C.shape[0])
+    if constraints.n_dof != n_dof:
+        raise ValueError(f"constraints have n_dof = {constraints.n_dof}; lhs has {n_dof}")
+    m = constraints.n_constraints
+    if xi0 is None:
+        xi_init = np.zeros(n_dof, dtype=np.float64)
+    else:
+        xi_init = np.asarray(xi0, dtype=np.float64)
+        if xi_init.shape != (n_dof,):
+            raise ValueError(f"xi0 must have shape ({n_dof},); got {xi_init.shape}")
+    C = np.asarray(lhs.C, dtype=np.float64)
+    if regularization is None:
+        max_c_diag = float(np.max(np.abs(np.diag(C))))
+        lambda_reg = 1.0e-8 * max_c_diag if max_c_diag > 0.0 else 1.0e-3
+    else:
+        if regularization < 0.0:
+            raise ValueError(f"regularization must be non-negative; got {regularization}")
+        lambda_reg = float(regularization)
+    zero_vel = np.zeros(n_dof, dtype=np.float64)
+    c_reg = C + lambda_reg * np.eye(n_dof)
+
+    def residual(z: NDArray[np.float64]) -> NDArray[np.float64]:
+        xi, lam = z[:n_dof], z[n_dof:]
+        f_state = (
+            state_force(0.0, xi, zero_vel)
+            if state_force is not None
+            else np.zeros(n_dof, dtype=np.float64)
+        )
+        balance = c_reg @ xi - constraints.jacobian(xi).T @ lam - f_state
+        return np.asarray(np.concatenate([balance, constraints.phi(xi)]), dtype=np.float64)
+
+    def jacobian(z: NDArray[np.float64]) -> NDArray[np.float64]:
+        # Bordered KKT matrix; the geometric (dGᵀλ/dξ) and state-force terms are
+        # left to the solver's quasi-Newton updates.
+        g = constraints.jacobian(z[:n_dof])
+        jac = np.zeros((n_dof + m, n_dof + m), dtype=np.float64)
+        jac[:n_dof, :n_dof] = c_reg
+        jac[:n_dof, n_dof:] = -g.T
+        jac[n_dof:, :n_dof] = g
+        return jac
+
+    z0 = np.concatenate([xi_init, np.zeros(m, dtype=np.float64)])
+    sol = root(residual, z0, jac=jacobian, method="hybr", tol=tol)
+    z = np.asarray(sol.x, dtype=np.float64)
+    residual_norm = float(np.max(np.abs(residual(z))))
+    converged = residual_norm <= tol
+    if not converged and not allow_failure:
+        raise RuntimeError(
+            f"constrained static equilibrium failed to converge: message={sol.message!r}, "
+            f"residual_inf_norm={residual_norm:.3e}"
+        )
+    return ConstrainedEquilibriumResult(
+        xi_eq=z[:n_dof],
+        lam_eq=z[n_dof:],
+        residual_norm=residual_norm,
+        iterations=int(getattr(sol, "nfev", -1)),
         converged=converged,
     )

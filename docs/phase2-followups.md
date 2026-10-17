@@ -2330,6 +2330,44 @@ spans the shift either way.
 
 ---
 
+### WEIGHT-PRELOAD-UNWIRED — no weight or buoyancy vector; joints carry no static preload
+
+**Mechanism.** ARCHITECTURE.md §9.4 specifies the static equilibrium as
+`F_gravity + F_buoyancy + F_moor = 0`. The implementation solves `C ξ = F_state(0, ξ, 0)`, with
+no gravity or buoyancy vector and without the joints. Every model is therefore built as if each
+hydro body floated freely at its BEM draft and every structural body were weightless in statics.
+The joints carry no static preload, so the geometric stiffness of that preload is missing:
+- the `−P L` of a load on a buoy's pin, P the pin load and L the pin height above the CoG;
+- the `−m g h` of a raised mass.
+
+**Audit reference.** `floatsim/solver/equilibrium.py`, `floatsim/driver.py` (`build_system`);
+`docs/m9-joints-plan.md` finding ME (the geometric stiffness lives in `G`'s configuration
+dependence and needs the preload to act).
+
+**Why latent / visibility.** Invisible to every gate that loads its joints only dynamically. M9's
+hinge gate supplies gravity as an external force, which is why it swings. It surfaced in
+`studies/payload-stability` (2026-10-16) as a buoy-rocking period:
+- 2.81 vs 3.10 s on the unloaded flume platform;
+- 2.86 vs ~4.3 s with a payload on it.
+
+**Scope.** `docs/weight-preload-plan.md`.
+- `simulation.weight_preload` (opt-in) and `Body.displaced_volume` (default `m/ρ`).
+- The static-load vector, the joint-constrained static solve and its multipliers.
+- The load carried in the dynamics.
+- `K_geo` for the modal tools and the restoring-PSD gate.
+- Gates A (analytic pinned float), B (byte-identity when off) and C (flume cluster against the
+  payload study's statics).
+
+**Estimated effort.** ~1 week across 3 PRs.
+
+**Blocks.** Articulated dynamics with structural mass or payloads: buoy rocking, gimbal angles.
+
+**Status.** In progress (branch `fix-weight-preload`). Surfaced 2026-10-17.
+- PR1 (statics + dynamics, Gates A/B/C) in review.
+- K_geo / PSD gate and the study re-runs to follow.
+
+---
+
 ## Resolved entries
 
 *(none yet)*
