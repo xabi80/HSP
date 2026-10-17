@@ -22,6 +22,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import scipy.linalg as sla
+from scipy.spatial.transform import Rotation
 
 from floatsim.driver import build_system
 from floatsim.hydro.readers.capytaine import read_capytaine
@@ -157,3 +159,43 @@ def test_preloaded_cluster_stays_at_rest() -> None:
         projection_interval=1,
     )
     assert float(np.max(np.abs(r.xi - s.xi0))) < 1e-8
+
+
+def _closed_form_kgeo(s, dk: Deck) -> np.ndarray:  # type: ignore[no-untyped-def]
+    """Per-load closed form (the payload study's estimate): each joint force F on body A at the
+    arm a adds (a . F) I - (a F^T + F a^T) / 2 to A's rotations, and -F at its own arm on B.
+    The arms are rotated by each body's equilibrium rotation, as G(xi) does."""
+
+    def arm(body: int, attach: list[float]) -> np.ndarray:
+        rv = s.xi0[6 * body + 3 : 6 * body + 6]
+        return Rotation.from_rotvec(rv).apply(np.asarray(attach, dtype=float))
+
+    n = s.lhs.n_dof
+    k = np.zeros((n, n))
+    idx = {b.name: i for i, b in enumerate(dk.bodies)}
+
+    def add(body: int, a: np.ndarray, f: np.ndarray) -> None:
+        k[6 * body + 3 : 6 * body + 6, 6 * body + 3 : 6 * body + 6] += (a @ f) * np.eye(3) - 0.5 * (
+            np.outer(a, f) + np.outer(f, a)
+        )
+
+    for j, jt in enumerate(dk.joints):
+        f = s.lam0[4 * j : 4 * j + 3]
+        add(idx[jt.body_a], arm(idx[jt.body_a], jt.attach_a_body), f)
+        add(idx[jt.body_b], arm(idx[jt.body_b], jt.attach_b_body), -f)
+    return k
+
+
+def test_kgeo_matches_the_closed_form_on_the_feasible_subspace() -> None:
+    """Two routes to the same stiffness: FloatSim's finite difference of G(xi)^T lambda and the
+    per-load closed form. On the motions the joints allow they must agree, and be symmetric (a
+    conservative load)."""
+    dk = _deck(10.0, 0.05, preload=True)
+    s = _setup(10.0, 0.05)
+    assert s.K_geo is not None and s.constraints is not None
+    n = sla.null_space(s.constraints.jacobian(s.xi0))
+    k_fd = n.T @ s.K_geo @ n
+    k_cf = n.T @ _closed_form_kgeo(s, dk) @ n
+    scale = float(np.max(np.abs(k_cf)))
+    assert float(np.max(np.abs(k_fd - k_cf))) < 1e-6 * scale
+    assert float(np.max(np.abs(k_fd - k_fd.T))) < 1e-6 * scale

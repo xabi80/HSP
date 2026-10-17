@@ -114,6 +114,11 @@ _EQUILIBRIUM_TOL_N: Final[float] = 1.0
 # reaches round-off. Units mix N / N m (balance rows) and m / rad (constraint rows).
 _PRELOAD_EQUILIBRIUM_TOL: Final[float] = 1.0e-8
 
+# Central-difference step for the preload's geometric stiffness (plan §2.4), m and rad. G(xi) is
+# smooth in xi (rotated arms), so the truncation error is O(h^2) ~ 1e-12 and the round-off
+# ~ |lambda| eps / h ~ 1e-8 relative for joint forces up to ~1e2 N.
+_KGEO_FD_STEP: Final[float] = 1.0e-6
+
 # Restoring-matrix PSD gate (M11b PR8, PLATFORM-HYDROSTATIC-C-INDEFINITE).
 # The assembled restoring matrix C must be positive semi-definite on the
 # constraint-FEASIBLE subspace (null(G)) -- free rigid modes legitimately sit
@@ -181,6 +186,13 @@ class SimulationSetup:
     """Joint multipliers at the static equilibrium: the joints' static
     preload, the physical force on each joint's body A (M9 sign convention),
     when the weight preload is on and the deck has joints, else ``None``."""
+    K_geo: NDArray[np.float64] | None = None
+    """The preload's geometric stiffness ``-d(G(xi)^T lam0)/dxi`` at ``xi0``
+    (docs/weight-preload-plan.md §2.4), with ``lam0``; else ``None``. The time
+    domain applies it through ``G``'s configuration dependence on its own; this
+    matrix is for tools that work with matrices: the modal stiffness is
+    ``lhs.C + K_geo`` on the joints' feasible subspace. At a static equilibrium
+    each body's net moment is zero, so ``K_geo`` is symmetric to round-off."""
 
 
 # ---------------------------------------------------------------------------
@@ -629,7 +641,11 @@ def _static_force(deck: Deck) -> NDArray[np.float64] | None:
 
 
 def _feasible_restoring_eigvals(
-    lhs: CumminsLHS, constraints: JointSet | None
+    lhs: CumminsLHS,
+    constraints: JointSet | None,
+    *,
+    extra_stiffness: NDArray[np.float64] | None = None,
+    xi: NDArray[np.float64] | None = None,
 ) -> NDArray[np.float64]:
     """Generalized eigenvalues ``omega^2`` of the restoring problem
     ``C x = omega^2 (M+A_inf) x`` restricted to the constraint-feasible
@@ -641,12 +657,19 @@ def _feasible_restoring_eigvals(
     carries the rigid mass), so the symmetric-definite reduction via its
     Cholesky factor is well-posed and the eigenvalues inherit the inertia
     (sign) of ``C`` on the subspace (Sylvester).
+
+    ``extra_stiffness`` is added to ``C`` (the weight preload's ``K_geo``) and
+    ``xi`` is where ``G`` is evaluated (default the reference, ``xi = 0``).
     """
     n_dof = lhs.n_dof
-    C = 0.5 * (np.asarray(lhs.C) + np.asarray(lhs.C).T)
+    c_total = np.asarray(lhs.C, dtype=np.float64)
+    if extra_stiffness is not None:
+        c_total = c_total + np.asarray(extra_stiffness, dtype=np.float64)
+    C = 0.5 * (c_total + c_total.T)
     M = 0.5 * (np.asarray(lhs.M_plus_Ainf) + np.asarray(lhs.M_plus_Ainf).T)
     if constraints is not None:
-        g = np.asarray(constraints.jacobian(np.zeros(n_dof, dtype=np.float64)))
+        x_g = np.zeros(n_dof, dtype=np.float64) if xi is None else np.asarray(xi, dtype=np.float64)
+        g = np.asarray(constraints.jacobian(x_g))
         # Null space of G from the SVD: right-singular vectors past the rank.
         _u, s, vh = np.linalg.svd(g)
         rank_tol = max(g.shape) * np.finfo(np.float64).eps * (s[0] if s.size else 0.0)
@@ -690,6 +713,61 @@ def _gate_restoring_psd(lhs: CumminsLHS, constraints: JointSet | None) -> None:
             "rotation_center = CoG, which injects a buoyancy/CoB rotational coupling "
             "that the gravity + reference-injection path does not cancel). Inspect the "
             "BEM database's stored hydrostatic_stiffness against reference_single."
+        )
+
+
+def _preload_geometric_stiffness(
+    constraints: JointSet, xi_eq: NDArray[np.float64], lam_eq: NDArray[np.float64]
+) -> NDArray[np.float64]:
+    """``K_geo = -d(G(xi)^T lam_eq)/dxi`` at ``xi_eq`` by central differences
+    (docs/weight-preload-plan.md §2.4).
+
+    The static joint forces ``lam_eq`` turn with their attachment arms as the
+    bodies rotate; this is the stiffness that rotation contributes, the term the
+    time domain gets from ``G``'s configuration dependence (m9-joints-plan.md
+    finding ME). For a force ``F`` on a body at the arm ``a`` it is
+    ``(a . F) I - a F^T`` on that body's rotations: the ``-P L`` of a load on a
+    pin above a CoG.
+    """
+    n_dof = constraints.n_dof
+    k_geo = np.zeros((n_dof, n_dof), dtype=np.float64)
+    h = _KGEO_FD_STEP
+    for k in range(n_dof):
+        dx = np.zeros(n_dof, dtype=np.float64)
+        dx[k] = h
+        f_plus = constraints.jacobian(xi_eq + dx).T @ lam_eq
+        f_minus = constraints.jacobian(xi_eq - dx).T @ lam_eq
+        k_geo[:, k] = -(f_plus - f_minus) / (2.0 * h)
+    return k_geo
+
+
+def _gate_preloaded_restoring(
+    lhs: CumminsLHS,
+    constraints: JointSet,
+    k_geo: NDArray[np.float64],
+    xi_eq: NDArray[np.float64],
+) -> None:
+    """Fail the build when the weight preload leaves a negative-stiffness mode:
+    ``C + K_geo`` indefinite on the feasible subspace at the preloaded equilibrium
+    (docs/weight-preload-plan.md §2.4). A load past its stability limit (e.g. a
+    pin load with ``P L > C55``, or a raised mass past its tipping height)
+    diverges under any dynamics, as an indefinite ``C`` does; same tolerance as
+    :func:`_gate_restoring_psd`."""
+    w = _feasible_restoring_eigvals(lhs, constraints, extra_stiffness=k_geo, xi=xi_eq)
+    if w.size == 0:
+        return
+    scale = max(1.0, float(np.max(np.abs(w))))
+    tol = -_RESTORING_PSD_RTOL * scale
+    w_min = float(np.min(w))
+    if w_min < tol:
+        n_neg = int((w < tol).sum())
+        raise ValueError(
+            "weight preload: the preloaded restoring C + K_geo is indefinite on the "
+            f"constraint-feasible subspace: {n_neg} negative generalized eigenvalue(s) "
+            f"omega^2, min = {w_min:.4e} < {tol:.2e}. The static loads are past a "
+            "stability limit (a joint preload tipping a body by more than its restoring, "
+            "e.g. P L > C55 for a load P on a pin L above a buoy's CoG); the model would "
+            "diverge under any dynamics. See docs/weight-preload-plan.md §2.4."
         )
 
 
@@ -1161,6 +1239,7 @@ def build_system(
     )
 
     lam0: NDArray[np.float64] | None = None
+    k_geo: NDArray[np.float64] | None = None
     if solve_equilibrium and static_force is not None and constraints is not None:
         # §2.2: the joints carry the static loads, so the solve must see them.
         ceq = solve_constrained_static_equilibrium(
@@ -1171,6 +1250,8 @@ def build_system(
             tol=_PRELOAD_EQUILIBRIUM_TOL,
         )
         xi0, lam0 = ceq.xi_eq, ceq.lam_eq
+        k_geo = _preload_geometric_stiffness(constraints, xi0, lam0)
+        _gate_preloaded_restoring(lhs_global, constraints, k_geo, xi0)
     elif solve_equilibrium:
         eq = solve_static_equilibrium(
             lhs=lhs_global,
@@ -1192,4 +1273,5 @@ def build_system(
         constraints=constraints,
         static_force=static_force,
         lam0=lam0,
+        K_geo=k_geo,
     )

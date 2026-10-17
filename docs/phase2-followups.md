@@ -2363,8 +2363,9 @@ hinge gate supplies gravity as an external force, which is why it swings. It sur
 **Blocks.** Articulated dynamics with structural mass or payloads: buoy rocking, gimbal angles.
 
 **Status.** In progress (branch `fix-weight-preload`). Surfaced 2026-10-17.
-- PR1 (statics + dynamics, Gates A/B/C) in review.
-- K_geo / PSD gate and the study re-runs to follow.
+- PR1 (statics + dynamics, Gates A/B/C): `05128b7`.
+- PR2 (`K_geo` and the preloaded restoring gate): done.
+- The study re-runs follow.
 
 ---
 

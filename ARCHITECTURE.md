@@ -385,6 +385,10 @@ These four were open during architecture review and are now locked for Phase 1.
   §2.1 enter, and a deck with joints solves the joint-constrained equilibrium
   `C ξ − G(ξ)ᵀ λ = F_state(0, ξ, 0)`, `φ(ξ) = 0`. `λ` is the joints' static preload (the M9
   sign convention: the physical force on each joint's body A).
+- **Preload stiffness.** The setup also returns `K_geo = −∂(G(ξ)ᵀ λ_eq)/∂ξ`, the preload's
+  geometric stiffness, for matrix tools: the modal stiffness is `C + K_geo` on the joints'
+  feasible subspace. A restoring gate on `C + K_geo` rejects static loads past a stability
+  limit at build time.
 - Time integration begins from `ξ_eq` with zero velocity.
 - Outputs equilibrium offset and mooring pretensions to the log for sanity checking.
 - Deck override `skip_static_equilibrium: true` available for debugging / specific test cases only.

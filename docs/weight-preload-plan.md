@@ -1,6 +1,6 @@
 # Weight preload: static loads, the joint-constrained static solve and their geometric stiffness
 
-**Status: PLAN, decisions locked (§6), PR1 in progress.** Written 2026-10-17, branch
+**Status: decisions locked (§6); PR1 and PR2 done, PR3 (studies) next.** Written 2026-10-17, branch
 `fix-weight-preload`. Tracker entry `WEIGHT-PRELOAD-UNWIRED` (docs/phase2-followups.md).
 
 ## 1. The gap
@@ -156,8 +156,17 @@ equilibrium.
      - The residual scales as θ0², the body rising against C33: measured 3.53–3.63 θ0² against
        Duffing's derived 3.58 θ0², now pinned by its own test.
 2. **PR2, modal stiffness.**
-   - `K_geo` on `SimulationSetup` and in the PSD gate.
-   - Tests: the Gate C modal period; `C + K_geo` against Gate A's analytic stiffness.
+   - `K_geo` on `SimulationSetup`, by central differences of `G(ξ)ᵀλ_eq`.
+   - A second restoring gate on `C + K_geo` at the preloaded equilibrium.
+   - Tests:
+     - `tests/integration/test_weight_preload_kgeo.py`: the pinned float's `K_geo` is
+       `diag(−P L, −P L, 0)`; `C + K_geo` gives the closed-form ω² to 1e-6; P = 50 N
+       (`P L > C55`) fails at build time;
+     - `tests/validation/test_weight_preload_cluster.py`: on the flume cluster, the
+       finite-difference `K_geo` equals the per-load closed form on the feasible subspace.
+   - **Measured.** `K_geo` is symmetric to round-off on the whole matrix (max|K − Kᵀ| ≤ 1.4e-7
+     against entries up to 55 N·m/rad). At a static equilibrium each body's net moment is zero,
+     and the per-load antisymmetric parts sum to exactly that moment.
 3. **PR3, studies.**
    - Re-run the payload-dynamics gimbal results with the preload.
    - Re-measure the record flume platform's rocking period.
