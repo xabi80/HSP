@@ -267,3 +267,120 @@ python platform_envelope_plot.py
 python platform_figures.py                # pictures and animations, ~5 min
 python make_platform_ppt.py               # the deck
 ```
+
+## Dynamics in waves with a mass-shift tilt (2026-10-16)
+
+**Question (Xabier):** a few wave periods for 5° and 10° of tilt caused by a mass shift, to see
+the effect on the dynamics.
+
+### Decisions (Xabier)
+
+| Item | Choice |
+|---|---|
+| Method | FloatSim, with the BEM re-run at each tilted equilibrium |
+| Articles | Both |
+| Mass shift | 50 kg on the platform deck and 12.5 kg (50 / 4) on the cluster hub, shifted along the waves to 5° and 10°; compared with the same mass centred (level) and the unloaded article |
+| Waves | Regular, H = 0.1 m, along the shift, T = 1.5 / 2.0 / 2.35 / 2.65 / 3.5 / 5.0 s |
+
+### Method
+
+1. **`tilted_cases.py`** finds each case's static equilibrium with the large-angle statics, on
+   the 12-panel table the coupled BEM uses. It gives each body's position, each buoy's draft and
+   pin load, and the payload offset for exactly 5° and 10°:
+   - platform: 0.32 m and 0.64 m;
+   - cluster: 46 mm and 92 mm.
+2. **`tilted_bem.py`** runs the coupled Capytaine BEM at each case's geometry. Every buoy has its
+   own position and draft and its own hydrostatic matrix; the records tile one design-draft buoy.
+   Otherwise it follows the records: 12 panels round, deep water, 48 frequencies, PSD
+   projection. Run time is ~30 min per platform case and ~0.5 min per cluster case.
+3. **`tilted_dynamics.py`** runs FloatSim's own articulated model, rebuilt about each equilibrium.
+   - Buoys sit at their drafts and still hang vertically; the hubs are level; the deck or hub is
+     tilted.
+   - The payload is folded into the deck or hub body: mass, CG and full inertia tensor.
+   - The joints attach at the equilibrium pins and hub centres.
+   - Each spar's drag runs up to its own waterline. Drag acts relative to the wave's orbital
+     velocity.
+   - FloatSim's static solve has no weight term, so it keeps this geometry as the equilibrium.
+     The linear dynamics about it hold for small wave motions, whatever the static tilt.
+   - A very soft horizontal hold on the deck or hub stops the free article drifting (~0.5 m per
+     run otherwise), which would put FloatSim's drag, which follows the body, out of phase with
+     the BEM excitation, which stays at the mean position. The hold's surge period is ~45 s, and
+     it changes the wave response by ~1 % at 5 s and less below.
+   - Each run is 90 s with a 15 s ramp; amplitudes are fitted over the last 30 s.
+   - The script also gives natural periods (`mooring_verify` mode tracking), with and without the
+     pin-load tipping. The tipping is an estimate added for the periods only, not to the time
+     domain: each constant vertical load F at an arm a from a body's reference adds
+     (a·F) I − ½(a Fᵀ + F aᵀ) to the body's rotations.
+   - Run time is ~25 min per cluster case and ~60 min per platform case (4 in parallel).
+4. **`tilted_dynamics_plot.py`** draws `tilted_dynamics.png`.
+
+### Results
+
+![dynamics](tilted_dynamics.png)
+
+| Case | Offset | Heave T | Deck / hub pitch T | Buoys' rocking T: FloatSim / + pin tipping | At 2.65 s: heave, pitch | Smallest pin freeboard: still water → in waves |
+|---|---|---|---|---|---|---|
+| **Cluster**, unloaded | 0 | 2.59 s | 2.60 s | 2.79 / 2.95 s | 73 mm, 2.49° | 691 → 588 mm |
+| 12.5 kg centred (level) | 0 | 2.71 s | 2.60 s | 2.86 / 4.22 s | 67 mm, 2.16° | 526 → 436 mm |
+| 12.5 kg, 5° | 46 mm | 2.71 s | 2.59 s | 2.86 / 4.22 s | 67 mm, 2.89° | 500 → 410 mm |
+| 12.5 kg, 10° | 92 mm | 2.72 s | 2.59 s | 2.85 / 4.21 s | 66 mm, 3.69° | 475 → 383 mm |
+| **Platform**, unloaded | 0 | 2.60 s | 2.61 s | 2.81 / 3.10 s | 65 mm, 2.22° | 671 → 573 mm |
+| 50 kg centred (level) | 0 | 2.72 s | 2.60 s | 2.86 / 4.38 s | 61 mm, 1.26° | 506 → 414 mm |
+| 50 kg, 5° | 0.32 m | 2.74 s | 2.60 s | 2.85 / 4.36 s | 58 mm, 1.89° | 437 → 354 mm |
+| 50 kg, 10° | 0.64 m | 2.78 s | 2.60 s | 2.85 / 4.30 s | 53 mm, 2.45° | 367 → 285 mm |
+
+The smallest freeboard in waves comes at T = 2.65 s in every case.
+
+- **The payload's mass, not the tilt, moves the heave period:** +0.12 s for both articles.
+  Below resonance, heave is a little smaller (e.g. 46 → 36 mm for the cluster at 2.35 s).
+- **The tilt couples heave into pitch near resonance.**
+  - At 2.65 s, the hub pitch grows from 2.2° (level) to 2.9° (5°) and 3.7° (10°) on the
+    cluster. The deck pitch grows from 1.3° to 1.9° and 2.5° on the platform, whose heave drops
+    from 61 to 53 mm.
+  - Away from resonance (1.5 s and 5 s) the tilt changes almost nothing.
+  - The deck / hub pitch mode is the clusters (buoys) heaving against each other, so its period
+    stays at ~2.6 s.
+- **The tilt's main effect on the pins is the still-water freeboard it takes away.**
+  - Waves take ~80–100 mm more at the worst period (2.65 s): the pins move up to ~80 mm relative
+    to the water, 1.6× the wave amplitude.
+  - At 10° the platform's lowest pin keeps 285 mm and the cluster's 383 mm in H = 0.1 m waves,
+    far from awash.
+  - Linearly, a pin would reach the water at 10° only with H ≈ 0.45 m (platform) or 0.57 m
+    (cluster) near 2.65 s. This is indicative: drag is not linear.
+- **The buoys' rocking on their gimbals is NOT reliable from FloatSim when loaded.**
+  - FloatSim has no weight term, so it leaves out the pin load tipping each buoy (−P L).
+  - At 10° that load reaches 73 / 117 N·m/rad of the loaded cluster buoy's C55, and 106 / 141
+    on the platform.
+  - With it, the buoys' in-phase rocking mode moves from ~2.85 s to **~4.2–4.4 s** in every
+    loaded case, against 2.95–3.10 s unloaded.
+  - So FloatSim's gimbal angles (7–8° near 2.65 s) put the resonance in the wrong place: the
+    real rocking peaks in the 3.5–5 s waves.
+  - Heave and deck / hub pitch feel this term less. Their periods move by up to 0.08 s in every
+    case but the platform at 10°, where the coupled heave–pitch pair moves from 2.78 / 2.60 s to
+    2.64 / 2.86 s. So the platform's tilted resonance region is also only approximate.
+  - The term is present unloaded too (the hubs' and deck's weight): it lengthens the platform's
+    rocking mode from 2.81 to 3.10 s, which applies to the records' flume runs as well.
+- **The six periods are coarse around resonance** (2.35 / 2.65 / 3.5 s). The peaks between them
+  are not resolved.
+
+### Limits of this analysis (dynamics)
+
+- **FloatSim's model:** linear, about each equilibrium, with no weight term (above). It uses the
+  12-panel BEM; 36 panels would lengthen the periods by ~0.05 s (flume-mooring DESIGN-BASIS).
+- **Regular waves along the shift only.** A shift across the waves would couple into roll and
+  sway instead.
+- **Free-floating with a soft hold, not the flume mooring.**
+
+### Reproduce (dynamics)
+
+```
+python tilted_cases.py
+python tilted_bem.py cluster                   # ~2 min
+python tilted_bem.py platform <case>           # ~30 min each: unloaded, centred, tilt5, tilt10
+python tilted_dynamics.py <article> <case>     # ~25 min (cluster) / ~60 min (platform) each
+python tilted_dynamics.py summary
+python tilted_dynamics_plot.py
+```
+
+The BEM databases (`tilted_bem/`, ~60 MB) and the per-case outputs (`tilted_dynamics/`) are
+regenerated by these runs and not committed.
