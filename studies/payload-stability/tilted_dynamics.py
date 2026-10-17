@@ -30,9 +30,17 @@ Each case is FloatSim's own articulated model, built about the case's static equ
 FloatSim's linear dynamics about a tilted equilibrium are valid for small wave motions, whatever
 the static tilt.
 
-Not in FloatSim's linear model (no weight term), reported alongside, not added:
-- each pin load's tipping of its buoy, -P L (tilted_cases.json gives P L against the buoy's C55);
-- the deck / payload weight's m g h on the tilt.
+Static loads (2026-10-17). Without ``--preload``, FloatSim's model has no weight term. It then
+leaves out each pin load's tipping of its buoy (-P L; tilted_cases.json gives P L against the
+buoy's C55) and the deck / payload weight's m g h. ``periods_pin_tipping`` estimates their
+effect on the natural periods. With ``--preload`` (FloatSim's opt-in weight preload,
+docs/weight-preload-plan.md):
+- each buoy gets ``displaced_volume`` = its weight plus its pin load from the statics;
+- the structural hubs, deck and payload carry their weight;
+- FloatSim's joint-constrained static solve reproduces the statics geometry, reported as
+  ``xi_eq_max_m``;
+- the joints carry the preload in the dynamics, and ``periods_preload`` uses FloatSim's own
+  ``C + K_geo``.
 
 Per run, from the last 30 s:
 - amplitudes of the deck / hub centre (heave, surge, pitch);
@@ -42,7 +50,10 @@ Per case: the natural periods of heave, deck / hub pitch and the buoys' in-phase
 (mooring_verify mode tracking).
 
 Writes tilted_dynamics/<article>_<case>.json; `summary` collects them into tilted_dynamics.json.
-Run: python tilted_dynamics.py <article> <case>   |   python tilted_dynamics.py summary
+With --preload: tilted_dynamics_preload/ and tilted_dynamics_preload.json.
+Run: python tilted_dynamics.py <article> <case> [--preload]
+     python tilted_dynamics.py add-period <article> <case> <T_s> [--preload]
+     python tilted_dynamics.py summary [--preload]
 """
 
 # ruff: noqa: E402, E702  -- platform environment and sys.path set before the record imports;
@@ -91,6 +102,7 @@ PERIODS_S = (1.5, 2.0, 2.35, 2.65, 3.5, 5.0)
 WAVE_H = 0.1
 DT, DURATION, RAMP_S, FIT_S = 0.01, 90.0, 15.0, 30.0       # articulated_wall.run_rao settings
 OUT = HERE / "tilted_dynamics"
+OUT_PRELOAD = HERE / "tilted_dynamics_preload"   # --preload: FloatSim's weight preload on
 HOLD_N_PER_M = {"cluster": 2.0, "platform": 8.0}   # soft horizontal hold, surge period ~45 s
 BEM = HERE / "tilted_bem"
 
@@ -99,16 +111,19 @@ def _inertia(J: list[list[float]]) -> Inertia:
     return Inertia(Ixx=J[0][0], Iyy=J[1][1], Izz=J[2][2], Ixy=J[0][1], Ixz=J[0][2], Iyz=J[1][2])
 
 
-def _buoy(k: int, r: dict) -> Body:
+def _buoy(k: int, r: dict, preload: bool) -> Body:
     spar = distributed_cylinder_drag(z_bottom=aw._SPAR_BOT_B, z_top=-r["z_cog"],  # own waterline
                                      diameter=aw.SPAR_D, cd=aw.SPAR_CD, n_segments=10)
     plate = PlateMember(type="plate", center=[0.0, 0.0, aw._PLATE_B], normal=[0.0, 0.0, 1.0],
                         radius=aw.PLATE_R, thickness=aw.PLATE_T, Cd_n=aw.PLATE_CDN,
                         Cd_t=aw.PLATE_CDT)
+    # With the preload, the buoy's buoyancy at its (sunk) BEM draft exceeds its weight by its pin
+    # load from the statics, so FloatSim's static solve sees the same loads the statics balanced.
+    vol = (aw.M_BUOY * aw.G + r["pin_load_N"]) / (aw.RHO * aw.G) if preload else None
     return Body(name=f"buoy{k + 1}", reference_point=[r["x"], r["y"], r["z_cog"]], mass=aw.M_BUOY,
                 inertia=Inertia(Ixx=aw.IXX, Iyy=aw.IYY, Izz=aw.IZZ),
                 hydro_body_label=f"buoy{k + 1}", initial_conditions=InitialConditions(),
-                drag_elements=[*spar, plate])
+                drag_elements=[*spar, plate], displaced_volume=vol)
 
 
 def _gimbal(k: int, r: dict, owner: str, owner_ref: np.ndarray) -> YawLockedJoint:
@@ -118,14 +133,14 @@ def _gimbal(k: int, r: dict, owner: str, owner_ref: np.ndarray) -> YawLockedJoin
                           attach_b_body=(pin - owner_ref).tolist(), axis=[0, 0, 1.0])
 
 
-def make_deck(case: dict) -> tuple[Deck, dict]:
+def make_deck(case: dict, preload: bool = False) -> tuple[Deck, dict]:
     """FloatSim deck at the case's equilibrium, plus where to read the results: the top body
     (hub or deck), its reference centre, each pin's owner body and offset."""
     top = case["top"]; cg = np.asarray(top["cg"])
     bodies: list = []; joints: list = []; pins: list = []
     if case["article"] == "cluster":
         for k, r in enumerate(case["buoys"]):
-            bodies.append(_buoy(k, r)); joints.append(_gimbal(k, r, "hub", cg))
+            bodies.append(_buoy(k, r, preload)); joints.append(_gimbal(k, r, "hub", cg))
             pins.append((4, np.asarray(r["pin"]) - cg, np.asarray(r["pin"])))
         bodies.append(Body(name="hub", reference_point=cg.tolist(), mass=top["mass_kg"],
                            inertia=_inertia(top["inertia"]), structural=True))
@@ -137,7 +152,8 @@ def make_deck(case: dict) -> tuple[Deck, dict]:
             hc = np.asarray(h["centre"])
             for b in range(4):
                 k = 4 * c + b; r = case["buoys"][k]
-                bodies.append(_buoy(k, r)); joints.append(_gimbal(k, r, f"hub{c + 1}", hc))
+                bodies.append(_buoy(k, r, preload))
+                joints.append(_gimbal(k, r, f"hub{c + 1}", hc))
                 pins.append((5 * c + 4, np.asarray(r["pin"]) - hc, np.asarray(r["pin"])))
                 owner.append(5 * c + 4)
             bodies.append(Body(name=f"hub{c + 1}", reference_point=hc.tolist(), mass=ps.M_HUB,
@@ -148,7 +164,7 @@ def make_deck(case: dict) -> tuple[Deck, dict]:
         bodies.append(Body(name="platform", reference_point=cg.tolist(), mass=top["mass_kg"],
                            inertia=_inertia(top["inertia"]), structural=True))
         centre = np.array([0.0, 0.0, ps.S_TOP + case["q"][0]])   # deck's pin-plane centre
-    dk = Deck(simulation=Simulation(duration=10.0, dt=DT),
+    dk = Deck(simulation=Simulation(duration=10.0, dt=DT, weight_preload=preload),
               environment=Environment(water_depth=200.0, water_density=aw.RHO, gravity=aw.G),
               waves=DeckWave(type="regular", height=1.0, period=10.0, heading=0.0),
               bodies=bodies, joints=joints,
@@ -255,14 +271,27 @@ def natural_periods(dk: Deck, nc: Path, top: int, K_extra: np.ndarray | None = N
 
 
 def periods(case: dict, dk: Deck, info: dict, nc: Path) -> dict:
-    """FloatSim's natural periods, and the same with the pin-load tipping added (estimate)."""
+    """FloatSim's natural periods on C alone, and with the pin-load tipping: this study's
+    estimate (geometric_stiffness) and, with the weight preload on, FloatSim's own K_geo.
+    The preloaded static solve should leave the statics geometry where it is (xi_eq_max_m)."""
     n = 6 * len(dk.bodies)
-    out = {"periods": natural_periods(dk, nc, info["top"]),
-           "periods_pin_tipping": natural_periods(dk, nc, info["top"],
-                                                  geometric_stiffness(case, info, n))}
-    for key, lab in (("periods", "FloatSim"), ("periods_pin_tipping", "+ pin-load tipping")):
-        print(f"{case['article']} {case['case']}: {lab:18s} "
-              + ", ".join(f"{k} {v['T_s']:.3f} s" for k, v in out[key].items()), flush=True)
+    out: dict = {"periods": natural_periods(dk, nc, info["top"]),
+                 "periods_pin_tipping": natural_periods(dk, nc, info["top"],
+                                                        geometric_stiffness(case, info, n))}
+    if dk.simulation.weight_preload:
+        s = build_system(dk, bem_databases={}, dt=DT, t_max_kernel=30.0, solve_equilibrium=True,
+                         shared_hydro_database=read_capytaine(nc),
+                         asymptote_check_override=aw.OVR, kernel_decay_floor_override=aw.OVR)
+        out["xi_eq_max_m"] = float(np.max(np.abs(s.xi0)))
+        out["periods_preload"] = natural_periods(dk, nc, info["top"], s.K_geo)
+    for key, lab in (("periods", "FloatSim, C"), ("periods_pin_tipping", "study estimate"),
+                     ("periods_preload", "FloatSim preload")):
+        if key in out:
+            print(f"{case['article']} {case['case']}: {lab:17s} "
+                  + ", ".join(f"{k} {v['T_s']:.3f} s" for k, v in out[key].items()), flush=True)
+    if "xi_eq_max_m" in out:
+        print(f"  preloaded static solve moved the statics geometry by {out['xi_eq_max_m']:.2e}",
+              flush=True)
     return out
 
 
@@ -272,23 +301,23 @@ def load_case(article: str, name: str) -> tuple[dict, Path]:
     return case, BEM / f"{article}_{name}_psd.nc"
 
 
-def update_periods(article: str, name: str) -> None:
+def update_periods(article: str, name: str, preload: bool = False) -> None:
     """Recompute the natural periods of a finished case into its JSON."""
     case, nc = load_case(article, name)
-    dk, info = make_deck(case)
-    p = OUT / f"{article}_{name}.json"
+    dk, info = make_deck(case, preload)
+    p = (OUT_PRELOAD if preload else OUT) / f"{article}_{name}.json"
     res = json.loads(p.read_text(encoding="utf-8"))
     res.update(periods(case, dk, info, nc))
     p.write_text(json.dumps(res, indent=1), encoding="utf-8")
 
 
-def run_case(article: str, name: str) -> None:
+def run_case(article: str, name: str, preload: bool = False) -> None:
     case, nc = load_case(article, name)
-    dk, info = make_deck(case)
+    dk, info = make_deck(case, preload)
     hdb = read_capytaine(nc)
     t0 = time.perf_counter()
     res = {"article": article, "case": name, "m_kg": case["m_kg"], "offset_m": case["offset_m"],
-           "tilt_deg": case["tilt_deg"], "wave_H_m": WAVE_H,
+           "tilt_deg": case["tilt_deg"], "wave_H_m": WAVE_H, "weight_preload": preload,
            "static_freeboard_m": [float(p[2][2]) for p in info["pins"]],
            **periods(case, dk, info, nc), "runs": []}
     for T in PERIODS_S:
@@ -299,24 +328,45 @@ def run_case(article: str, name: str) -> None:
               f"pin rel {1e3 * max(o['pin_rel_m']):6.1f} mm, "
               f"min freeboard {1e3 * o['min_freeboard_m']:5.0f} mm "
               f"({(time.perf_counter() - t0) / 60:.1f} min)", flush=True)
-    OUT.mkdir(exist_ok=True)
-    (OUT / f"{article}_{name}.json").write_text(json.dumps(res, indent=1), encoding="utf-8")
+    out = OUT_PRELOAD if preload else OUT
+    out.mkdir(exist_ok=True)
+    (out / f"{article}_{name}.json").write_text(json.dumps(res, indent=1), encoding="utf-8")
 
 
-def summary() -> None:
-    rows = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(OUT.glob("*.json"))]
-    (HERE / "tilted_dynamics.json").write_text(json.dumps(rows, indent=1), encoding="utf-8")
-    print(f"wrote tilted_dynamics.json ({len(rows)} cases)")
+def add_period(article: str, name: str, T: float, preload: bool = False) -> None:
+    """Run one more wave period for a finished case and insert it in its JSON (sorted by T),
+    e.g. at the preloaded buoys' rocking resonance between the original periods."""
+    case, nc = load_case(article, name)
+    dk, info = make_deck(case, preload)
+    p = (OUT_PRELOAD if preload else OUT) / f"{article}_{name}.json"
+    res = json.loads(p.read_text(encoding="utf-8"))
+    o = run_wave(dk, info, read_capytaine(nc), T)
+    res["runs"] = sorted([r for r in res["runs"] if abs(r["T_s"] - T) > 1e-9] + [o],
+                         key=lambda r: r["T_s"])
+    p.write_text(json.dumps(res, indent=1), encoding="utf-8")
+    print(f"{article} {name}: T {T:4.2f} s: gimbal {o['gimbal_deg_max']:5.2f} deg, "
+          f"pitch {o['pitch_deg']:5.2f} deg, min freeboard {1e3 * o['min_freeboard_m']:5.0f} mm")
+
+
+def summary(preload: bool = False) -> None:
+    out, name = (OUT_PRELOAD, "tilted_dynamics_preload") if preload else (OUT, "tilted_dynamics")
+    rows = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(out.glob("*.json"))]
+    (HERE / f"{name}.json").write_text(json.dumps(rows, indent=1), encoding="utf-8")
+    print(f"wrote {name}.json ({len(rows)} cases)")
 
 
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
-    if sys.argv[1] == "summary":
-        summary()
-    elif sys.argv[1] == "periods":
-        update_periods(sys.argv[2], sys.argv[3])
+    preload = "--preload" in sys.argv
+    args = [a for a in sys.argv[1:] if a != "--preload"]
+    if args[0] == "summary":
+        summary(preload)
+    elif args[0] == "periods":
+        update_periods(args[1], args[2], preload)
+    elif args[0] == "add-period":
+        add_period(args[1], args[2], float(args[3]), preload)
     else:
-        run_case(sys.argv[1], sys.argv[2])
+        run_case(args[0], args[1], preload)
 
 
 if __name__ == "__main__":

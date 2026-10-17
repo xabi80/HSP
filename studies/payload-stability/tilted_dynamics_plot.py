@@ -11,6 +11,8 @@ H = 0.1 m, along the shift. Columns, against the wave period:
     tipping of the buoys (P L), so on the loaded side this column is optimistic.
 
 Writes tilted_dynamics.png. Run: python tilted_dynamics_plot.py
+With --compare: tilted_dynamics_preload.png, the runs with FloatSim's weight preload
+against those without (compare()).
 """
 
 # ruff: noqa: E702  -- compact figure-assembly lines
@@ -74,5 +76,59 @@ def main() -> None:
     print("wrote tilted_dynamics.png")
 
 
+
+
+def compare() -> None:
+    """The same cases with FloatSim's weight preload (solid) against the runs without it
+    (dashed): tilted_dynamics_preload.json over tilted_dynamics.json. Dotted: the preloaded
+    natural periods, heave in (a), deck / hub pitch in (b), the buoys' in-phase rocking in (d)."""
+    new = json.loads((HERE / "tilted_dynamics_preload.json").read_text(encoding="utf-8"))
+    old = json.loads((HERE / "tilted_dynamics.json").read_text(encoding="utf-8"))
+    arts = [a for a in ROWS if any(d["article"] == a for d in new)]
+    fig, axs = plt.subplots(len(arts), 4, figsize=(19, 4.6 * len(arts)), squeeze=False)
+    for i, art in enumerate(arts):
+        for name, (col, lab, mk) in STYLE.items():
+            d = next((x for x in new if x["article"] == art and x["case"] == name), None)
+            o = next((x for x in old if x["article"] == art and x["case"] == name), None)
+            for src, kw in ((o, {"color": col, "lw": 1.0, "ls": "--", "alpha": 0.7}),
+                            (d, {"color": col, "marker": mk, "ms": 5, "lw": 1.9, "label": lab})):
+                if src is None:
+                    continue
+                T = np.array([r["T_s"] for r in src["runs"]])
+                axs[i, 0].plot(T, [1e3 * r["heave_m"] for r in src["runs"]], **kw)
+                axs[i, 1].plot(T, [r["pitch_deg"] for r in src["runs"]], **kw)
+                axs[i, 2].plot(T, [1e3 * r["min_freeboard_m"] for r in src["runs"]], **kw)
+                axs[i, 3].plot(T, [r["gimbal_deg_max"] for r in src["runs"]], **kw)
+            if d is not None:
+                p = d["periods_preload"]
+                for ax, key in ((axs[i, 0], "heave"), (axs[i, 1], "pitch"),
+                                (axs[i, 3], "buoy_tilt")):
+                    ax.axvline(p[key]["T_s"], color=col, lw=0.7, ls=":")
+                axs[i, 2].axhline(1e3 * min(d["static_freeboard_m"]), color=col, lw=0.6,
+                                  ls="-.")
+        what = "hub" if art == "cluster" else "deck"
+        axs[i, 0].set_ylabel(f"{ROWS[art]}\n\n{what} heave amplitude (mm)")
+        axs[i, 1].set_ylabel(f"{what} pitch amplitude (°)")
+        axs[i, 2].set_ylabel("smallest pin freeboard in the wave (mm)")
+        axs[i, 3].set_ylabel("largest gimbal angle (°)")
+        axs[i, 2].axhline(0.0, color="k", lw=1.0)
+        for ax in axs[i]:
+            ax.grid(alpha=0.3); ax.set_xlim(1.3, 5.2)
+        axs[i, 0].legend(fontsize=8.5)
+    for j, t in enumerate(("(a) heave of the hub / deck centre", "(b) pitch of the hub / deck",
+                           "(c) smallest pin freeboard (dash-dot: still water)",
+                           "(d) buoy rocking on its gimbal")):
+        axs[0, j].set_title(t, fontsize=10.5)
+        axs[-1, j].set_xlabel("wave period (s)")
+    fig.suptitle("Mass-shift tilt in regular waves, H = 0.1 m — FloatSim WITH its weight preload "
+                 "(solid) vs without (dashed). Dotted: preloaded natural periods.",
+                 fontsize=11.5, fontweight="bold")
+    fig.tight_layout()
+    fig.savefig(HERE / "tilted_dynamics_preload.png", dpi=125, bbox_inches="tight")
+    print("wrote tilted_dynamics_preload.png")
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+
+    compare() if "--compare" in sys.argv else main()

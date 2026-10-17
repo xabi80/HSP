@@ -347,7 +347,9 @@ The smallest freeboard in waves comes at T = 2.65 s in every case.
     far from awash.
   - Linearly, a pin would reach the water at 10° only with H ≈ 0.45 m (platform) or 0.57 m
     (cluster) near 2.65 s. This is indicative: drag is not linear.
-- **The buoys' rocking on their gimbals is NOT reliable from FloatSim when loaded.**
+- **The buoys' rocking on their gimbals is NOT reliable from FloatSim without its weight
+  preload.** Superseded by the run with it: see
+  [With FloatSim's weight preload](#with-floatsims-weight-preload-2026-10-17).
   - FloatSim has no weight term, so it leaves out the pin load tipping each buoy (−P L).
   - At 10° that load reaches 73 / 117 N·m/rad of the loaded cluster buoy's C55, and 106 / 141
     on the platform.
@@ -361,12 +363,75 @@ The smallest freeboard in waves comes at T = 2.65 s in every case.
   - The term is present unloaded too (the hubs' and deck's weight): it lengthens the platform's
     rocking mode from 2.81 to 3.10 s, which applies to the records' flume runs as well.
 - **The six periods are coarse around resonance** (2.35 / 2.65 / 3.5 s). The peaks between them
-  are not resolved.
+  are not resolved. A seventh, T = 4.2 s, was added on 2026-10-17 for the preload comparison.
+
+### With FloatSim's weight preload (2026-10-17)
+
+Option 2 of the follow-ups, "teach FloatSim the weight term", is done in FloatSim itself (main
+`05128b7`, `dd889f2`; `docs/weight-preload-plan.md`). It is opt-in, with
+`simulation.weight_preload: true` and a per-body `displaced_volume`.
+- **The static loads:** every body's weight, and each hydro body's buoyancy at its BEM draft.
+- **The statics:** a joint-constrained static solve gives the joints their static preload.
+- **The dynamics:** the preload acts through the joint Jacobian's configuration dependence.
+  `SimulationSetup.K_geo` gives its stiffness to matrix tools.
+- **Validated:** against an analytic pinned float (periods to 1e-4, and the finite-amplitude
+  correction) and against this study's statics on the flume cluster.
+
+`tilted_dynamics.py --preload` re-runs every case with it.
+- Each buoy's `displaced_volume` is its weight plus its pin load from the statics.
+- **Check 1:** FloatSim's constrained static solve leaves the statics geometry where it is, to
+  ≤ 4e-15 m in all 8 cases.
+- **Check 2:** its own `C + K_geo` natural periods equal this study's earlier estimate exactly.
+
+![preload](tilted_dynamics_preload.png)
+
+Both columns are at H = 0.1 m, without / with the preload.
+
+| Case | Buoys' rocking period | Largest gimbal angle | At 2.65 s: deck / hub pitch | At 2.65 s: heave | Smallest pin freeboard |
+|---|---|---|---|---|---|
+| **Cluster**, unloaded | 2.79 / 2.95 s | 11.7° / 8.2° (2.65 s) | 2.49 / 2.54° | 73 / 75 mm | 588 / 604 mm |
+| 12.5 kg centred | 2.86 / 4.22 s | 6.9° (2.65 s) / **12.3° (4.2 s)** | 2.16 / 2.15° | 67 / 68 mm | 436 / 444 mm |
+| 12.5 kg, 5° | 2.86 / 4.22 s | 7.2° (2.65 s) / **12.3° (4.2 s)** | 2.89 / 2.91° | 67 / 67 mm | 410 / 417 mm |
+| 12.5 kg, 10° | 2.85 / 4.21 s | 7.5° (2.65 s) / **12.6° (4.2 s)** | 3.69 / 3.80° | 66 / 66 mm | 383 / 389 mm |
+| **Platform**, unloaded | 2.81 / 3.10 s | 10.7° / 6.6° (2.65 s) | 2.22 / 2.29° | 65 / 66 mm | 573 / 588 mm |
+| 50 kg centred | 2.86 / 4.38 s | 7.2° (2.65 s) / **11.1° (4.2 s)** | 1.26 / **1.82°** | 61 / 60 mm | 414 / 424 mm |
+| 50 kg, 5° | 2.85 / 4.36 s | 7.5° (2.65 s) / **11.2° (4.2 s)** | 1.89 / **2.48°** | 58 / 56 mm | 354 / 354 mm |
+| 50 kg, 10° | 2.85 / 4.30 s | 7.9° (2.65 s) / **11.2° (4.2 s)** | 2.45 / **3.07°** | 53 / 50 mm | 285 / 282 mm |
+
+- **The payload moves the buoys' rocking resonance into the longer waves.**
+  - The pin load tipping each buoy takes away 55–75 % of its rocking stiffness (P L against
+    C55, `tilted_cases.json`). The
+    in-phase rocking mode moves from ~2.85 s (FloatSim without the preload) to 4.2–4.4 s.
+  - There, H = 0.1 m waves rock the loaded buoys **11–12.6° on their gimbals**, in every loaded
+    case, level or tilted. Without the preload FloatSim gave 0.2–0.9° at 4.2 s.
+  - The rocking peak it showed at 2.65 s (7–8°) was an artefact of the missing term; with the
+    preload it falls to 3–4.3°.
+  - 11–12.6° is past FloatSim's small-angle range (5.7°), so the size is indicative. The
+    resonance and its period are not.
+- **The tilt hardly changes the rocking.** The mass, through the pin loads, sets the period;
+  5° and 10° shift it by ≤ 0.1 s.
+- **Unloaded, the hubs' and deck's own weight already matters.** The platform's rocking mode
+  is 3.10 s, not 2.81 s, and its 2.65 s rocking falls from 10.7° to 6.6°. This also applies to
+  the records' flume runs, which have no preload.
+- **The platform's deck pitch near resonance rises by about 25–45 %** with the preload
+  (1.26 → 1.82° level, 2.45 → 3.07° at 10°, at 2.65 s). The deck's and payload's weight above
+  the pins (m g h) softens the deck's tilt and shifts the coupled heave–pitch modes. The
+  cluster's payload sits in the pin plane, so its hub pitch barely changes.
+- **Heave and pin freeboard change little:** heave by ≤ 6 %, the smallest freeboard by ≤ 3 %.
+  The tightest freeboard is still at
+  2.65 s: 282 mm (platform, 10°) and 389 mm (cluster, 10°). At the new 4.2 s rocking resonance
+  it is 332 mm and 435 mm.
+- **What it means for operation.** With a payload, keep clear of waves near 4.2 s. That holds
+  however level the payload is: the buoys rock hard on their gimbals there, whatever the
+  heave says.
 
 ### Limits of this analysis (dynamics)
 
-- **FloatSim's model:** linear, about each equilibrium, with no weight term (above). It uses the
-  12-panel BEM; 36 panels would lengthen the periods by ~0.05 s (flume-mooring DESIGN-BASIS).
+- **FloatSim's model:** linear, about each equilibrium. The weight term is in only with
+  `--preload` (above). It uses the 12-panel BEM; 36 panels would lengthen the periods by
+  ~0.05 s (flume-mooring DESIGN-BASIS).
+- **Large rocking.** 11–12.6° of gimbal rocking is past the small-angle range; the gimbals'
+  real travel and the plate drag at those angles are not modelled.
 - **Regular waves along the shift only.** A shift across the waves would couple into roll and
   sway instead.
 - **Free-floating with a soft hold, not the flume mooring.**
@@ -377,10 +442,16 @@ The smallest freeboard in waves comes at T = 2.65 s in every case.
 python tilted_cases.py
 python tilted_bem.py cluster                   # ~2 min
 python tilted_bem.py platform <case>           # ~30 min each: unloaded, centred, tilt5, tilt10
-python tilted_dynamics.py <article> <case>     # ~25 min (cluster) / ~60 min (platform) each
-python tilted_dynamics.py summary
-python tilted_dynamics_plot.py
+python tilted_dynamics.py <article> <case> [--preload]   # ~25 min cluster / ~60 min platform
+python tilted_dynamics.py add-period <article> <case> 4.2 [--preload]
+python tilted_dynamics.py summary [--preload]
+python tilted_dynamics_plot.py              # tilted_dynamics.png
+python tilted_dynamics_plot.py --compare    # tilted_dynamics_preload.png
 ```
 
-The BEM databases (`tilted_bem/`, ~60 MB) and the per-case outputs (`tilted_dynamics/`) are
-regenerated by these runs and not committed.
+Run several cases in parallel with `OMP_NUM_THREADS=1` (and `OPENBLAS_` / `MKL_NUM_THREADS=1`).
+Without it, each process starts numpy threads on every core. Four platform runs then thrashed
+the machine: a 206 × 206 solve took 0.5 s, and the runs went ~36× slower.
+
+The BEM databases (`tilted_bem/`, ~60 MB) and the per-case outputs (`tilted_dynamics/`,
+`tilted_dynamics_preload/`) are regenerated by these runs and not committed.

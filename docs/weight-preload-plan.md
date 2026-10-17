@@ -1,6 +1,6 @@
 # Weight preload: static loads, the joint-constrained static solve and their geometric stiffness
 
-**Status: decisions locked (§6); PR1 and PR2 done, PR3 (studies) next.** Written 2026-10-17, branch
+**Status: done (PR1 `05128b7`, PR2 `dd889f2`, PR3 studies); the default stays opt-in.** Written 2026-10-17, branch
 `fix-weight-preload`. Tracker entry `WEIGHT-PRELOAD-UNWIRED` (docs/phase2-followups.md).
 
 ## 1. The gap
@@ -167,10 +167,14 @@ equilibrium.
    - **Measured.** `K_geo` is symmetric to round-off on the whole matrix (max|K − Kᵀ| ≤ 1.4e-7
      against entries up to 55 N·m/rad). At a static equilibrium each body's net moment is zero,
      and the per-load antisymmetric parts sum to exactly that moment.
-3. **PR3, studies.**
-   - Re-run the payload-dynamics gimbal results with the preload.
-   - Re-measure the record flume platform's rocking period.
-   - Tracker and README updates.
+3. **PR3, studies: done.** `studies/payload-stability/tilted_dynamics.py --preload`, README
+   "With FloatSim's weight preload".
+   - FloatSim's constrained static solve keeps the statics geometry to ≤ 4e-15 m in all 8
+     cases.
+   - Its `C + K_geo` periods equal the study's closed-form estimate exactly.
+   - With a payload, the buoys' rocking resonance is 4.2–4.4 s, at 11–12.6° in H = 0.1 m waves
+     (FloatSim without the preload: 2.85 s).
+   - The unloaded flume platform's rocking mode is 3.10 s (2.81 s without).
 
 ## 5. Out of scope
 

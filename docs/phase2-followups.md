@@ -2330,7 +2330,7 @@ spans the shift either way.
 
 ---
 
-### WEIGHT-PRELOAD-UNWIRED — no weight or buoyancy vector; joints carry no static preload
+### ~~WEIGHT-PRELOAD-UNWIRED~~ — no weight or buoyancy vector; joints carry no static preload
 
 **Mechanism.** ARCHITECTURE.md §9.4 specifies the static equilibrium as
 `F_gravity + F_buoyancy + F_moor = 0`. The implementation solves `C ξ = F_state(0, ξ, 0)`, with
@@ -2362,10 +2362,19 @@ hinge gate supplies gravity as an external force, which is why it swings. It sur
 
 **Blocks.** Articulated dynamics with structural mass or payloads: buoy rocking, gimbal angles.
 
-**Status.** In progress (branch `fix-weight-preload`). Surfaced 2026-10-17.
+**Status.** **Closed 2026-10-17** (opt-in). Surfaced the same day.
 - PR1 (statics + dynamics, Gates A/B/C): `05128b7`.
-- PR2 (`K_geo` and the preloaded restoring gate): done.
-- The study re-runs follow.
+- PR2 (`K_geo` and the preloaded restoring gate): `dd889f2`.
+- PR3: the payload-dynamics study re-run with the preload
+  (studies/payload-stability README, "With FloatSim's weight preload").
+  - A payload moves the buoys' rocking resonance from ~2.85 s to 4.2–4.4 s, where H = 0.1 m
+    waves rock them 11–12.6°.
+  - The unloaded flume platform's rocking mode is 3.10 s, not 2.81 s.
+
+Still open, as decisions rather than defects:
+- **The default.** The preload is off unless a deck switches it on, so the records' flume runs
+  are without it.
+- **Re-running those records with it.** Their buoy-rocking results are the ones affected.
 
 ---
 
