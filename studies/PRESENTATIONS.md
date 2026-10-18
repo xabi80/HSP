@@ -1,6 +1,6 @@
 # Presentations: flume mooring and flume wall effect
 
-The `.pptx` files in this folder are **copies** (collected 2026-10-02; the payload decks added 2026-10-14 and 2026-10-15). Each original stays in
+The `.pptx` files in this folder are **copies** (collected 2026-10-02; the payload decks added 2026-10-14, -15 and -18). Each original stays in
 its study folder and is regenerated there; re-copy after a regeneration.
 
 | File | Version | Original, and how it is made |
@@ -14,6 +14,7 @@ its study folder and is regenerated there; re-copy after a regeneration.
 | `Flume_wall_effect_explained_2.5m-circle.pptx` | Earlier: plain-English, 2.5 m circle | `platform-12buoy/flume-wall-effect/Flume_wall_effect_explained.pptx` (`python make_flume_ppt.py`) |
 | `Cluster_payload_stability.pptx` | Current: payload mass and CG envelope of the 4-buoy cluster (2026-10-14) | `payload-stability/Cluster_payload_stability.pptx` (`python make_payload_ppt.py`) |
 | `Platform_payload_stability.pptx` | Current: payload mass and CG envelope of the 4x4 platform, with the payload CG height (2026-10-15) | `payload-stability/Platform_payload_stability.pptx` (`python make_platform_ppt.py`) |
+| `Payload_tilt_in_waves.pptx` | Current: a payload shifted to 5° / 10° of tilt on the cluster and the platform, in regular waves (FloatSim with its weight preload; 2026-10-18) | `payload-stability/Payload_tilt_in_waves.pptx` (`python make_tilt_waves_ppt.py`) |
 
 Notes:
 - **The two mooring rev D decks are picture slides.** Each slide is an image of the online deck's

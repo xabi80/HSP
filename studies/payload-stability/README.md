@@ -440,6 +440,16 @@ Both columns are at H = 0.1 m, without / with the preload.
   however level the payload is: the buoys rock hard on their gimbals there, whatever the
   heave says.
 
+### Presentation (dynamics)
+
+`Payload_tilt_in_waves.pptx` (12 slides, `make_tilt_waves_ppt.py`) summarises both articles.
+- **Contents:** the cases (pictures from `tilted_figures.py`), the method, why the weight
+  preload changes the answer, and heave, pitch, pin freeboard and gimbal rocking against
+  wave period (native charts).
+- **Then:** the single rocking period of all the buoys, the guidance, and an appendix on
+  FloatSim's validation.
+- A copy is in `studies/` (PRESENTATIONS.md).
+
 ### Limits of this analysis (dynamics)
 
 - **FloatSim's model:** linear, about each equilibrium. The weight term is in only with
