@@ -403,13 +403,28 @@ Both columns are at H = 0.1 m, without / with the preload.
     C55, `tilted_cases.json`). The
     in-phase rocking mode moves from ~2.85 s (FloatSim without the preload) to 4.2–4.4 s.
   - There, H = 0.1 m waves rock the loaded buoys **11–12.6° on their gimbals**, in every loaded
-    case, level or tilted. Without the preload FloatSim gave 0.2–0.9° at 4.2 s.
+    case, level or tilted. Without the preload FloatSim gave 0.2–0.7° at 4.2 s.
   - The rocking peak it showed at 2.65 s (7–8°) was an artefact of the missing term; with the
     preload it falls to 3–4.3°.
   - 11–12.6° is past FloatSim's small-angle range (5.7°), so the size is indicative. The
     resonance and its period are not.
-- **The tilt hardly changes the rocking.** The mass, through the pin loads, sets the period;
-  5° and 10° shift it by ≤ 0.1 s.
+- **The tilt hardly changes the rocking, though each buoy is loaded differently.**
+  - **Each buoy alone would differ.** At 10° the cluster's near pair is at 44 N·m/rad
+    (alone: ~4.45 s) and its far pair at 54 N·m/rad (~4.0 s); level, all four are at 49.
+  - **The hub makes them rock together.** It carries all the pins at once, so in the mode the
+    waves drive every buoy leans the same way. The period follows the sum of their stiffnesses:
+    2×44 + 2×54 = 196 against 4×49 = 195 level, so 4.21 s against 4.22 s.
+  - **Why the sum stays put.** A buoy's net stiffness falls almost linearly as it sinks: C55
+    gains ~205 and P L ~300 N·m/rad per metre. Shifting the payload sinks one side and lifts
+    the other by equal amounts, and the mean sinkage is fixed by the total weight.
+  - **The platform's wider spread** (72–350 mm of sinkage) shows C55's curvature with draft:
+    4.30 s at 10° against 4.38 s level.
+  - **Evidence.** In the mode analysis the cluster's amplitudes are 0.96 : 1.00. At 4.2 s all
+    16 platform buoys rock within 10.1–11.2° of each other.
+  - **Other modes.** The buoys can rock against each other only by sliding sideways relative to
+    one another (the hub won't let the pins separate). That brings in their whole mass, so those
+    modes sit near 9 s. A cross-wise twisting pair (3.7 / 4.4 s at 10°) can't be driven by waves
+    along the shift (by symmetry); waves from the side or at an angle could.
 - **Unloaded, the hubs' and deck's own weight already matters.** The platform's rocking mode
   is 3.10 s, not 2.81 s, and its 2.65 s rocking falls from 10.7° to 6.6°. This also applies to
   the records' flume runs, which have no preload.

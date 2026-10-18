@@ -170,8 +170,12 @@ def make_deck(case: dict, preload: bool = False) -> tuple[Deck, dict]:
               bodies=bodies, joints=joints,
               shared_hydro_database=HydroDatabaseRef(format="capytaine", path="placeholder.nc"),
               output=Output(file="o.h5", channels=["heave"], sample_rate=10.0))
+    # Body index of buoy k: the platform lists each hub after its four buoys (5 bodies a cluster).
+    nb = len(case["buoys"])
+    buoy_body = list(range(nb)) if case["article"] == "cluster" else [
+        5 * (k // 4) + k % 4 for k in range(nb)]
     return dk, {"article": case["article"], "top": len(bodies) - 1, "cg": cg, "centre": centre,
-                "pins": pins, "owner": owner}
+                "pins": pins, "owner": owner, "buoy_body": buoy_body}
 
 
 def fit(t: np.ndarray, x: np.ndarray, w: float) -> float:
@@ -211,8 +215,8 @@ def run_wave(dk: Deck, info: dict, hdb, T: float) -> dict:  # type: ignore[no-un
     out = {"T_s": T, "heave_m": fit(t, point_z(xi, tb, dc), w),
            "surge_m": fit(t, xi[:, 6 * tb], w),
            "pitch_deg": float(np.degrees(fit(t, xi[:, 6 * tb + 4], w)))}
-    gimbal = [float(np.degrees(fit(t, xi[:, 6 * k + 4] - xi[:, 6 * o + 4], w)))
-              for k, o in enumerate(info["owner"])]
+    gimbal = [float(np.degrees(fit(t, xi[:, 6 * b + 4] - xi[:, 6 * o + 4], w)))
+              for b, o in zip(info["buoy_body"], info["owner"], strict=True)]
     out["gimbal_deg_max"] = max(gimbal); out["gimbal_deg"] = gimbal
     rel, fb = [], []
     for body, d, pin in info["pins"]:
