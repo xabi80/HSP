@@ -440,6 +440,38 @@ Both columns are at H = 0.1 m, without / with the preload.
   however level the payload is: the buoys rock hard on their gimbals there, whatever the
   heave says.
 
+### Accelerations at the payload (2026-10-18)
+
+`tilted_dynamics.py` also records the accelerations (from `xi_ddot`, a + α × d) at the payload
+and at the hub / deck centre, for every run with the preload. `tilted_accelerations_plot.py`
+draws `tilted_accelerations.png`.
+
+![accelerations](tilted_accelerations.png)
+
+Accelerations at the payload, H = 0.1 m, amplitude in m/s² (g = 9.81 m/s²):
+
+| | Vertical, largest | Sideways as felt, largest dynamic | Static tilt, g sin θ | Total sideways, largest |
+|---|---|---|---|---|
+| Cluster, unloaded | 0.42 (2.65 s) | 1.16 (2.65 s) | 0 | 1.16 |
+| Cluster, 12.5 kg level / 5° / 10° | 0.38 / 0.38 / 0.37 | 0.63 / 0.69 / 0.79 | 0 / 0.85 / 1.70 | 0.63 / 1.55 / **2.49 (0.25 g)** |
+| Platform, unloaded | 0.37 (2.65 s) | 0.79 (2.35 s) | 0 | 0.79 |
+| Platform, 50 kg level / 5° / 10° | 0.34 / 0.32 / 0.30 | 0.52 / 0.53 / 0.60 | 0 / 0.85 / 1.70 | 0.52 / 1.39 / **2.30 (0.23 g)** |
+
+- **Vertical:** small (≤ 0.04 g) and about the same on both articles, peaking near the heave
+  resonance (2.65 s). The tilt changes it little.
+- **Sideways, dynamic:**
+  - **The platform is calmer in short waves.** Its 2.4 m span averages them out: 0.1 m/s² at
+    1.5 s, against 0.6 on the cluster.
+  - **Near 2.35–2.65 s the tilt adds sideways load,** because the coupled pitch swings gravity
+    across the deck: cluster 0.61 → 0.79, platform 0.49 → 0.60 m/s², level → 10°.
+  - **At 4.2 s, with a payload, both feel 0.4–0.6 m/s².** That is the buoys' rocking resonance:
+    the buoys pivot about their CoGs on the gimbals, and the hub or deck slides sideways on top
+    (~0.25 m).
+- **Sideways, total:** the static tilt dominates. A payload tilted 10° feels a constant 1.7 m/s²
+  (0.17 g) sideways from gravity, before any wave. The dynamic part adds at most 0.8 m/s².
+- **Inertial against felt:** the felt sideways includes `−g θ` from the deck's dynamic pitch.
+  At 3.5 s it partly cancels the inertial part; near 2.35–2.65 s it adds to it.
+
 ### Presentation (dynamics)
 
 `Payload_tilt_in_waves.pptx` (12 slides, `make_tilt_waves_ppt.py`) summarises both articles.
@@ -472,6 +504,7 @@ python tilted_dynamics.py add-period <article> <case> 4.2 [--preload]
 python tilted_dynamics.py summary [--preload]
 python tilted_dynamics_plot.py              # tilted_dynamics.png
 python tilted_dynamics_plot.py --compare    # tilted_dynamics_preload.png
+python tilted_accelerations_plot.py         # tilted_accelerations.png (needs the --preload runs)
 ```
 
 Run several cases in parallel with `OMP_NUM_THREADS=1` (and `OPENBLAS_` / `MKL_NUM_THREADS=1`).

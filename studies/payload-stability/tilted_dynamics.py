@@ -98,7 +98,7 @@ from floatsim.solver.newmark import integrate_cummins
 from floatsim.solver.ramp import HalfCosineRamp
 from floatsim.waves.regular import RegularWave
 
-PERIODS_S = (1.5, 2.0, 2.35, 2.65, 3.5, 5.0)
+PERIODS_S = (1.5, 2.0, 2.35, 2.65, 3.5, 4.2, 5.0)   # 4.2 s: the loaded buoys' rocking resonance
 WAVE_H = 0.1
 DT, DURATION, RAMP_S, FIT_S = 0.01, 90.0, 15.0, 30.0       # articulated_wall.run_rao settings
 OUT = HERE / "tilted_dynamics"
@@ -175,7 +175,8 @@ def make_deck(case: dict, preload: bool = False) -> tuple[Deck, dict]:
     buoy_body = list(range(nb)) if case["article"] == "cluster" else [
         5 * (k // 4) + k % 4 for k in range(nb)]
     return dk, {"article": case["article"], "top": len(bodies) - 1, "cg": cg, "centre": centre,
-                "pins": pins, "owner": owner, "buoy_body": buoy_body}
+                "pins": pins, "owner": owner, "buoy_body": buoy_body,
+                "payload": np.asarray(case["payload"])}
 
 
 def fit(t: np.ndarray, x: np.ndarray, w: float) -> float:
@@ -189,6 +190,33 @@ def point_z(xi: np.ndarray, body: int, d: np.ndarray) -> np.ndarray:
     """Vertical displacement of a point at offset d from a body's reference (small rotations)."""
     b = 6 * body
     return xi[:, b + 2] + xi[:, b + 3] * d[1] - xi[:, b + 4] * d[0]
+
+
+def point_acc(xdd: np.ndarray, body: int, d: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Horizontal (along the waves, x) and vertical acceleration of a point at offset d from a
+    body's reference: a + alpha x d (small rotations; the centripetal term is second order)."""
+    b = 6 * body
+    ax = xdd[:, b] + xdd[:, b + 4] * d[2] - xdd[:, b + 5] * d[1]
+    az = xdd[:, b + 2] + xdd[:, b + 3] * d[1] - xdd[:, b + 4] * d[0]
+    return ax, az
+
+
+def accelerations(t: np.ndarray, xi: np.ndarray, xdd: np.ndarray, body: int, d: np.ndarray,
+                  w: float) -> dict:
+    """At a point on the top body (hub / deck): first-harmonic amplitudes and steady-state peaks
+    (m/s^2) of
+    - az: vertical acceleration;
+    - ax: horizontal inertial acceleration (along the waves);
+    - fx: the horizontal acceleration as a payload feels it, in the deck's own frame. Its tilting
+      swings gravity sideways, so fx = ax - g theta_y (theta_y the dynamic pitch). The static
+      tilt adds a constant g sin(tilt) on top (in the summary, not here)."""
+    ax, az = point_acc(xdd, body, d)
+    fx = ax - aw.G * xi[:, 6 * body + 4]
+    out = {}
+    for key, x in (("az", az), ("ax", ax), ("fx", fx)):
+        out[key] = fit(t, x, w)
+        out[f"{key}_peak"] = float(np.max(np.abs(x - x.mean())))
+    return out
 
 
 def run_wave(dk: Deck, info: dict, hdb, T: float) -> dict:  # type: ignore[no-untyped-def]
@@ -226,6 +254,9 @@ def run_wave(dk: Deck, info: dict, hdb, T: float) -> dict:  # type: ignore[no-un
     out["pin_rel_m"] = rel; out["pin_freeboard_min_m"] = fb
     out["min_freeboard_m"] = min(fb)
     out["max_abs_xi"] = float(np.max(np.abs(xi)))
+    xdd = r.xi_ddot[m]
+    out["acc_payload"] = accelerations(t, xi, xdd, tb, info["payload"] - info["cg"], w)
+    out["acc_centre"] = accelerations(t, xi, xdd, tb, info["centre"] - info["cg"], w)
     return out
 
 
