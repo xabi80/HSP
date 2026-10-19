@@ -97,6 +97,11 @@ heave_period = {a: (NEW[(a, "unloaded")]["periods_preload"]["heave"]["T_s"],
                NEW[(a, "centred")]["periods_preload"]["heave"]["T_s"]) for a in ARTS}
 pitch265 = {a: [run(NEW[(a, n)], 2.65)["pitch_deg"] for n in NAMES[1:]] for a in ARTS}
 offsets = {a: [CASES[(a, n)]["offset_m"] for n in ("tilt5", "tilt10")] for a in ARTS}
+# The heave and hub / deck pitch resonances of the loaded cases (whole-article motions), as
+# opposed to the buoys' rocking on their gimbals (~4.2 s)
+hp_periods = [NEW[(a, n)]["periods_preload"][m]["T_s"] for a in ARTS for n in NAMES[1:]
+              for m in ("heave", "pitch")]
+hp_band = f"{min(hp_periods):.1f}–{max(hp_periods):.1f} s"
 
 
 def net(b: dict) -> float:
@@ -145,13 +150,15 @@ text(s, 0.6, 4.0, 12.1, 0.5, "What the tilt does", size=20, bold=True, color=NAV
 text(s, 0.6, 4.55, 12.1, 2.7, [
     [("Heave: ", {"bold": True}), (f"the mass, not the tilt — the payload lengthens the heave period "
      f"{heave_period['cluster'][0]:.2f} → {heave_period['cluster'][1]:.2f} s; tilt changes heave by ≤ 6 %.", {})],
-    [("Pitch: ", {"bold": True}), ("near resonance (2.65 s) the tilt turns heave into pitch — "
+    [("Hub / deck tilting: ", {"bold": True}), (f"near the article's heave and tilt resonance ({hp_band}; "
+     "the 2.65 s wave) the tilt turns heave into pitch: "
      f"{pitch265['cluster'][0]:.1f} → {pitch265['cluster'][2]:.1f}° on the cluster hub, "
      f"{pitch265['platform'][0]:.1f} → {pitch265['platform'][2]:.1f}° on the platform deck, level → 10°.", {})],
     [("Freeboard: ", {"bold": True}), ("the tilt takes still-water freeboard from the low side; the "
      f"waves take ~{1e3 * min(fb_loss10.values()):.0f}–100 mm more at worst.", {})],
-    [("Rocking: ", {"bold": True, "color": RED}), ("all the buoys rock together at one period, "
-     "~4.2 s, whatever the tilt — keep a loaded article out of waves near 4.2 s.", {"color": RED})],
+    [("Buoys' own pitch: ", {"bold": True, "color": RED}), ("each buoy rocking on its gimbal — the "
+     "flume record's 2.76–2.9 s pitch resonance — moves to ~4.2 s with a payload, whatever the tilt: "
+     "keep a loaded article out of waves near 4.2 s.", {"color": RED})],
 ], size=16, gap=7)
 
 # ================================================================== 3 the cases
@@ -245,12 +252,14 @@ CHARTS = [
       f"cluster, {heave_period['platform'][0]:.2f} → {heave_period['platform'][1]:.2f} s platform), so heave falls a little "
       "below resonance. 5° and 10° of tilt change heave by ≤ 6 %."), False),
     ("pitch_deg", 1.0, "pitch amplitude (°)", (0, 4),
-     "Near resonance, the tilt turns heave into pitch",
-     "Pitch of the hub / deck against wave period",
+     "Near the heave resonance, the tilt turns heave into pitch",
+     f"Hub / deck pitch (the whole article tilting; not the buoys' own pitch) — resonates with heave at {hp_band}",
      (f"At 2.65 s the cluster hub pitches {pitch265['cluster'][0]:.1f} → {pitch265['cluster'][1]:.1f} → "
       f"{pitch265['cluster'][2]:.1f}° and the platform deck {pitch265['platform'][0]:.1f} → "
-      f"{pitch265['platform'][1]:.1f} → {pitch265['platform'][2]:.1f}° (level → 5° → 10°). Away from "
-      "resonance the tilt changes almost nothing."), False),
+      f"{pitch265['platform'][1]:.1f} → {pitch265['platform'][2]:.1f}° (level → 5° → 10°): the shifted "
+      "mass couples the article's heave and pitch, which resonate together at "
+      f"{hp_band}. Away from it, including at the buoys' rocking resonance (4.2 s), the tilt adds "
+      "almost no pitch."), False),
     ("min_freeboard_m", 1e3, "smallest pin freeboard (mm)", (0, 700),
      "The tilt costs freeboard; the waves take a little more",
      "Smallest pin freeboard during the wave cycle",
@@ -260,10 +269,11 @@ CHARTS = [
       f"or {h_awash['cluster']:.2f} m (cluster)."), False),
     ("gimbal_deg_max", 1.0, "largest gimbal angle (°)", (0, 14),
      "With a payload, the buoys rock hard at ~4.2 s",
-     "Buoy rocking on its gimbal (dashed: FloatSim without the weight preload, payload centred)",
+     "The buoys' own pitch on their gimbals (dashed: FloatSim without the weight preload, payload centred)",
      (f"With the preload, a payload puts the buoys' rocking resonance at ~4.2 s, where they rock "
       f"{gimbal_peak_min['platform']:.0f}–{max(gimbal_peak.values()):.1f}° — level or tilted. Without the "
-      f"preload FloatSim gave ≤ {old_at42:.1f}° there and a false peak at 2.65 s."), True),
+      f"preload FloatSim gave ≤ {old_at42:.1f}° there and a peak at 2.65 s — the flume record's 2.76–2.9 s "
+      "pitch resonance, which leaves out the load on the pins."), True),
 ]
 for key, sc, yt, yr, ttl, sub, msg, show_old in CHARTS:
     s = slide(notes=msg)
