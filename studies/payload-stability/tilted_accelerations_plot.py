@@ -5,10 +5,10 @@ Rows: the cluster (12.5 kg on the hub) and the platform (50 kg on the deck). Lin
 payload centred, shifted to 5 deg and 10 deg. The point is the payload (for the unloaded article,
 where a centred payload would sit). Columns, against the wave period:
 (a) vertical acceleration amplitude;
-(b) horizontal acceleration as the payload feels it, in the deck's own frame: the inertial
-    acceleration along the waves, minus g times the dynamic pitch (the deck's tilting swings
-    gravity sideways). Dotted: the inertial part alone;
-(c) the total sideways load the payload feels: (b) plus the static tilt's constant g sin(tilt)
+(b) lateral acceleration (horizontal, along the waves) as the payload feels it, in the deck's
+    own frame: the inertial acceleration along the waves, minus g times the dynamic pitch (the
+    deck's tilting swings gravity along it). Dotted: the inertial part alone;
+(c) the total lateral load the payload feels: (b) plus the static tilt's constant g sin(tilt)
     (0.85 m/s^2 at 5 deg, 1.70 at 10 deg).
 All are first-harmonic amplitudes, in m/s^2 (right axis: g).
 
@@ -60,8 +60,8 @@ def main() -> None:
             sec.set_ylabel("g", fontsize=9)
         axs[i, 0].legend(fontsize=8.5)
     for j, t in enumerate(("(a) vertical, at the payload",
-                           "(b) sideways as the payload feels it (dotted: inertial only)",
-                           "(c) total sideways: (b) + static tilt g·sin θ (dashed)")):
+                           "(b) lateral (along the waves), as felt; dotted: inertial",
+                           "(c) total lateral: (b) + the static tilt's g·sin θ (dashed)")):
         axs[0, j].set_title(t, fontsize=10.5)
         axs[-1, j].set_xlabel("wave period (s)")
     fig.suptitle("Accelerations at the payload in regular waves, H = 0.1 m along the shift — "

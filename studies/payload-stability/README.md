@@ -443,14 +443,17 @@ Both columns are at H = 0.1 m, without / with the preload.
 ### Accelerations at the payload (2026-10-18)
 
 `tilted_dynamics.py` also records the accelerations (from `xi_ddot`, a + α × d) at the payload
-and at the hub / deck centre, for every run with the preload. `tilted_accelerations_plot.py`
+and at the hub / deck centre, for every run with the preload. "Lateral" here is horizontal along
+the waves, which is also the direction of the mass shift. Across the waves the acceleration is
+zero in these runs, by symmetry: the article, the shift and the waves all share one vertical
+plane. `tilted_accelerations_plot.py`
 draws `tilted_accelerations.png`.
 
 ![accelerations](tilted_accelerations.png)
 
 Accelerations at the payload, H = 0.1 m, amplitude in m/s² (g = 9.81 m/s²):
 
-| | Vertical, largest | Sideways as felt, largest dynamic | Static tilt, g sin θ | Total sideways, largest |
+| | Vertical, largest | Lateral as felt, largest dynamic | Static tilt, g sin θ | Total lateral, largest |
 |---|---|---|---|---|
 | Cluster, unloaded | 0.42 (2.65 s) | 1.16 (2.65 s) | 0 | 1.16 |
 | Cluster, 12.5 kg level / 5° / 10° | 0.38 / 0.38 / 0.37 | 0.63 / 0.69 / 0.79 | 0 / 0.85 / 1.70 | 0.63 / 1.55 / **2.49 (0.25 g)** |
@@ -459,17 +462,17 @@ Accelerations at the payload, H = 0.1 m, amplitude in m/s² (g = 9.81 m/s²):
 
 - **Vertical:** small (≤ 0.04 g) and about the same on both articles, peaking near the heave
   resonance (2.65 s). The tilt changes it little.
-- **Sideways, dynamic:**
+- **Lateral (horizontal, along the waves and the shift), dynamic:**
   - **The platform is calmer in short waves.** Its 2.4 m span averages them out: 0.1 m/s² at
     1.5 s, against 0.6 on the cluster.
-  - **Near 2.35–2.65 s the tilt adds sideways load,** because the coupled pitch swings gravity
-    across the deck: cluster 0.61 → 0.79, platform 0.49 → 0.60 m/s², level → 10°.
+  - **Near 2.35–2.65 s the tilt adds lateral load,** because the coupled pitch swings gravity
+    along the deck: cluster 0.61 → 0.79, platform 0.49 → 0.60 m/s², level → 10°.
   - **At 4.2 s, with a payload, both feel 0.4–0.6 m/s².** That is the buoys' rocking resonance:
-    the buoys pivot about their CoGs on the gimbals, and the hub or deck slides sideways on top
+    the buoys pivot about their CoGs on the gimbals, and the hub or deck slides back and forth along the waves on top
     (~0.25 m).
-- **Sideways, total:** the static tilt dominates. A payload tilted 10° feels a constant 1.7 m/s²
-  (0.17 g) sideways from gravity, before any wave. The dynamic part adds at most 0.8 m/s².
-- **Inertial against felt:** the felt sideways includes `−g θ` from the deck's dynamic pitch.
+- **Lateral, total:** the static tilt dominates. A payload tilted 10° feels a constant 1.7 m/s²
+  (0.17 g) laterally from gravity, before any wave. The dynamic part adds at most 0.8 m/s².
+- **Inertial against felt:** the felt lateral acceleration includes `−g θ` from the deck's dynamic pitch.
   At 3.5 s it partly cancels the inertial part; near 2.35–2.65 s it adds to it.
 
 ### Presentation (dynamics)
