@@ -478,6 +478,101 @@ text(s, 0.6, 6.2, 12.1, 1.0, "The flume mooring and wall-effect records were run
      "their buoy-rocking results are the ones affected (the unloaded platform's rocking mode is 3.10 s, "
      "not 2.81 s).", size=13, color=MUTED)
 
+# ================================================================== appendix: loading each buoy
+HYD12 = [r for r in load("buoy_hydrostatics_vs_draft.json")["rows"]["12"] if r["sink_m"] >= -1e-9]
+L_PIN = load("buoy_hydrostatics_vs_draft.json")["pin_above_cog_m"]
+sk = [r["sink_m"] for r in HYD12]
+c55_s = [r["C55"] for r in HYD12]
+pl_s = [r["dW_N"] * L_PIN for r in HYD12]
+net_s = [c - q for c, q in zip(c55_s, pl_s, strict=True)]
+s = slide(notes=(
+    "What loading a buoy does. Each buoy carries its share of the hub, deck and payload on its pin, "
+    "and sinks until the extra buoyancy carries it. Sinking raises the buoy's own righting, because "
+    "the new buoyancy is added high up the spar. But the load sits on the pin 1.62 m above the "
+    "buoy's centre of gravity, and when the buoy leans that load pushes it further over: P times L. "
+    "That grows faster than the righting, so the net rocking stiffness falls as the buoy is "
+    "loaded. Shifting the payload loads the near buoys more and the far ones less: the near side "
+    "sinks deeper, loses freeboard and gets softer; the far side the opposite."))
+title(s, "Appendix: what loading each buoy does", "Its share of the hub, deck and payload sits on "
+      "its pin, 1.62 m above its centre of gravity")
+xy_chart(s, 0.5, 1.5, 6.2, 4.05, [
+    {"name": "buoy's own righting, C55", "x": sk, "y": c55_s, "color": RGBColor(0x2F, 0x74, 0xC0)},
+    {"name": "tipping by the pin load, P × L", "x": sk, "y": pl_s, "color": RED},
+    {"name": "net rocking stiffness", "x": sk, "y": net_s, "color": GREEN, "width": 3}],
+    "sinkage below the design draft (m)", "stiffness (N·m/rad)", (0, 0.75), (0, 260),
+    title_text="One buoy, loaded on its pin (12-panel table)")
+text(s, 6.95, 1.55, 5.85, 3.9, [
+    [("It sinks to carry its load: ", {"bold": True}), (f"P = C33 × sinkage, "
+     f"{HYD12[0]['C33']:.0f} N per metre, until the spar top (the pin) reaches the water.", {})],
+    [("Sinking raises its righting: ", {"bold": True}), ("the new buoyancy is added high up the "
+     f"spar: C55 grows {c55_s[0]:.0f} → {c55_s[-1]:.0f} N·m/rad by the time the pin reaches the water.", {})],
+    [("The load on the pin tips it: ", {"bold": True}), ("when the buoy leans, the pin and its load "
+     f"move sideways and push it over: P × L grows 0 → {pl_s[-1]:.0f} N·m/rad.", {})],
+    [("Net: the more load, the softer it rocks: ", {"bold": True}), (f"{net_s[0]:.0f} → "
+     f"{net_s[-1]:.0f} N·m/rad. A payload slows the buoys' rocking from ~2.85 to ~4.2 s.", {})],
+    [("A shifted payload loads the near buoys more: ", {"bold": True}), ("they sink deeper, lose "
+     "freeboard and get softer; the far ones rise and stiffen. All the buoys still rock together "
+     "at one period (the sum of their stiffnesses barely changes).", {})]], size=13, gap=5)
+cells = [["Buoy", "Cluster: sinkage", "P·L / C55", "Net", "Pin above water",
+          "Platform: sinkage", "P·L / C55", "Net", "Pin above water"]]
+for n, lab, pick in (("unloaded", "unloaded", max), ("centred", "payload centred", max),
+                     ("tilt10", "10° tilt, loaded side", max), ("tilt10", "10° tilt, other side", min)):
+    row = [lab]
+    for a in ARTS:
+        b = pick(CASES[(a, n)]["buoys"], key=lambda x: x["sink_m"])
+        row += [f"{1e3 * b['sink_m']:.0f} mm", f"{b['PL_Nm_per_rad']:.0f} / {b['C55_Nm_per_rad']:.0f}",
+                f"{net(b):.0f}", f"{1e3 * b['pin'][2]:.0f} mm"]
+    cells.append(row)
+tb = table(s, 0.5, 5.65, 12.3, 1.6, cells, size=11)
+for j, wd in enumerate((2.3, 1.35, 1.15, 0.75, 1.25, 1.4, 1.15, 0.75, 1.3)):
+    tb.columns[j].width = Inches(wd)
+
+# ================================================================== appendix: small rotations
+rows_new = [NEW[(a, n)] for a in ARTS for n in NAMES[1:]]
+pitch_max = max(r["pitch_deg"] for d in rows_new for r in d["runs"])
+rock_max = max(r["gimbal_deg_max"] for d in rows_new for r in d["runs"])
+rel_max = max(max(r["pin_rel_m"]) for d in rows_new for r in d["runs"])
+th = np.radians(rock_max)
+s = slide(notes=(
+    "FloatSim's small-rotation limit, and where it bites in this study. FloatSim is linear about "
+    "the equilibrium: it treats rotations, including each buoy's rotation on its pin, as small, up "
+    "to about a tenth of a radian. The static tilts of 5 and 10 degrees are not a problem, because "
+    "every case was built about its own tilted equilibrium, with the hydrodynamics recomputed "
+    "there. The wave motions on top must be small: the deck and hub pitch, at most about 4 degrees, "
+    "are. The buoys' rocking on their pins at 4.2 seconds, 11 to 12.6 degrees, is about twice the "
+    "limit. The geometry error there is small; the real uncertainty is the damping that sets the "
+    "amplitude. So that amplitude is indicative, while the resonance period stands."))
+title(s, "Appendix: FloatSim's small-rotation limit at the pins", "Linear about each equilibrium: "
+      "rotations, including each buoy's rotation on its pin, must stay below ~0.1 rad (5.7°)")
+cells = [["Motion", "Largest here", "Within ~5.7°?"],
+         ["Static tilt of the hub / deck (5°, 10°)", "10°", "not needed: each case is built about its own tilted equilibrium (BEM re-run there)"],
+         ["Hub / deck pitch in the waves", f"{pitch_max:.1f}°", "yes"],
+         ["Pin motion relative to the water", f"{1e3 * rel_max:.0f} mm", "yes (small against the spar)"],
+         ["Buoys rocking on their pins (gimbals), 4.2 s", f"{rock_max:.1f}°", f"no: ~{np.radians(rock_max) / 0.1:.1f}× the limit"]]
+tb = table(s, 0.5, 1.6, 7.3, 2.9, cells, size=12)
+for j, wd in enumerate((2.9, 1.2, 3.2)):
+    tb.columns[j].width = Inches(wd)
+text(s, 0.5, 4.75, 7.3, 2.5, [
+    [("What FloatSim linearises: ", {"bold": True}), ("the rotations (small-angle, rotation vector); "
+     "the hydrostatic restoring (a fixed matrix at the BEM draft); the wave forces (at the mean "
+     "position); the pin load's tipping (P L θ, not P L sin θ); the gimbals' yaw lock (first order "
+     "in the relative angle).", {})],
+    [("What it keeps exact: ", {"bold": True}), ("where the pins are (the joint arms rotate with "
+     "the bodies) and the drag (non-linear, relative to the waves).", {})]], size=13, gap=7)
+card(s, 8.1, 1.6, 4.7, 5.6, RGBColor(0xF6, 0xEE, 0xE8))
+text(s, 8.35, 1.75, 4.25, 0.5, f"At {rock_max:.1f}° of rocking", size=18, bold=True, color=RED)
+text(s, 8.35, 2.3, 4.25, 4.8, [
+    [("Geometry: small error. ", {"bold": True}), (f"sin θ / θ = {np.sin(th) / th:.3f}; the pin "
+     f"drops L(1 − cos θ) = {1e3 * L_PIN * (1 - np.cos(th)):.0f} mm, which the exact pin positions "
+     "already carry.", {})],
+    [("Damping: the real uncertainty. ", {"bold": True}), ("The amplitude at resonance is set by "
+     "the drag and the perforated heave plate, whose damping is still to be measured in the tank.", {})],
+    [("Not modelled: ", {"bold": True}), ("the gimbals' travel and any stops; a non-linear "
+     "(Level 2) FloatSim, tracked as LEVEL2-INTEGRATOR-UNWIRED.", {})],
+    [("So: ", {"bold": True, "color": RED}), ("the resonance period (~4.2 s) stands; read the "
+     "11–12.6° as indicative, and confirm with a rocking decay in the tank.", {"color": RED})]],
+    size=13, gap=8)
+
 out = HERE / "Payload_tilt_in_waves.pptx"
 prs.save(str(out))
 print(f"wrote {out.name} ({len(prs.slides)} slides)")
