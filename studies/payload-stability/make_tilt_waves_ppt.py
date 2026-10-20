@@ -4,7 +4,9 @@ waves. A summary of the tilted-dynamics study, with pictures, native charts and 
 Every number comes from this folder's records:
 - tilted_cases.json: the equilibria, pin loads and C55;
 - tilted_dynamics_preload.json: FloatSim with its weight preload, the results shown;
-- tilted_dynamics.json: FloatSim without the preload, for the comparison.
+- tilted_dynamics.json: FloatSim without the preload, for the comparison;
+- the accelerations at the payload (acc_payload in tilted_dynamics_preload.json): vertical, and
+  lateral (horizontal, along the waves) as the payload feels it.
 The pictures come from tilted_figures.py (wseq_cluster.png, wseq_platform.png). The charts are
 native PowerPoint XY charts, editable in place.
 
@@ -115,6 +117,39 @@ t_level = rock_period("cluster", "centred")
 r42_cl = run(NEW[("cluster", "tilt10")], 4.2)["gimbal_deg"]
 r42_pl = run(NEW[("platform", "tilt10")], 4.2)["gimbal_deg"]
 
+# Accelerations at the payload (m/s^2): vertical az; lateral (along the waves) as felt, fx
+G_ACC = 9.806
+
+
+def acc_max(art: str, name: str, comp: str, periods: tuple[float, ...] | None = None) -> float:
+    return max(r["acc_payload"][comp] for r in NEW[(art, name)]["runs"]
+               if periods is None or any(abs(r["T_s"] - T) < 1e-9 for T in periods))
+
+
+def static_lat(art: str, name: str) -> float:
+    return G_ACC * float(np.sin(np.radians(NEW[(art, name)]["tilt_deg"])))
+
+
+def total_lat(art: str, name: str) -> float:
+    return max(static_lat(art, name) + r["acc_payload"]["fx"] for r in NEW[(art, name)]["runs"])
+
+
+def acc_series(art: str, comp: str) -> list:
+    return [{"name": STYLE[n][1], "x": [r["T_s"] for r in NEW[(art, n)]["runs"]],
+             "y": [r["acc_payload"][comp] for r in NEW[(art, n)]["runs"]], "color": STYLE[n][0],
+             "width": 2.5} for n in NAMES]
+
+
+az_top = max(acc_max(a, n, "az") for a in ARTS for n in NAMES)
+az_loaded = {a: max(acc_max(a, n, "az") for n in NAMES[1:]) for a in ARTS}
+fx_short = {a: run(NEW[(a, "centred")], 1.5)["acc_payload"]["fx"] for a in ARTS}
+fx_res = {a: (acc_max(a, "centred", "fx", (2.35, 2.65)), acc_max(a, "tilt10", "fx", (2.35, 2.65)))
+          for a in ARTS}
+fx42 = [run(NEW[(a, n)], 4.2)["acc_payload"]["fx"] for a in ARTS for n in NAMES[1:]]
+fx_waves = max(acc_max(a, n, "fx") for a in ARTS for n in NAMES[1:])
+lat_total = {a: total_lat(a, "tilt10") for a in ARTS}
+st10 = static_lat("platform", "tilt10")
+
 # ================================================================== 1 title
 s = slide(dark=True, notes=(
     "This deck summarises what shifting a payload does to the cluster and the platform in waves. "
@@ -159,7 +194,10 @@ text(s, 0.6, 4.55, 12.1, 2.7, [
     [("Buoys' own pitch: ", {"bold": True, "color": RED}), ("each buoy rocking on its gimbal — the "
      "flume record's 2.76–2.9 s pitch resonance — moves to ~4.2 s with a payload, whatever the tilt: "
      "keep a loaded article out of waves near 4.2 s.", {"color": RED})],
-], size=16, gap=7)
+    [("Accelerations at the payload: ", {"bold": True}), (f"vertical ≤ {az_top / G_ACC:.2f} g; lateral "
+     f"(along the waves) ≤ {fx_waves:.1f} m/s² from the waves, but a 10° tilt adds a constant "
+     f"{st10:.2f} m/s² ({st10 / G_ACC:.2f} g): up to {max(lat_total.values()) / G_ACC:.2f} g in total.", {})],
+], size=15, gap=6)
 
 # ================================================================== 3 the cases
 s = slide(notes=(
@@ -287,6 +325,69 @@ for key, sc, yt, yr, ttl, sub, msg, show_old in CHARTS:
                  legend=(i == 1), title_text=ARTS[a])
     text(s, 0.6, 6.25, 12.1, 1.0, msg, size=14, color=INK)
 
+# ================================================================== accelerations: vertical
+s = slide(notes=(
+    "Accelerations at the payload, where it sits in each case. Vertical first: small on both "
+    "articles, at most about four hundredths of g, peaking near the heave resonance around 2.65 s. "
+    "The payload's mass lowers them a little and the tilt hardly changes them."))
+title(s, "Accelerations at the payload: vertical is small", "Vertical acceleration amplitude at the "
+      "payload against wave period, H = 0.1 m (1 g = 9.81 m/s²)")
+for i, a in enumerate(ARTS):
+    xy_chart(s, 0.5 + i * 6.25, 1.55, 6.1, 4.55, acc_series(a, "az"), "wave period (s)",
+             "vertical acceleration (m/s²)", (1.0, 5.5), (0, 0.5), legend=(i == 1), title_text=ARTS[a])
+text(s, 0.6, 6.25, 12.1, 1.0, f"At most {az_top:.2f} m/s² ({az_top / G_ACC:.2f} g), unloaded, near the "
+     f"heave resonance; with the payload {az_loaded['cluster']:.2f} (cluster) and "
+     f"{az_loaded['platform']:.2f} m/s² (platform). Both articles ride the same buoys' heave, so they "
+     "are alike, and the tilt changes it little.", size=14, color=INK)
+
+# ================================================================== accelerations: lateral
+s = slide(notes=(
+    "Lateral acceleration, horizontal along the waves, as the payload feels it: the deck's motion "
+    "plus gravity swinging along the deck as it pitches. The platform is much calmer in short "
+    "waves because its 2.4 m span averages them out. Near the heave resonance the tilt adds lateral "
+    "load through the coupled pitch. And at 4.2 s, with a payload, both feel about half a metre "
+    "per second squared: the buoys rocking on their gimbals make the hub or deck slide along the "
+    "waves."))
+title(s, "Lateral acceleration (along the waves)", "As the payload feels it: the deck's motion plus "
+      "gravity swinging along the deck as it pitches")
+for i, a in enumerate(ARTS):
+    xy_chart(s, 0.5 + i * 6.25, 1.55, 6.1, 4.3, acc_series(a, "fx"), "wave period (s)",
+             "lateral acceleration (m/s²)", (1.0, 5.5), (0, 1.2), legend=(i == 1), title_text=ARTS[a])
+text(s, 0.6, 5.95, 12.1, 1.4, [
+    [("Short waves: ", {"bold": True}), (f"the platform's 2.4 m span averages them out: "
+     f"{fx_short['platform']:.2f} against {fx_short['cluster']:.2f} m/s² at 1.5 s (payload centred).", {})],
+    [("Near the heave resonance (2.35–2.65 s): ", {"bold": True}), ("the tilt adds lateral load: "
+     f"cluster {fx_res['cluster'][0]:.2f} → {fx_res['cluster'][1]:.2f}, platform {fx_res['platform'][0]:.2f} "
+     f"→ {fx_res['platform'][1]:.2f} m/s², level → 10°.", {})],
+    [("At 4.2 s, with a payload: ", {"bold": True}), (f"{min(fx42):.1f}–{max(fx42):.1f} m/s²: the buoys "
+     "rocking on their gimbals slide the hub / deck along the waves.", {})]], size=13, gap=4)
+
+# ================================================================== accelerations: total lateral
+cells = [["", "Vertical, max", "Lateral from the waves, max", "Static tilt, g·sin θ", "Total lateral, max"]]
+for a in ARTS:
+    for n, lab in (("unloaded", "unloaded"), ("centred", "payload centred"), ("tilt5", "5° tilt"),
+                   ("tilt10", "10° tilt")):
+        tot = total_lat(a, n)
+        cells.append([f"{a.capitalize()}, {lab}", f"{acc_max(a, n, 'az'):.2f}",
+                      f"{acc_max(a, n, 'fx'):.2f}", f"{static_lat(a, n):.2f}",
+                      f"{tot:.2f} ({tot / G_ACC:.2f} g)"])
+s = slide(notes=(
+    "For the payload's lateral restraint, the static tilt is the biggest load. Tilted 10 degrees, "
+    "the payload feels a constant 1.7 metres per second squared along the deck from gravity "
+    "alone, about 0.17 g, before any wave. The waves add at most about 0.8 on top, for a total of "
+    "about a quarter of g at H = 0.1 m."))
+title(s, "For the payload, the static tilt is the biggest lateral load", "Maximum accelerations at the "
+      "payload over the seven wave periods, m/s² (H = 0.1 m)")
+tb = table(s, 0.6, 1.75, 8.2, 4.4, cells, size=13)
+for j, wd in enumerate((2.3, 1.2, 1.7, 1.4, 1.6)):
+    tb.columns[j].width = Inches(wd)
+stat(s, 9.2, 1.75, 3.55, f"{st10:.2f} m/s²", f"along the deck from a 10° tilt alone "
+     f"({st10 / G_ACC:.2f} g), before any wave", color=RED, h=1.7)
+stat(s, 9.2, 3.65, 3.55, f"{lat_total['cluster'] / G_ACC:.2f} / {lat_total['platform'] / G_ACC:.2f} g",
+     "worst total lateral at 10°: cluster / platform", color=AMBER, h=1.7)
+text(s, 9.2, 5.55, 3.55, 1.6, "Keeping the payload level matters more for its lateral restraint "
+     "than the wave motion does.", size=13, color=MUTED)
+
 # ================================================================== 10 one period
 s = slide(notes=(
     "Wouldn't each buoy rock at its own period once the load is shifted? On its own, yes: at 10 "
@@ -340,8 +441,10 @@ text(s, 0.85, 2.3, 5.5, 3.9, [
      ("keep the payload level to keep the low side's pins dry.", {})],
     [("Near the heave resonance (2.6–2.8 s) ", {"bold": True}), ("a tilted payload adds pitch: up to "
      f"{pitch265['cluster'][2]:.1f}° (cluster) and {pitch265['platform'][2]:.1f}° (platform) at 10°.", {})],
-    [("Pins stay dry at H = 0.1 m ", {"bold": True}), (f"in every case (≥ {1e3 * fb_worst['platform']:.0f} mm).", {})]],
-    size=15, gap=9)
+    [("Pins stay dry at H = 0.1 m ", {"bold": True}), (f"in every case (≥ {1e3 * fb_worst['platform']:.0f} mm).", {})],
+    [("Lateral restraint: ", {"bold": True}), (f"design for the static tilt plus waves: up to "
+     f"{max(lat_total.values()) / G_ACC:.2f} g at 10°, of which {st10 / G_ACC:.2f} g is the tilt alone.", {})]],
+    size=14, gap=7)
 card(s, 6.8, 1.5, 5.95, 4.7, RGBColor(0xF6, 0xEE, 0xE8))
 text(s, 7.05, 1.7, 5.5, 0.5, "Not included", size=20, bold=True, color=RED)
 text(s, 7.05, 2.3, 5.5, 3.9, [

@@ -477,10 +477,12 @@ Accelerations at the payload, H = 0.1 m, amplitude in m/s² (g = 9.81 m/s²):
 
 ### Presentation (dynamics)
 
-`Payload_tilt_in_waves.pptx` (12 slides, `make_tilt_waves_ppt.py`) summarises both articles.
+`Payload_tilt_in_waves.pptx` (15 slides, `make_tilt_waves_ppt.py`) summarises both articles.
 - **Contents:** the cases (pictures from `tilted_figures.py`), the method, why the weight
   preload changes the answer, and heave, pitch, pin freeboard and gimbal rocking against
   wave period (native charts).
+- **Accelerations at the payload:** vertical, lateral along the waves, and the total lateral
+  load, with the static tilt's g sin θ.
 - **Then:** the single rocking period of all the buoys, the guidance, and an appendix on
   FloatSim's validation.
 - A copy is in `studies/` (PRESENTATIONS.md).
