@@ -477,12 +477,15 @@ Accelerations at the payload, H = 0.1 m, amplitude in m/s² (g = 9.81 m/s²):
 
 ### Presentation (dynamics)
 
-`Payload_tilt_in_waves.pptx` (17 slides, `make_tilt_waves_ppt.py`) summarises both articles.
+`Payload_tilt_in_waves.pptx` (19 slides, `make_tilt_waves_ppt.py`) summarises both articles.
 - **Contents:** the cases (pictures from `tilted_figures.py`), the method, why the weight
   preload changes the answer, and heave, pitch, pin freeboard and gimbal rocking against
   wave period (native charts).
 - **Accelerations at the payload:** vertical, lateral along the waves, and the total lateral
   load, with the static tilt's g sin θ.
+- **Animations** (`tilted_animations.py`, `wanim_*.gif`): the 10° case moving at 2.65 s (heave
+  and pitch resonance) and at 4.2 s (the buoys' rocking resonance). Cluster beside platform,
+  true scale, real time, each body where FloatSim puts it.
 - **Then:** the single rocking period of all the buoys, the guidance, and three appendices:
   - FloatSim's weight-preload validation;
   - what loading each buoy does (C55, P L and their net against sinkage, with each case's
@@ -513,6 +516,8 @@ python tilted_dynamics.py summary [--preload]
 python tilted_dynamics_plot.py              # tilted_dynamics.png
 python tilted_dynamics_plot.py --compare    # tilted_dynamics_preload.png
 python tilted_accelerations_plot.py         # tilted_accelerations.png (needs the --preload runs)
+python tilted_dynamics.py history <article> tilt10 <2.65|4.2> --preload   # motion histories
+python tilted_animations.py                 # wanim_*.gif from tilted_anim/*.npz
 ```
 
 Run several cases in parallel with `OMP_NUM_THREADS=1` (and `OPENBLAS_` / `MKL_NUM_THREADS=1`).

@@ -53,6 +53,7 @@ Writes tilted_dynamics/<article>_<case>.json; `summary` collects them into tilte
 With --preload: tilted_dynamics_preload/ and tilted_dynamics_preload.json.
 Run: python tilted_dynamics.py <article> <case> [--preload]
      python tilted_dynamics.py add-period <article> <case> <T_s> [--preload]
+     python tilted_dynamics.py history <article> <case> <T_s> [--preload]   (for the animations)
      python tilted_dynamics.py summary [--preload]
 """
 
@@ -219,7 +220,8 @@ def accelerations(t: np.ndarray, xi: np.ndarray, xdd: np.ndarray, body: int, d: 
     return out
 
 
-def run_wave(dk: Deck, info: dict, hdb, T: float) -> dict:  # type: ignore[no-untyped-def]
+def simulate(dk: Deck, info: dict, hdb, T: float):  # type: ignore[no-untyped-def]
+    """One regular-wave run (H = WAVE_H, period T, along +x): (result, setup, wave)."""
     w = 2 * np.pi / T
     wave = RegularWave(amplitude=WAVE_H / 2, omega=w, heading_deg=0.0)
     ramp = HalfCosineRamp(duration=RAMP_S)
@@ -238,6 +240,13 @@ def run_wave(dk: Deck, info: dict, hdb, T: float) -> dict:  # type: ignore[no-un
                           xi_dot0=setup.xi_dot0, duration=DURATION, dt=DT, rho_inf=0.8,
                           constraints=setup.constraints, external_force=ext,
                           state_force=setup.state_force, projection_interval=1)
+    return r, setup, wave
+
+
+def run_wave(dk: Deck, info: dict, hdb, T: float) -> dict:  # type: ignore[no-untyped-def]
+    w = 2 * np.pi / T
+    r, setup, wave = simulate(dk, info, hdb, T)
+    tb = info["top"]
     m = r.t >= r.t[-1] - FIT_S; t = r.t[m]; xi = r.xi[m] - setup.xi0
     dc = info["centre"] - info["cg"]
     out = {"T_s": T, "heave_m": fit(t, point_z(xi, tb, dc), w),
@@ -383,6 +392,25 @@ def add_period(article: str, name: str, T: float, preload: bool = False) -> None
           f"pitch {o['pitch_deg']:5.2f} deg, min freeboard {1e3 * o['min_freeboard_m']:5.0f} mm")
 
 
+def history(article: str, name: str, T: float, preload: bool = False) -> Path:
+    """The last two wave periods of one run, every body, for the animations
+    (tilted_animations.py): t, xi (displacement from each body's reference, rotation vector) and
+    the body reference points. Written to tilted_anim/<article>_<case>_T<T>.npz."""
+    case, nc = load_case(article, name)
+    dk, info = make_deck(case, preload)
+    r, setup, wave = simulate(dk, info, read_capytaine(nc), T)
+    m = r.t >= r.t[-1] - 2.0 * T - 1e-9
+    out = HERE / "tilted_anim"
+    out.mkdir(exist_ok=True)
+    path = out / f"{article}_{name}_T{T:g}.npz"
+    np.savez(path, t=r.t[m], xi=r.xi[m] - setup.xi0,
+             refs=np.array([b.reference_point for b in dk.bodies], float),
+             top=info["top"], T=T, amplitude=wave.amplitude, omega=wave.omega,
+             wavenumber=wave.wavenumber, preload=preload)
+    print(f"wrote {path.name}")
+    return path
+
+
 def summary(preload: bool = False) -> None:
     out, name = (OUT_PRELOAD, "tilted_dynamics_preload") if preload else (OUT, "tilted_dynamics")
     rows = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(out.glob("*.json"))]
@@ -400,6 +428,8 @@ def main() -> None:
         update_periods(args[1], args[2], preload)
     elif args[0] == "add-period":
         add_period(args[1], args[2], float(args[3]), preload)
+    elif args[0] == "history":
+        history(args[1], args[2], float(args[3]), preload)
     else:
         run_case(args[0], args[1], preload)
 

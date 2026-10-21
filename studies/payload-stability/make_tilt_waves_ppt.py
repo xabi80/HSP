@@ -7,7 +7,8 @@ Every number comes from this folder's records:
 - tilted_dynamics.json: FloatSim without the preload, for the comparison;
 - the accelerations at the payload (acc_payload in tilted_dynamics_preload.json): vertical, and
   lateral (horizontal, along the waves) as the payload feels it.
-The pictures come from tilted_figures.py (wseq_cluster.png, wseq_platform.png). The charts are
+The pictures come from tilted_figures.py (wseq_cluster.png, wseq_platform.png), the
+animations from tilted_animations.py (wanim_*.gif). The charts are
 native PowerPoint XY charts, editable in place.
 
 Writes Payload_tilt_in_waves.pptx. Run: python make_tilt_waves_ppt.py
@@ -35,6 +36,7 @@ from deck_kit import (
     arrow,
     card,
     fit_picture,
+    picture,
     prs,
     slide,
     stat,
@@ -324,6 +326,34 @@ for key, sc, yt, yr, ttl, sub, msg, show_old in CHARTS:
         xy_chart(s, x, 1.55, 6.1, 4.55, ser, "wave period (s)", yt, (1.0, 5.5), yr,
                  legend=(i == 1), title_text=ARTS[a])
     text(s, 0.6, 6.25, 12.1, 1.0, msg, size=14, color=INK)
+
+# ================================================================== animations
+for T, ttl, note in (
+        (2.65, "Watch it move: 2.65 s, the heave and pitch resonance",
+         "At 2.65 s the whole article heaves and pitches about its 10 degree tilt. The buoys hang "
+         "nearly straight below their pins: this is the resonance of the article as a whole, where "
+         "the tilted payload turns heave into pitch and the lowest pins come closest to the water."),
+        (4.2, "Watch it move: 4.2 s, the buoys' rocking resonance",
+         "At 4.2 s the article as a whole barely pitches, but the buoys swing together on their "
+         "pins while the hub or deck slides back and forth along the waves on top of them. This is "
+         "the loaded buoys' rocking resonance, the one the weight preload revealed.")):
+    rc, rp = run(NEW[("cluster", "tilt10")], T), run(NEW[("platform", "tilt10")], T)
+    s = slide(notes=note + " True scale, real time; the animations play in slide show.")
+    title(s, ttl, "Payload shifted to 10°, H = 0.1 m · FloatSim with its weight preload · true "
+          "scale, real time · plays in slide show")
+    picture(s, f"wanim_cluster_T{T:g}.gif", 0.75, 1.5, w=5.5)
+    picture(s, f"wanim_platform_T{T:g}.gif", 7.05, 1.5, w=5.5)
+    if T == 2.65:
+        cap = (f"The whole article heaves and pitches about its tilt: hub ±{rc['pitch_deg']:.1f}°, deck "
+               f"±{rp['pitch_deg']:.1f}°; heave {1e3 * rc['heave_m']:.0f} / {1e3 * rp['heave_m']:.0f} mm. The "
+               f"buoys hang nearly straight (±{rc['gimbal_deg_max']:.1f}° / ±{rp['gimbal_deg_max']:.1f}°); "
+               f"the lowest pin keeps {1e3 * rc['min_freeboard_m']:.0f} / {1e3 * rp['min_freeboard_m']:.0f} mm.")
+    else:
+        cap = (f"The buoys swing together on their pins (±{rc['gimbal_deg_max']:.1f}° cluster, "
+               f"±{rp['gimbal_deg_max']:.1f}° platform) while the hub / deck slides along the waves "
+               f"({rc['acc_payload']['fx']:.2f} / {rp['acc_payload']['fx']:.2f} m/s² lateral at the payload); "
+               f"the article barely pitches (±{rc['pitch_deg']:.1f}° / ±{rp['pitch_deg']:.1f}°).")
+    text(s, 0.75, 6.85, 11.85, 0.6, cap, size=13, color=INK)
 
 # ================================================================== accelerations: vertical
 s = slide(notes=(
