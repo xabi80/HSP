@@ -328,32 +328,58 @@ for key, sc, yt, yr, ttl, sub, msg, show_old in CHARTS:
     text(s, 0.6, 6.25, 12.1, 1.0, msg, size=14, color=INK)
 
 # ================================================================== animations
-for T, ttl, note in (
-        (2.65, "Watch it move: 2.65 s, the heave and pitch resonance",
-         "At 2.65 s the whole article heaves and pitches about its 10 degree tilt. The buoys hang "
-         "nearly straight below their pins: this is the resonance of the article as a whole, where "
-         "the tilted payload turns heave into pitch and the lowest pins come closest to the water."),
-        (4.2, "Watch it move: 4.2 s, the buoys' rocking resonance",
-         "At 4.2 s the article as a whole barely pitches, but the buoys swing together on their "
-         "pins while the hub or deck slides back and forth along the waves on top of them. This is "
-         "the loaded buoys' rocking resonance, the one the weight preload revealed.")):
+ANIM_NOTE = {
+    (2.65, "centred"): (
+        "At 2.65 s, with the payload centred, the whole article heaves and pitches with the waves. "
+        "The buoys hang nearly straight below their pins: this is the resonance of the article as a "
+        "whole. The next slide is the same wave with the payload shifted to 10 degrees."),
+    (2.65, "tilt10"): (
+        "The same wave with the payload shifted to 10 degrees. The article still heaves and pitches "
+        "as a whole, but the tilted payload turns heave into pitch: the pitch grows against the "
+        "centred payload, and the lowest pins come closer to the water."),
+    (4.2, "centred"): (
+        "At 4.2 s, with the payload centred, the article as a whole barely pitches, but the buoys "
+        "swing together on their pins while the hub or deck slides back and forth along the waves on "
+        "top of them. This is the loaded buoys' rocking resonance, the one the weight preload "
+        "revealed. It is there without any shift: it comes from the load on the pins."),
+    (4.2, "tilt10"): (
+        "The same wave with the payload shifted to 10 degrees: almost the same motion. The shift "
+        "barely changes the buoys' rocking, because their rocking stiffnesses add up to nearly the "
+        "same total; the loading sets it, not the shift.")}
+for T, what in ((2.65, "The heave and pitch resonance"), (4.2, "The buoys' rocking resonance")):
+    rc0, rp0 = run(NEW[("cluster", "centred")], T), run(NEW[("platform", "centred")], T)
     rc, rp = run(NEW[("cluster", "tilt10")], T), run(NEW[("platform", "tilt10")], T)
-    s = slide(notes=note + " True scale, real time; the animations play in slide show.")
-    title(s, ttl, "Payload shifted to 10°, H = 0.1 m · FloatSim with its weight preload · true "
-          "scale, real time · plays in slide show")
-    picture(s, f"wanim_cluster_T{T:g}.gif", 0.75, 1.5, w=5.5)
-    picture(s, f"wanim_platform_T{T:g}.gif", 7.05, 1.5, w=5.5)
-    if T == 2.65:
-        cap = (f"The whole article heaves and pitches about its tilt: hub ±{rc['pitch_deg']:.1f}°, deck "
-               f"±{rp['pitch_deg']:.1f}°; heave {1e3 * rc['heave_m']:.0f} / {1e3 * rp['heave_m']:.0f} mm. The "
-               f"buoys hang nearly straight (±{rc['gimbal_deg_max']:.1f}° / ±{rp['gimbal_deg_max']:.1f}°); "
-               f"the lowest pin keeps {1e3 * rc['min_freeboard_m']:.0f} / {1e3 * rp['min_freeboard_m']:.0f} mm.")
-    else:
-        cap = (f"The buoys swing together on their pins (±{rc['gimbal_deg_max']:.1f}° cluster, "
-               f"±{rp['gimbal_deg_max']:.1f}° platform) while the hub / deck slides along the waves "
-               f"({rc['acc_payload']['fx']:.2f} / {rp['acc_payload']['fx']:.2f} m/s² lateral at the payload); "
-               f"the article barely pitches (±{rc['pitch_deg']:.1f}° / ±{rp['pitch_deg']:.1f}°).")
-    text(s, 0.75, 6.85, 11.85, 0.6, cap, size=13, color=INK)
+    for case, lab in (("centred", "payload centred"), ("tilt10", "payload shifted to 10°")):
+        s = slide(notes=ANIM_NOTE[(T, case)] + " True scale, real time; the animations play in slide show.")
+        title(s, f"Watch it move at {T:g} s: {lab}", f"{what}, H = 0.1 m · FloatSim with its weight "
+              "preload · true scale, real time · plays in slide show")
+        picture(s, f"wanim_cluster_{case}_T{T:g}.gif", 0.75, 1.5, w=5.5)
+        picture(s, f"wanim_platform_{case}_T{T:g}.gif", 7.05, 1.5, w=5.5)
+        if (T, case) == (2.65, "centred"):
+            cap = (f"Payload centred: the article heaves ({1e3 * rc0['heave_m']:.0f} / {1e3 * rp0['heave_m']:.0f} mm) "
+                   f"and pitches with the waves (hub ±{rc0['pitch_deg']:.1f}°, deck ±{rp0['pitch_deg']:.1f}°); the "
+                   f"buoys hang nearly straight (±{rc0['gimbal_deg_max']:.1f}° / ±{rp0['gimbal_deg_max']:.1f}°) and "
+                   f"the lowest pin keeps {1e3 * rc0['min_freeboard_m']:.0f} / {1e3 * rp0['min_freeboard_m']:.0f} mm.")
+        elif T == 2.65:
+            cap = (f"Shifted to 10°, the tilt turns heave into pitch: hub ±{rc0['pitch_deg']:.1f}° → "
+                   f"±{rc['pitch_deg']:.1f}°, deck ±{rp0['pitch_deg']:.1f}° → ±{rp['pitch_deg']:.1f}° (centred → 10°); "
+                   f"heave {1e3 * rc['heave_m']:.0f} / {1e3 * rp['heave_m']:.0f} mm; the lowest pin keeps "
+                   f"{1e3 * rc['min_freeboard_m']:.0f} / {1e3 * rp['min_freeboard_m']:.0f} mm "
+                   f"(centred {1e3 * rc0['min_freeboard_m']:.0f} / {1e3 * rp0['min_freeboard_m']:.0f}).")
+        elif case == "centred":
+            cap = (f"Even centred, the buoys swing together on their pins (±{rc0['gimbal_deg_max']:.1f}° / "
+                   f"±{rp0['gimbal_deg_max']:.1f}°): this resonance comes from loading the buoys, not from the "
+                   f"shift. The hub / deck slides along the waves ({rc0['acc_payload']['fx']:.2f} / "
+                   f"{rp0['acc_payload']['fx']:.2f} m/s² lateral) and barely pitches (±{rc0['pitch_deg']:.1f}° / "
+                   f"±{rp0['pitch_deg']:.1f}°).")
+        else:
+            cap = (f"Shifted to 10°, almost the same: the buoys swing ±{rc['gimbal_deg_max']:.1f}° / "
+                   f"±{rp['gimbal_deg_max']:.1f}° (centred ±{rc0['gimbal_deg_max']:.1f}° / ±{rp0['gimbal_deg_max']:.1f}°); "
+                   f"the hub / deck slides along the waves ({rc['acc_payload']['fx']:.2f} / "
+                   f"{rp['acc_payload']['fx']:.2f} m/s² lateral at the payload, centred {rc0['acc_payload']['fx']:.2f} / "
+                   f"{rp0['acc_payload']['fx']:.2f}) and barely pitches "
+                   f"(±{rc['pitch_deg']:.1f}° / ±{rp['pitch_deg']:.1f}°).")
+        text(s, 0.75, 6.85, 11.85, 0.6, cap, size=13, color=INK)
 
 # ================================================================== accelerations: vertical
 s = slide(notes=(

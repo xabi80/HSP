@@ -1,7 +1,8 @@
 """Animations of the cluster and the platform moving in regular waves, for the tilt-in-waves deck.
 
-The case is the payload shifted to a 10 deg static tilt (12.5 kg on the cluster's hub, 50 kg on
-the platform's deck). The waves are H = 0.1 m along the shift, at two key periods:
+Two cases, each with the payload (12.5 kg on the cluster's hub, 50 kg on the platform's deck):
+centred (level), and shifted to a 10 deg static tilt. The waves are H = 0.1 m along the shift, at
+two key periods:
 - 2.65 s: the heave and hub / deck-pitch resonance, where the tilt turns heave into pitch;
 - 4.2 s: the buoys' rocking resonance on their gimbals.
 The motion is FloatSim's, with its weight preload (tilted_dynamics.py history ... --preload).
@@ -15,7 +16,7 @@ wave cycle, in real time:
 The view is the static pictures' fixed view: 22.5 deg off the diagonals for the cluster, 14 deg
 off the grid for the platform, so every buoy shows.
 
-Writes wanim_<article>_T<T>.gif from tilted_anim/<article>_tilt10_T<T>.npz.
+Writes wanim_<article>_<case>_T<T>.gif from tilted_anim/<article>_<case>_T<T>.npz.
 Run: python tilted_animations.py
 """
 
@@ -43,9 +44,13 @@ WATER, WATER_EDGE = "#d9eef2", "#5aa9b8"
 HULL, HUB, DECK, PAYLOAD, LIMIT = "#1f3b4d", "#3a4852", "#6b7f8c", "#c9772b", "#b2432c"
 VIEW = {"cluster": 22.5, "platform": float(np.degrees(np.arctan(0.25)))}
 LIM = {"cluster": ((-1.5, 1.5), (-2.55, 1.45)), "platform": ((-2.1, 2.1), (-2.45, 1.95))}
+CASES = ("centred", "tilt10")
 PERIODS = (2.65, 4.2)
 N_FRAMES = 36
-LABEL = {"cluster": "Cluster, 12.5 kg shifted to 10°", "platform": "Platform, 50 kg shifted to 10°"}
+LABEL = {("cluster", "centred"): "Cluster, 12.5 kg centred", ("cluster", "tilt10"):
+         "Cluster, 12.5 kg shifted to 10°", ("platform", "centred"): "Platform, 50 kg centred",
+         ("platform", "tilt10"): "Platform, 50 kg shifted to 10°"}
+ABOUT = {"centred": "about level", "tilt10": "about its 10° tilt"}
 
 
 def rot0(q: list[float]) -> np.ndarray:
@@ -83,8 +88,8 @@ def carried(refs: np.ndarray, x: np.ndarray, b: int, p_eq: np.ndarray) -> np.nda
     return r + R @ (p_eq - refs[b])
 
 
-def draw(ax, article: str, lay: dict, refs: np.ndarray, x: np.ndarray, t: float,  # type: ignore[no-untyped-def]
-         wave: dict, amp: dict) -> None:
+def draw(ax, article: str, case: str, lay: dict, refs: np.ndarray,  # type: ignore[no-untyped-def]
+         x: np.ndarray, t: float, wave: dict, amp: dict) -> None:
     ax.clear()
     a = np.radians(VIEW[article]); u = np.array([np.cos(a), np.sin(a), 0.0])
     v = np.array([-u[1], u[0], 0.0])
@@ -133,11 +138,12 @@ def draw(ax, article: str, lay: dict, refs: np.ndarray, x: np.ndarray, t: float,
     ax.add_patch(FancyArrowPatch((x0 + 0.1, y0 + 0.25), (x0 + 0.75, y0 + 0.25), arrowstyle="-|>",
                                  mutation_scale=14, color=WATER_EDGE, lw=2, zorder=9))
     ax.text(x0 + 0.1, y0 + 0.36, "waves", fontsize=9, color="#2d7f8f", zorder=9)
-    ax.text(x0 + 0.05, y1 - 0.12, LABEL[article], fontsize=11.5, fontweight="bold", color=HUB)
+    ax.text(x0 + 0.05, y1 - 0.12, LABEL[(article, case)], fontsize=11.5, fontweight="bold",
+            color=HUB)
     ax.text(x0 + 0.05, y1 - 0.32, f"T = {wave['T']:g} s, H = 0.1 m · true scale, real time",
             fontsize=9.5, color=HUB)
     what = "hub" if article == "cluster" else "deck"
-    ax.text(x0 + 0.05, y1 - 0.52, f"{what} pitch ±{amp['pitch']:.1f}° about its 10° tilt",
+    ax.text(x0 + 0.05, y1 - 0.52, f"{what} pitch ±{amp['pitch']:.1f}° {ABOUT[case]}",
             fontsize=9.5, color=LIMIT)
     ax.text(x0 + 0.05, y1 - 0.72, f"buoys rock ±{amp['rock']:.1f}° on their pins", fontsize=9.5,
             color=LIMIT)
@@ -149,25 +155,25 @@ def main() -> None:
     cases = {(c["article"], c["case"]): c for c in raw}
     dyn = json.loads((HERE / "tilted_dynamics_preload.json").read_text(encoding="utf-8"))
     runs = {(d["article"], d["case"]): d for d in dyn}
-    for article in ("cluster", "platform"):
-        lay = layout(article, cases[(article, "tilt10")])
+    for article, case in ((a, c) for a in ("cluster", "platform") for c in CASES):
+        lay = layout(article, cases[(article, case)])
         for T in PERIODS:
-            d = np.load(HERE / "tilted_anim" / f"{article}_tilt10_T{T:g}.npz")
+            d = np.load(HERE / "tilted_anim" / f"{article}_{case}_T{T:g}.npz")
             t_all, xi, refs = d["t"], d["xi"], d["refs"]
             wave = {"A": float(d["amplitude"]), "w": float(d["omega"]), "k": float(d["wavenumber"]),
                     "T": T}
-            run = next(r for r in runs[(article, "tilt10")]["runs"] if abs(r["T_s"] - T) < 1e-9)
+            run = next(r for r in runs[(article, case)]["runs"] if abs(r["T_s"] - T) < 1e-9)
             amp = {"pitch": run["pitch_deg"], "rock": run["gimbal_deg_max"]}
             tf = t_all[-1] - T + T * np.arange(N_FRAMES) / N_FRAMES          # the last cycle
             frames = np.column_stack([np.interp(tf, t_all, xi[:, j]) for j in range(xi.shape[1])])
             fig, ax = plt.subplots(figsize=(5.6, 5.4))
 
             def frame(i: int, frames=frames, tf=tf, lay=lay, refs=refs, wave=wave, amp=amp,
-                      ax=ax, article=article) -> None:
-                draw(ax, article, lay, refs, frames[i], float(tf[i]), wave, amp)
+                      ax=ax, article=article, case=case) -> None:
+                draw(ax, article, case, lay, refs, frames[i], float(tf[i]), wave, amp)
 
             anim = FuncAnimation(fig, frame, frames=N_FRAMES)
-            out = HERE / f"wanim_{article}_T{T:g}.gif"
+            out = HERE / f"wanim_{article}_{case}_T{T:g}.gif"
             anim.save(out, writer=PillowWriter(fps=round(N_FRAMES / T)), dpi=90)
             plt.close(fig)
             print(f"wrote {out.name}")
