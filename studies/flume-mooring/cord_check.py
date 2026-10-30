@@ -25,8 +25,12 @@ Steps (FloatSim throughout, through the spec's own functions):
               210 s, dt 0.0025 s, drift sum), and the cluster's operational band (H 0.12 m at
               1.4 s and its moored tilt resonance) at the spec's attachment and at the sweep's
               pick, as line_hardware.extreme_run.
+  lowt0    -- the buoy with the 1/8" cord at the spec's attachment and T0 = 1.0 N (the sweep's
+              pretension that brings the tilt shift inside zeta/3; k recomputed for that T0):
+              the criteria and the 18 spec cases. Lower pretension softens the collar's yaw
+              stiffness, so its yaw stability is checked, not assumed.
 
-Writes cord_check.json.  Run: python cord_check.py fit|statics|sweep|settle|runs|report
+Writes cord_check.json.  Run: python cord_check.py fit|statics|sweep|settle|runs|lowt0|report
 """
 # ruff: noqa: E402  -- sys.path bootstrap first
 from __future__ import annotations
@@ -56,6 +60,7 @@ JOHN_LBF = {"1/8": (0, 0.91, 1.1, 1.4, 1.51, 1.66, 1.87, 2.2, 2.45, 2.73, 3.31),
             "1/4": (0, 1.58, 2.87, 3.3, 3.84, 4.41, 4.9, 5.51, 5.99, 6.61, 7.23)}
 ARTS = ("buoy", "cluster")
 RUN_CORD = "1/8"
+LOW_T0_N = 1.0                       # buoy pretension for the 1/8" cord (sweep: tilt -1.34 %)
 
 
 def ea0(cord: str) -> float:
@@ -97,6 +102,12 @@ def _row(art: str, m: float, free, kin, p_free: dict) -> dict:
     d = asw.chosen(art)["row"]
     r = asw._shifts(asw.evaluate(art, free, kin, d["height"], d["t0_scale"] * es.rest_ratio(art, m),
                                  d["k_scale"] * m), p_free)
+    r["m"] = m
+    return _checked(art, r)
+
+
+def _checked(art: str, r: dict) -> dict:
+    """The spec's hard criteria (attachment_sweep.choose) on one evaluated row."""
     lim = asw.ZETA[art] / 3 * 100
     r["checks"] = {"tilt shift <= zeta/3": abs(r["tilt_shift_pct"]) <= lim,
                    "heave shift <= 1 %": abs(r["heave_shift_pct"]) <= 1.0,
@@ -104,7 +115,6 @@ def _row(art: str, m: float, free, kin, p_free: dict) -> dict:
                    "surge >= 14 s": r["periods_s"]["surge"] >= 14.0,
                    "op T_min >= 0.15 T0": r["T_min_ratio_op"] >= 0.15 - 1e-6}
     r["tilt_limit_pct"] = lim
-    r["m"] = m
     return r
 
 
@@ -195,6 +205,58 @@ def runs(res: dict) -> list[dict]:
     return out
 
 
+def buoy_low_t0() -> dict:
+    """The buoy, 1/8" cord, spec attachment, T0 = LOW_T0_N: criteria and the 18 spec cases."""
+    ln = line_ref("buoy")
+    k = (ea0(RUN_CORD) + LOW_T0_N) / ln["chord_m"]          # one strand: k L0 = EA0
+    k_des = asw.fd.line_design("buoy", 1)["k_line"]
+    d = asw.chosen("buoy")["row"]
+    t0s, ks = LOW_T0_N / 4.0, k / k_des                     # mooring_opts: buoy T0 = 4 N x t0s
+    p_free = json.loads(asw.OUT.read_text())["buoy"][0]["free"]
+    r = _checked("buoy", asw._shifts(asw.evaluate("buoy", asw._free("buoy"), asw._kin("buoy"),
+                                                  d["height"], t0s, ks), p_free))
+    fails = [c for c, ok in r["checks"].items() if not ok]
+    print(f"buoy 1/8\" T0 {LOW_T0_N} N: k {k:.2f} N/m, tilt {r['tilt_shift_pct']:+.2f} % (limit "
+          f"{r['tilt_limit_pct']:.2f}), heave {r['heave_shift_pct']:+.2f} %, surge "
+          f"{r['periods_s']['surge']:.1f} s, yaw {r['periods_s']['yaw']:.2f} s, op T_min/T0 "
+          f"{r['T_min_ratio_op']:.2f} -> {'PASS' if not fails else 'FAIL: ' + ', '.join(fails)}",
+          flush=True)
+    design = {"opts": asw.mooring_opts("buoy", d["height"], t0s, ks),
+              "tag": f"buoy:cord18_t0_{LOW_T0_N:g}", "K_surge": r["K"]["surge"]}
+    label = f"spec attachment, T0 {LOW_T0_N:g} N"
+    todo = [("buoy", H, T, design, label) for H, T in bsc.CASES]
+    with ProcessPoolExecutor(max_workers=len(todo)) as ex:
+        out = list(ex.map(run_one, todo))
+    for x in out:
+        if "error" not in x:
+            x["yaw_max_deg"] = float(np.degrees(x["antisymmetric_max"]["yaw"]))
+            x["state"] = bsc.classify(x)
+    return {"k_N_per_m": k, "T0_N": LOW_T0_N, "statics": r, "runs": out}
+
+
+def report_low_t0(res: dict) -> None:
+    base = {(r["H"], r["T"]): r for r in json.loads(bsc.OUT.read_text())}
+    hi = {(r["H"], r["T"]): r for r in res["runs"] if r["article"] == "buoy"}
+    print(f"buoy, 1/8\" at T0 {LOW_T0_N:g} N | the 1/8\" at 2.40 N | the spec cord:")
+
+    def cell(r: dict | None) -> str:
+        if r is None:
+            return "-"
+        if "error" in r:
+            return "diverges"
+        st = r.get("state") or bsc.classify(
+            {**r, "yaw_max_deg": float(np.degrees(r["antisymmetric_max"]["yaw"]))})
+        return f"{st}, tilt {r['tilt_max_deg']:.1f}"
+
+    for r in res["buoy_low_t0"]["runs"]:
+        key = (r["H"], r["T"])
+        extra = ("" if "error" in r else f", T_min/T0 {r['T_min_ratio']:.2f}, T max "
+                 f"{max(r['T_max_N']):.2f} N, surge {r['surge_min_m']:.2f}.."
+                 f"{r['surge_max_m']:.2f} m")
+        print(f"  H {r['H']:<4} T {r['T']:<4}: {cell(r)}{extra} | {cell(hi.get(key))} | "
+              f"{cell(base.get(key))}", flush=True)
+
+
 def report(res: dict) -> None:
     base_b = {(r["H"], r["T"]): r for r in json.loads(bsc.OUT.read_text())}
     print("buoy (1/8\" cord vs the spec cord): H T: state, max tilt, T_min/T0, T max, surge range")
@@ -243,8 +305,13 @@ def main() -> None:
     elif step == "runs":
         res["runs"] = runs(res)
         report(res)
+    elif step == "lowt0":
+        res["buoy_low_t0"] = buoy_low_t0()
+        report_low_t0(res)
     elif step == "report":
         report(res)
+        if "buoy_low_t0" in res:
+            report_low_t0(res)
         return
     OUT.write_text(json.dumps(res, indent=1, default=es._jsonable))
 

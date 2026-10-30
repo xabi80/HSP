@@ -67,9 +67,33 @@ through the spec's own checks (FloatSim). The lines sit at 2–9 % stretch, insi
   - T_min / T0 0.27 (spec 0.56), peak tension 2.20 N (spec 2.09 N);
   - mean offset at 1.4 s 0.034 m (spec 0.067 m).
 
-**Reading:** the cluster can use one strand of 1/8" if its lines attach at −0.30 m. The buoy
-needs a softer element, unless its tilt and surge shifts are accepted as declared (as the extreme
-sets' are). Run: `python cord_check.py fit|statics|sweep|settle|runs` → `cord_check.json`.
+**The buoy's surge shift, declared** (Xabier, 2026-10-30). Criterion 2 is the rule of thumb
+"mooring periods ≥ 4 × the longest wave" (DESIGN-BASIS Phase B). At 8.2–8.5 s the buoy's surge
+is still far from every test wave. What it costs is a larger wave-frequency surge, by
+1/(1 − (T/T_surge)²): +3 % at 1.4 s, +12 % at 2.65 s and +22 % at 3.5 s (spec cord ≤ 5 %).
+FloatSim models the mooring, so the comparison holds; it is declared, as the extreme sets'
+surge periods are.
+
+**The buoy at 1.0 N** (`lowt0`: 1/8" at the spec's attachment, k 8.09 N/m for that pretension):
+- passes every criterion but surge: tilt shift −1.31 % (limit 1.42), heave −0.21 %, surge
+  8.5 s, operational T_min / T0 0.43; the collar's yaw period lengthens 1.12 → 1.72 s;
+- **operational band (H ≤ 0.12 m): all stable, tilt within 0.3° of the spec** (9.4–16.8°),
+  peak tension 1.7 N;
+- **extremes: 5 of the 13 diverge** (spec 3): H 0.35 and 0.5 m at 3.0 s join the spec's three.
+
+| 18 spec cases | stable | yaw grows | diverges |
+|---|---|---|---|
+| spec cord, 2.40 N | 9 | 6 | 3 |
+| 1/8", 2.40 N | 11 | 4 | 3 |
+| 1/8", 1.0 N | 10 | 3 | 5 |
+
+**Reading:**
+- The cluster can use one strand of 1/8" if its lines attach at −0.30 m.
+- The buoy can use one strand of 1/8" with its surge shift declared, re-tensioned between the
+  series: **1.0 N for the response tests** (H ≤ 0.12 m; every other criterion holds), **2.40 N
+  for the extremes** (fewer unstable cases than the spec cord; its tilt shift is declared there,
+  as the extreme sets' are). A softer elastic (~0.18 lbf per 10 % of stretch) would avoid both.
+- Run: `python cord_check.py fit|statics|sweep|settle|runs|lowt0` → `cord_check.json`.
 
 ## Status: FloatSim re-check (2026-09-23)
 
