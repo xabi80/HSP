@@ -26,6 +26,51 @@ the default in `floatsim_decks.py`). Its mooring was re-derived and its sidewall
 `DESIGN-BASIS.md` Phase J. The sections below are the earlier record, for the 2.5 m-circle
 platform (0.80 m wall clearance); rev D's platform is 0.49 m from each wall.
 
+## John's bungee cords on the buoy and the cluster (2026-10-29, `cord_check.py`)
+
+John's first cord test (one loading run of 1/8", 3/16" and 1/4" shock cord, pull in lbf at 10 %
+steps of stretch) gives cords stiffer than the spec's two softest lines. Here each line is one
+strand spanning the whole anchor-to-spar chord, pretensioned to the spec's at-rest tension, run
+through the spec's own checks (FloatSim). The lines sit at 2–9 % stretch, inside the cord's first
+10 %, where the test has one point; that part is taken as straight.
+
+| line stiffness (N/m) | spec | 1/8" | 3/16" | 1/4" |
+|---|---|---|---|---|
+| single buoy | 2.01 | 8.37 (×4.2) | 10.0 (×5.0) | 14.2 (×7.1) |
+| cluster, operational | 4.15 | 8.49 (×2.0) | 10.2 (×2.5) | 14.5 (×3.5) |
+
+**At the spec's attachment** (`statics`), every cord fails the tilt-resonance criterion:
+
+| | tilt shift (limit) | surge period (≥ 14 s) | operational T_min / T0 (≥ 0.15) |
+|---|---|---|---|
+| buoy, spec cord | −1.37 % (1.42) | 16.6 s | 0.94 |
+| buoy, 1/8" | **−2.05 %** | **8.2 s** | 0.76 |
+| cluster, spec cord | −0.73 % (1.19) | 23.1 s | 0.56 |
+| cluster, 1/8" | **−1.52 %** | 16.2 s | 0.16 |
+
+**Re-swept with the 1/8" cord** (`sweep`, `settle`; the spec's height × pretension sweep and rule):
+- **Cluster: passes at z = −0.30 m with T0 1.29 N** (spec −0.15 m, 1.49 N): tilt shift −0.78 %,
+  surge 16.3 s, T_min / T0 0.25, calm tilt 0.94° (FloatSim settle).
+- **Buoy: nothing passes.** Its surge period is 8.2–8.6 s at every height. The tilt shift passes
+  only at −0.50 m with T0 ≤ 1.0 N. Surge ≥ 14 s needs k ≤ ~2.8 N/m, about a third of one 1/8"
+  strand over the chord.
+
+**In waves** (`runs`, 1/8"):
+- **Buoy** (the spec's 18 cases, spec attachment):
+  - the same stability classes as the spec, except H = 0.35 m at 2.0 and 2.35 s, now stable
+    (spec: yaw grows); the same three cases diverge;
+  - tilt within 0.8° of the spec in the operational band, up to 2.8° more in the extremes;
+  - peak tension 4.7 N (spec 3.5 N); lowest tension 0.12 T0 (H 0.5 m, 3.5 s);
+  - smaller offsets: H 0.5 m at 3.5 s, −0.20…0.38 m (spec 0.15…0.65 m).
+- **Cluster, operational band**, at −0.30 m:
+  - tilt 17.5° at its resonance (spec 17.6°), the same surge;
+  - T_min / T0 0.27 (spec 0.56), peak tension 2.20 N (spec 2.09 N);
+  - mean offset at 1.4 s 0.034 m (spec 0.067 m).
+
+**Reading:** the cluster can use one strand of 1/8" if its lines attach at −0.30 m. The buoy
+needs a softer element, unless its tilt and surge shifts are accepted as declared (as the extreme
+sets' are). Run: `python cord_check.py fit|statics|sweep|settle|runs` → `cord_check.json`.
+
 ## Status: FloatSim re-check (2026-09-23)
 
 Every motion result below now comes from **FloatSim itself**:
